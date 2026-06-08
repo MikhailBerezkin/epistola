@@ -1,7 +1,63 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
-class RegisterScreen extends StatelessWidget {
+class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
+
+  @override
+  State<RegisterScreen> createState() => _RegisterScreenState();
+}
+
+class _RegisterScreenState extends State<RegisterScreen> {
+  final nameController = TextEditingController();
+  final emailController = TextEditingController();
+  final passwordController = TextEditingController();
+  final repeatPasswordController = TextEditingController();
+
+  bool isLoading = false;
+
+  Future<void> register() async {
+    if (passwordController.text != repeatPasswordController.text) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Пароли не совпадают')));
+      return;
+    }
+
+    setState(() => isLoading = true);
+
+    try {
+      await FirebaseAuth.instance.createUserWithEmailAndPassword(
+        email: emailController.text.trim(),
+        password: passwordController.text.trim(),
+      );
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Аккаунт создан')));
+
+      Navigator.pop(context);
+    } on FirebaseAuthException catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message ?? 'Ошибка регистрации')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => isLoading = false);
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    nameController.dispose();
+    emailController.dispose();
+    passwordController.dispose();
+    repeatPasswordController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -12,10 +68,11 @@ class RegisterScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const SizedBox(height: 32),
+            const SizedBox(height: 40),
 
             TextField(
-              decoration: InputDecoration(
+              controller: nameController,
+              decoration: const InputDecoration(
                 labelText: 'Имя',
                 border: OutlineInputBorder(),
               ),
@@ -24,7 +81,9 @@ class RegisterScreen extends StatelessWidget {
             const SizedBox(height: 16),
 
             TextField(
-              decoration: InputDecoration(
+              controller: emailController,
+              keyboardType: TextInputType.emailAddress,
+              decoration: const InputDecoration(
                 labelText: 'Email',
                 border: OutlineInputBorder(),
               ),
@@ -33,8 +92,9 @@ class RegisterScreen extends StatelessWidget {
             const SizedBox(height: 16),
 
             TextField(
+              controller: passwordController,
               obscureText: true,
-              decoration: InputDecoration(
+              decoration: const InputDecoration(
                 labelText: 'Пароль',
                 border: OutlineInputBorder(),
               ),
@@ -43,8 +103,9 @@ class RegisterScreen extends StatelessWidget {
             const SizedBox(height: 16),
 
             TextField(
+              controller: repeatPasswordController,
               obscureText: true,
-              decoration: InputDecoration(
+              decoration: const InputDecoration(
                 labelText: 'Повторите пароль',
                 border: OutlineInputBorder(),
               ),
@@ -53,8 +114,8 @@ class RegisterScreen extends StatelessWidget {
             const SizedBox(height: 24),
 
             FilledButton(
-              onPressed: () {},
-              child: const Text('Создать аккаунт'),
+              onPressed: isLoading ? null : register,
+              child: Text(isLoading ? 'Создание...' : 'Создать аккаунт'),
             ),
           ],
         ),

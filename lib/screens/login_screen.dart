@@ -1,7 +1,50 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
-class LoginScreen extends StatelessWidget {
+class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
+
+  @override
+  State<LoginScreen> createState() => _LoginScreenState();
+}
+
+class _LoginScreenState extends State<LoginScreen> {
+  final emailController = TextEditingController();
+  final passwordController = TextEditingController();
+
+  bool isLoading = false;
+
+  Future<void> login() async {
+    setState(() => isLoading = true);
+
+    try {
+      await FirebaseAuth.instance.signInWithEmailAndPassword(
+        email: emailController.text.trim(),
+        password: passwordController.text,
+      );
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Вход выполнен')));
+    } on FirebaseAuthException catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message ?? 'Ошибка входа')));
+    } finally {
+      if (mounted) {
+        setState(() => isLoading = false);
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    emailController.dispose();
+    passwordController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -15,7 +58,9 @@ class LoginScreen extends StatelessWidget {
             const SizedBox(height: 40),
 
             TextField(
-              decoration: InputDecoration(
+              controller: emailController,
+              keyboardType: TextInputType.emailAddress,
+              decoration: const InputDecoration(
                 labelText: 'Email',
                 border: OutlineInputBorder(),
               ),
@@ -24,8 +69,9 @@ class LoginScreen extends StatelessWidget {
             const SizedBox(height: 16),
 
             TextField(
+              controller: passwordController,
               obscureText: true,
-              decoration: InputDecoration(
+              decoration: const InputDecoration(
                 labelText: 'Пароль',
                 border: OutlineInputBorder(),
               ),
@@ -33,7 +79,10 @@ class LoginScreen extends StatelessWidget {
 
             const SizedBox(height: 24),
 
-            FilledButton(onPressed: () {}, child: const Text('Войти')),
+            FilledButton(
+              onPressed: isLoading ? null : login,
+              child: Text(isLoading ? 'Вход...' : 'Войти'),
+            ),
 
             const SizedBox(height: 12),
 
