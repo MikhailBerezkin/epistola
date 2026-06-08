@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "995006917916",
+    "project_id": "epistola-app",
+    "storage_bucket": "epistola-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:995006917916:android:573a75e9a577391e8aded9",
+        "android_client_info": {
+          "package_name": "com.example.epistola"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAx_3erbskZmbSSU7m9nNk679aVycMgTgE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
