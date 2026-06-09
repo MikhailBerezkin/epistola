@@ -1,5 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
 import 'home_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -15,6 +17,26 @@ class _LoginScreenState extends State<LoginScreen> {
 
   bool isLoading = false;
 
+  @override
+  void initState() {
+    super.initState();
+    loadSavedEmail();
+  }
+
+  Future<void> loadSavedEmail() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedEmail = prefs.getString('last_email');
+
+    if (savedEmail != null && savedEmail.isNotEmpty) {
+      emailController.text = savedEmail;
+    }
+  }
+
+  Future<void> saveEmail() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('last_email', emailController.text.trim());
+  }
+
   Future<void> login() async {
     setState(() => isLoading = true);
 
@@ -24,11 +46,14 @@ class _LoginScreenState extends State<LoginScreen> {
         password: passwordController.text,
       );
 
+      await saveEmail();
+
       if (!mounted) return;
 
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Вход выполнен')));
+
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (_) => const HomeScreen()),
