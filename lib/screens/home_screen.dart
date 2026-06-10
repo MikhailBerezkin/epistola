@@ -163,7 +163,10 @@ class ChatsPage extends StatelessWidget {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (_) => ChatScreen(chatName: chatName),
+                              builder: (_) => ChatScreen(
+                                chatId: chat.id,
+                                chatName: chatName,
+                              ),
                             ),
                           );
                         },

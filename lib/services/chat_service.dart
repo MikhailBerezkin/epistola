@@ -28,4 +28,37 @@ class ChatService {
         .where('memberIds', arrayContains: user?.uid)
         .snapshots();
   }
+
+  Future<void> sendMessage({
+    required String chatId,
+    required String text,
+  }) async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+
+    await _firestore
+        .collection('chats')
+        .doc(chatId)
+        .collection('messages')
+        .add({
+          'text': text,
+          'senderId': user.uid,
+          'senderEmail': user.email,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+
+    await _firestore.collection('chats').doc(chatId).update({
+      'lastMessage': text,
+      'lastMessageAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Stream<QuerySnapshot> getMessages(String chatId) {
+    return _firestore
+        .collection('chats')
+        .doc(chatId)
+        .collection('messages')
+        .orderBy('createdAt')
+        .snapshots();
+  }
 }
