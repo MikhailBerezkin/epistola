@@ -2,6 +2,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'chat_screen.dart';
 import 'welcome_screen.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../services/chat_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -39,7 +41,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void onAddPressed() {
     if (selectedIndex == 0) {
-      debugPrint('Создать чат или группу');
+      ChatService().createGroupChat('Общий');
     } else if (selectedIndex == 1) {
       debugPrint('Создать пространство');
     } else {
@@ -98,7 +100,7 @@ class ChatsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final chats = ['Общий', 'Разработка', 'Дизайн', 'Бухгалтерия'];
+    final chatService = ChatService();
 
     return Padding(
       padding: const EdgeInsets.all(16),
@@ -121,24 +123,53 @@ class ChatsPage extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           Expanded(
-            child: ListView.builder(
-              itemCount: chats.length,
-              itemBuilder: (context, index) {
-                return Card(
-                  child: ListTile(
-                    leading: const CircleAvatar(child: Icon(Icons.group)),
-                    title: Text(chats[index]),
-                    subtitle: const Text('Последнее сообщение...'),
-                    trailing: const Text('18:42'),
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => ChatScreen(chatName: chats[index]),
+            child: StreamBuilder<QuerySnapshot>(
+              stream: chatService.getUserChats(),
+              builder: (context, snapshot) {
+                if (snapshot.hasError) {
+                  return Center(child: Text('Ошибка: ${snapshot.error}'));
+                }
+
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+
+                final chats = snapshot.data?.docs ?? [];
+
+                if (chats.isEmpty) {
+                  return const Center(child: Text('Пока нет чатов'));
+                }
+
+                return ListView.builder(
+                  itemCount: chats.length,
+                  itemBuilder: (context, index) {
+                    final chat = chats[index];
+                    final data = chat.data() as Map<String, dynamic>;
+
+                    final chatName = data['name'] ?? 'Без названия';
+                    final lastMessage = data['lastMessage'] ?? '';
+
+                    return Card(
+                      child: ListTile(
+                        leading: const CircleAvatar(child: Icon(Icons.group)),
+                        title: Text(chatName),
+                        subtitle: Text(
+                          lastMessage.isEmpty
+                              ? 'Сообщений пока нет'
+                              : lastMessage,
                         ),
-                      );
-                    },
-                  ),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => ChatScreen(chatName: chatName),
+                            ),
+                          );
+                        },
+                      ),
+                    );
+                  },
                 );
               },
             ),
