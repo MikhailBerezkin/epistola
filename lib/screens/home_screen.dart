@@ -1,9 +1,11 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'chat_screen.dart';
-import 'welcome_screen.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+
 import '../services/chat_service.dart';
+import 'chat_screen.dart';
+import 'user_search_screen.dart';
+import 'welcome_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -41,7 +43,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void onAddPressed() {
     if (selectedIndex == 0) {
-      ChatService().createGroupChat('Общий');
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const UserSearchScreen()),
+      );
     } else if (selectedIndex == 1) {
       debugPrint('Создать пространство');
     } else {
@@ -148,15 +153,22 @@ class ChatsPage extends StatelessWidget {
 
                     final chatName = data['name'] ?? 'Без названия';
                     final lastMessage = data['lastMessage'] ?? '';
+                    final chatType = data['type'] ?? 'group';
+
+                    final chatIcon = chatType == 'private'
+                        ? Icons.person
+                        : Icons.group;
 
                     return Card(
                       child: ListTile(
-                        leading: const CircleAvatar(child: Icon(Icons.group)),
+                        leading: CircleAvatar(child: Icon(chatIcon)),
                         title: Text(chatName),
                         subtitle: Text(
                           lastMessage.isEmpty
                               ? 'Сообщений пока нет'
                               : lastMessage,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                         trailing: const Icon(Icons.chevron_right),
                         onTap: () {

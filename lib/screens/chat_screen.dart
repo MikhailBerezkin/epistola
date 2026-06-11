@@ -19,6 +19,19 @@ class _ChatScreenState extends State<ChatScreen> {
   final chatService = ChatService();
   final ScrollController _scrollController = ScrollController();
 
+  String formatMessageTime(dynamic createdAt) {
+    if (createdAt == null || createdAt is! Timestamp) {
+      return '';
+    }
+
+    final dateTime = createdAt.toDate();
+
+    final hour = dateTime.hour.toString().padLeft(2, '0');
+    final minute = dateTime.minute.toString().padLeft(2, '0');
+
+    return '$hour:$minute';
+  }
+
   Future<void> sendMessage() async {
     final text = messageController.text.trim();
 
@@ -27,7 +40,7 @@ class _ChatScreenState extends State<ChatScreen> {
     messageController.clear();
 
     await chatService.sendMessage(chatId: widget.chatId, text: text);
-    await Future.delayed(const Duration(milliseconds: 100));
+    await Future.delayed(const Duration(milliseconds: 150));
 
     if (_scrollController.hasClients) {
       _scrollController.animateTo(
@@ -81,8 +94,12 @@ class _ChatScreenState extends State<ChatScreen> {
 
                     final text = data['text'] ?? '';
                     final senderId = data['senderId'];
-                    final senderEmail =
-                        data['senderEmail'] ?? 'Неизвестный пользователь';
+                    final senderName =
+                        data['senderName'] ??
+                        data['senderEmail'] ??
+                        'Пользователь';
+                    final createdAt = data['createdAt'];
+                    final timeText = formatMessageTime(createdAt);
                     final isMe = senderId == currentUser?.uid;
 
                     return Align(
@@ -93,7 +110,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         margin: const EdgeInsets.only(bottom: 10),
                         padding: const EdgeInsets.all(12),
                         constraints: BoxConstraints(
-                          maxWidth: MediaQuery.of(context).size.width * 0.7,
+                          maxWidth: MediaQuery.of(context).size.width * 0.72,
                         ),
                         decoration: BoxDecoration(
                           color: isMe
@@ -106,15 +123,33 @@ class _ChatScreenState extends State<ChatScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              senderEmail,
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Theme.of(context).colorScheme.outline,
+                            if (!isMe) ...[
+                              Text(
+                                senderName,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: Theme.of(context).colorScheme.outline,
+                                ),
                               ),
-                            ),
-                            const SizedBox(height: 4),
+                              const SizedBox(height: 4),
+                            ],
                             Text(text, style: const TextStyle(fontSize: 16)),
+                            if (timeText.isNotEmpty) ...[
+                              const SizedBox(height: 4),
+                              Align(
+                                alignment: Alignment.centerRight,
+                                child: Text(
+                                  timeText,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.outline,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ],
                         ),
                       ),
