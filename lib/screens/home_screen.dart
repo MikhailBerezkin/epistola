@@ -6,6 +6,7 @@ import '../services/chat_service.dart';
 import 'chat_screen.dart';
 import 'user_search_screen.dart';
 import 'welcome_screen.dart';
+import '../widgets/chat_tile.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -111,30 +112,6 @@ class _ChatsPageState extends State<ChatsPage> {
   final searchController = TextEditingController();
   String searchQuery = '';
 
-  String formatChatTime(dynamic lastMessageAt) {
-    if (lastMessageAt == null || lastMessageAt is! Timestamp) {
-      return '';
-    }
-
-    final dateTime = lastMessageAt.toDate();
-    final now = DateTime.now();
-
-    final isToday =
-        dateTime.year == now.year &&
-        dateTime.month == now.month &&
-        dateTime.day == now.day;
-
-    if (isToday) {
-      final hour = dateTime.hour.toString().padLeft(2, '0');
-      final minute = dateTime.minute.toString().padLeft(2, '0');
-      return '$hour:$minute';
-    }
-
-    final day = dateTime.day.toString().padLeft(2, '0');
-    final month = dateTime.month.toString().padLeft(2, '0');
-    return '$day.$month';
-  }
-
   bool matchesSearch(Map<String, dynamic> data) {
     if (searchQuery.isEmpty) return true;
 
@@ -222,60 +199,21 @@ class _ChatsPageState extends State<ChatsPage> {
 
                     final chatName = data['name'] ?? 'Без названия';
                     final lastMessage = data['lastMessage'] ?? '';
-                    final firstLetter = chatName.isNotEmpty
-                        ? chatName[0].toUpperCase()
-                        : '?';
-                    final lastMessageTime = formatChatTime(
-                      data['lastMessageAt'],
-                    );
 
-                    return Card(
-                      child: ListTile(
-                        leading: CircleAvatar(
-                          child: Text(
-                            firstLetter,
-                            style: const TextStyle(fontWeight: FontWeight.bold),
+                    return ChatTile(
+                      chatId: chat.id,
+                      chatName: chatName,
+                      lastMessage: lastMessage,
+                      lastMessageAt: data['lastMessageAt'],
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) =>
+                                ChatScreen(chatId: chat.id, chatName: chatName),
                           ),
-                        ),
-                        title: Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                chatName,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                            if (lastMessageTime.isNotEmpty)
-                              Text(
-                                lastMessageTime,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Theme.of(context).colorScheme.outline,
-                                ),
-                              ),
-                          ],
-                        ),
-                        subtitle: Text(
-                          lastMessage.isEmpty
-                              ? 'Сообщений пока нет'
-                              : lastMessage,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => ChatScreen(
-                                chatId: chat.id,
-                                chatName: chatName,
-                              ),
-                            ),
-                          );
-                        },
-                      ),
+                        );
+                      },
                     );
                   },
                 );

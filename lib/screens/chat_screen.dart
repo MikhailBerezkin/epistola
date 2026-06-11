@@ -20,6 +20,11 @@ class _ChatScreenState extends State<ChatScreen> {
   final ScrollController _scrollController = ScrollController();
 
   int lastMessageCount = 0;
+  @override
+  void initState() {
+    super.initState();
+    chatService.markChatAsRead(widget.chatId);
+  }
 
   String formatMessageTime(dynamic createdAt) {
     if (createdAt == null || createdAt is! Timestamp) {
@@ -76,7 +81,47 @@ class _ChatScreenState extends State<ChatScreen> {
     final currentUser = FirebaseAuth.instance.currentUser;
 
     return Scaffold(
-      appBar: AppBar(title: Text(widget.chatName)),
+      appBar: AppBar(
+        titleSpacing: 0,
+        title: Row(
+          children: [
+            CircleAvatar(
+              radius: 18,
+              child: Text(
+                widget.chatName.isNotEmpty
+                    ? widget.chatName[0].toUpperCase()
+                    : '?',
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    widget.chatName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  Text(
+                    'личный чат',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Theme.of(context).colorScheme.outline,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
       body: Column(
         children: [
           Expanded(

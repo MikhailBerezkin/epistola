@@ -18,7 +18,38 @@ class ChatService {
       'createdAt': FieldValue.serverTimestamp(),
       'lastMessage': '',
       'lastMessageAt': null,
+      'lastRead': {user.uid: FieldValue.serverTimestamp()},
     });
+  }
+
+  Future<int> getUnreadCount(String chatId) async {
+    final user = _auth.currentUser;
+    if (user == null) return 0;
+
+    final chatDoc = await _firestore.collection('chats').doc(chatId).get();
+
+    final data = chatDoc.data();
+    if (data == null) return 0;
+
+    final lastReadMap = (data['lastRead'] as Map<String, dynamic>?) ?? {};
+
+    final lastRead = lastReadMap[user.uid];
+
+    Query query = _firestore
+        .collection('chats')
+        .doc(chatId)
+        .collection('messages');
+
+    if (lastRead is Timestamp) {
+      query = query.where('createdAt', isGreaterThan: lastRead);
+    }
+
+    final snapshot = await query.get();
+
+    return snapshot.docs.where((doc) {
+      final senderId = doc['senderId'];
+      return senderId != user.uid;
+    }).length;
   }
 
   Stream<QuerySnapshot> getUserChats() {
@@ -68,6 +99,10 @@ class ChatService {
         'createdAt': FieldValue.serverTimestamp(),
         'lastMessage': '',
         'lastMessageAt': null,
+        'lastRead': {
+          currentUser.uid: FieldValue.serverTimestamp(),
+          otherUser.uid: null,
+        },
       });
     }
 
@@ -80,6 +115,7 @@ class ChatService {
   }) async {
     final user = _auth.currentUser;
     if (user == null) return;
+
     final userDoc = await _firestore.collection('users').doc(user.uid).get();
 
     final senderName = userDoc.data()?['name'] ?? user.email ?? 'Пользователь';
@@ -109,5 +145,14 @@ class ChatService {
         .collection('messages')
         .orderBy('createdAt')
         .snapshots();
+  }
+
+  Future<void> markChatAsRead(String chatId) async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+
+    await _firestore.collection('chats').doc(chatId).set({
+      'lastRead': {user.uid: FieldValue.serverTimestamp()},
+    }, SetOptions(merge: true));
   }
 }
