@@ -1,17 +1,95 @@
-# epistola
+# Epistola
 
-A new Flutter project.
+Современный мессенджер на Flutter и Firebase.
 
-## Getting Started
+## О проекте
 
-This project is a starting point for a Flutter application.
+Epistola — кроссплатформенный мессенджер, разрабатываемый на Flutter с использованием Firebase. Проект ориентирован на создание удобного корпоративного и командного общения с поддержкой групповых чатов, пространств (Spaces) и дальнейшим расширением функционала.
 
-A few resources to get you started if this is your first Flutter project:
+На текущем этапе реализованы базовые возможности авторизации и обмена сообщениями в реальном времени через Cloud Firestore.
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+---
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## Технологии
+
+* Flutter
+* Dart
+* Firebase Authentication
+* Cloud Firestore
+* Shared Preferences
+* Material Design 3
+
+---
+
+## Реализовано
+
+### Авторизация
+
+* Регистрация по email и паролю
+* Вход в аккаунт
+* Выход из аккаунта
+* Автоматический вход при повторном запуске приложения
+* Сохранение последнего использованного email
+
+### Чаты
+
+* Создание группового чата
+* Список доступных чатов
+* Отправка сообщений
+* Получение сообщений в реальном времени
+* Синхронизация между несколькими устройствами через Firestore
+
+### Интерфейс
+
+* Главный экран с вкладками:
+
+  * Чаты
+  * Пространства (Spaces)
+  * Профиль
+* Экран приветствия
+* Экран входа
+* Экран регистрации
+* Экран чата
+
+---
+
+## Текущая версия
+
+### v0.2
+
+Добавлены:
+
+* Cloud Firestore
+* Реальный обмен сообщениями
+* Хранение сообщений в базе данных
+* Синхронизация сообщений между пользователями
+
+---
+
+## Планируется
+
+* Личные чаты
+* Поиск пользователей
+* Тёмная тема
+* Видеозвонки и видеоконференции
+* Передача файлов
+* Голосовые сообщения
+* Реакции на сообщения
+* Поиск по сообщениям
+* Push-уведомления
+* Версия для iOS
+* Веб-версия
+
+---
+
+## Скриншоты
+
+Скриншоты будут добавлены по мере развития проекта.
+
+---
+
+## Автор
+
+GitHub: Metaxa251
+
+Проект создаётся как учебный и практический проект по разработке собственного мессенджера на Flutter.
