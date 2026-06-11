@@ -19,6 +19,8 @@ class _ChatScreenState extends State<ChatScreen> {
   final chatService = ChatService();
   final ScrollController _scrollController = ScrollController();
 
+  int lastMessageCount = 0;
+
   String formatMessageTime(dynamic createdAt) {
     if (createdAt == null || createdAt is! Timestamp) {
       return '';
@@ -32,6 +34,24 @@ class _ChatScreenState extends State<ChatScreen> {
     return '$hour:$minute';
   }
 
+  void scrollToBottom({bool animated = true}) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_scrollController.hasClients) return;
+
+      final bottom = _scrollController.position.maxScrollExtent;
+
+      if (animated) {
+        _scrollController.animateTo(
+          bottom,
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOut,
+        );
+      } else {
+        _scrollController.jumpTo(bottom);
+      }
+    });
+  }
+
   Future<void> sendMessage() async {
     final text = messageController.text.trim();
 
@@ -40,15 +60,8 @@ class _ChatScreenState extends State<ChatScreen> {
     messageController.clear();
 
     await chatService.sendMessage(chatId: widget.chatId, text: text);
-    await Future.delayed(const Duration(milliseconds: 150));
 
-    if (_scrollController.hasClients) {
-      _scrollController.animateTo(
-        _scrollController.position.maxScrollExtent,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
-      );
-    }
+    scrollToBottom();
   }
 
   @override
@@ -82,6 +95,13 @@ class _ChatScreenState extends State<ChatScreen> {
 
                 if (messages.isEmpty) {
                   return const Center(child: Text('Сообщений пока нет'));
+                }
+
+                if (messages.length != lastMessageCount) {
+                  final isFirstLoad = lastMessageCount == 0;
+                  lastMessageCount = messages.length;
+
+                  scrollToBottom(animated: !isFirstLoad);
                 }
 
                 return ListView.builder(

@@ -27,6 +27,7 @@ class ChatService {
     return _firestore
         .collection('chats')
         .where('memberEmails', arrayContains: user?.email)
+        .orderBy('lastMessageAt', descending: true)
         .snapshots();
   }
 
@@ -81,7 +82,7 @@ class ChatService {
     if (user == null) return;
     final userDoc = await _firestore.collection('users').doc(user.uid).get();
 
-    final senderName = userDoc.data()?['name'] ?? user.email;
+    final senderName = userDoc.data()?['name'] ?? user.email ?? 'Пользователь';
 
     await _firestore
         .collection('chats')
