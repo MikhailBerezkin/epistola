@@ -25,7 +25,7 @@ class ChatService {
 
     return _firestore
         .collection('chats')
-        .where('memberIds', arrayContains: user?.uid)
+        .where('memberEmails', arrayContains: user?.email)
         .snapshots();
   }
 

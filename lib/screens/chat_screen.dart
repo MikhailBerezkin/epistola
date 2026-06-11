@@ -17,6 +17,7 @@ class ChatScreen extends StatefulWidget {
 class _ChatScreenState extends State<ChatScreen> {
   final messageController = TextEditingController();
   final chatService = ChatService();
+  final ScrollController _scrollController = ScrollController();
 
   Future<void> sendMessage() async {
     final text = messageController.text.trim();
@@ -26,11 +27,21 @@ class _ChatScreenState extends State<ChatScreen> {
     messageController.clear();
 
     await chatService.sendMessage(chatId: widget.chatId, text: text);
+    await Future.delayed(const Duration(milliseconds: 100));
+
+    if (_scrollController.hasClients) {
+      _scrollController.animateTo(
+        _scrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+    }
   }
 
   @override
   void dispose() {
     messageController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -61,6 +72,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 }
 
                 return ListView.builder(
+                  controller: _scrollController,
                   padding: const EdgeInsets.all(16),
                   itemCount: messages.length,
                   itemBuilder: (context, index) {
@@ -69,6 +81,8 @@ class _ChatScreenState extends State<ChatScreen> {
 
                     final text = data['text'] ?? '';
                     final senderId = data['senderId'];
+                    final senderEmail =
+                        data['senderEmail'] ?? 'Неизвестный пользователь';
                     final isMe = senderId == currentUser?.uid;
 
                     return Align(
@@ -89,7 +103,20 @@ class _ChatScreenState extends State<ChatScreen> {
                                 ).colorScheme.surfaceContainerHighest,
                           borderRadius: BorderRadius.circular(16),
                         ),
-                        child: Text(text, style: const TextStyle(fontSize: 16)),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              senderEmail,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Theme.of(context).colorScheme.outline,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(text, style: const TextStyle(fontSize: 16)),
+                          ],
+                        ),
                       ),
                     );
                   },
