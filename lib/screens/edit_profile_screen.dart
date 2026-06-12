@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 enum EditProfileField { name, phone, about }
 
@@ -69,6 +70,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     await FirebaseFirestore.instance.collection('users').doc(widget.uid).update(
       {'name': name, 'phone': phone, 'about': about},
     );
+    HapticFeedback.mediumImpact();
 
     if (!mounted) return;
 

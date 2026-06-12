@@ -9,6 +9,7 @@ import 'edit_profile_screen.dart';
 import 'user_search_screen.dart';
 import 'welcome_screen.dart';
 import '../services/app_settings.dart';
+import 'package:flutter/services.dart' show HapticFeedback;
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -45,6 +46,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void onAddPressed() {
+    HapticFeedback.lightImpact();
     if (selectedIndex == 0) {
       Navigator.push(
         context,
@@ -79,6 +81,7 @@ class _HomeScreenState extends State<HomeScreen> {
       bottomNavigationBar: NavigationBar(
         selectedIndex: selectedIndex,
         onDestinationSelected: (index) {
+          HapticFeedback.selectionClick();
           setState(() => selectedIndex = index);
         },
         destinations: const [
@@ -208,6 +211,8 @@ class _ChatsPageState extends State<ChatsPage> {
                       lastMessage: lastMessage,
                       lastMessageAt: data['lastMessageAt'],
                       onTap: () {
+                        HapticFeedback.lightImpact();
+
                         Navigator.push(
                           context,
                           MaterialPageRoute(
@@ -406,6 +411,8 @@ class ProfilePage extends StatelessWidget {
                       return Switch(
                         value: mode == ThemeMode.dark,
                         onChanged: (value) {
+                          HapticFeedback.selectionClick();
+
                           AppSettings.setThemeMode(
                             value ? ThemeMode.dark : ThemeMode.light,
                           );

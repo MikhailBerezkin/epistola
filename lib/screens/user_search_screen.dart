@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/app_user.dart';
 import '../services/chat_service.dart';
 import 'chat_screen.dart';
+import 'package:flutter/services.dart';
 
 class UserSearchScreen extends StatefulWidget {
   const UserSearchScreen({super.key});
@@ -59,6 +60,8 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
   }
 
   Future<void> openChat() async {
+    HapticFeedback.lightImpact();
+
     final user = foundUser;
     if (user == null) return;
 
@@ -92,12 +95,6 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
   }
 
   @override
-  void dispose() {
-    emailController.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     final user = foundUser;
 
@@ -125,7 +122,12 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
               width: double.infinity,
               height: 48,
               child: FilledButton.icon(
-                onPressed: isLoading ? null : searchUser,
+                onPressed: isLoading
+                    ? null
+                    : () {
+                        HapticFeedback.selectionClick();
+                        searchUser();
+                      },
                 icon: const Icon(Icons.search),
                 label: Text(isLoading ? 'Поиск...' : 'Найти'),
               ),
