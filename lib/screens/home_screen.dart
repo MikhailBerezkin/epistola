@@ -3,10 +3,11 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../services/chat_service.dart';
+import '../widgets/chat_tile.dart';
 import 'chat_screen.dart';
+import 'edit_profile_screen.dart';
 import 'user_search_screen.dart';
 import 'welcome_screen.dart';
-import '../widgets/chat_tile.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -239,54 +240,27 @@ class SpacesPage extends StatelessWidget {
 
 class ProfilePage extends StatelessWidget {
   const ProfilePage({super.key});
-  Future<void> editName(
-    BuildContext context,
-    String currentName,
-    String uid,
-  ) async {
-    final controller = TextEditingController(text: currentName);
 
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('Изменить имя'),
-          content: TextField(
-            controller: controller,
-            autofocus: true,
-            decoration: const InputDecoration(
-              labelText: 'Имя',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('Отмена'),
-            ),
-            FilledButton(
-              onPressed: () async {
-                final newName = controller.text.trim();
-
-                if (newName.isEmpty) return;
-
-                await FirebaseFirestore.instance
-                    .collection('users')
-                    .doc(uid)
-                    .update({'name': newName});
-
-                if (dialogContext.mounted) {
-                  Navigator.of(dialogContext).pop();
-                }
-              },
-              child: const Text('Сохранить'),
-            ),
-          ],
-        );
-      },
+  void openEditProfile({
+    required BuildContext context,
+    required String uid,
+    required String name,
+    required String phone,
+    required String about,
+    required EditProfileField initialField,
+  }) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => EditProfileScreen(
+          uid: uid,
+          name: name,
+          phone: phone,
+          about: about,
+          initialField: initialField,
+        ),
+      ),
     );
-
-    controller.dispose();
   }
 
   @override
@@ -297,11 +271,11 @@ class ProfilePage extends StatelessWidget {
       return const Center(child: Text('Пользователь не найден'));
     }
 
-    return FutureBuilder<DocumentSnapshot>(
-      future: FirebaseFirestore.instance
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance
           .collection('users')
           .doc(user.uid)
-          .get(),
+          .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
@@ -310,6 +284,8 @@ class ProfilePage extends StatelessWidget {
         final data = snapshot.data?.data() as Map<String, dynamic>?;
 
         final userName = data?['name'] ?? 'Пользователь';
+        final phone = data?['phone'] ?? '';
+        final about = data?['about'] ?? '';
 
         return Padding(
           padding: const EdgeInsets.all(24),
@@ -317,7 +293,6 @@ class ProfilePage extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               const SizedBox(height: 24),
-
               CircleAvatar(
                 radius: 48,
                 child: Text(
@@ -328,40 +303,94 @@ class ProfilePage extends StatelessWidget {
                   ),
                 ),
               ),
-
               const SizedBox(height: 16),
-
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    userName,
-                    style: const TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                    ),
+              InkWell(
+                borderRadius: BorderRadius.circular(16),
+                onTap: () {
+                  openEditProfile(
+                    context: context,
+                    uid: user.uid,
+                    name: userName,
+                    phone: phone,
+                    about: about,
+                    initialField: EditProfileField.name,
+                  );
+                },
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 4,
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.edit, size: 20),
-                    onPressed: () => editName(context, userName, user.uid),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        userName,
+                        style: const TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      const Icon(Icons.edit, size: 20),
+                    ],
                   ),
-                ],
+                ),
               ),
-
               const SizedBox(height: 8),
-
               Text(
                 user.email ?? '',
                 style: TextStyle(color: Theme.of(context).colorScheme.outline),
               ),
-
               const SizedBox(height: 24),
-
               Card(
                 child: ListTile(
                   leading: const Icon(Icons.badge),
                   title: const Text('UID'),
                   subtitle: Text(user.uid),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.phone),
+                  title: const Text('Телефон'),
+                  subtitle: Text(
+                    phone.toString().isNotEmpty ? phone : 'Не указан',
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () {
+                    openEditProfile(
+                      context: context,
+                      uid: user.uid,
+                      name: userName,
+                      phone: phone,
+                      about: about,
+                      initialField: EditProfileField.phone,
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 12),
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.info_outline),
+                  title: const Text('О себе'),
+                  subtitle: Text(
+                    about.toString().isNotEmpty ? about : 'Пока пусто',
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () {
+                    openEditProfile(
+                      context: context,
+                      uid: user.uid,
+                      name: userName,
+                      phone: phone,
+                      about: about,
+                      initialField: EditProfileField.about,
+                    );
+                  },
                 ),
               ),
             ],

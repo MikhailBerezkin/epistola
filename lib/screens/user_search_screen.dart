@@ -37,7 +37,7 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
     });
 
     try {
-      final user = await chatService.findUserByEmail(email);
+      final user = await chatService.findUserByEmailOrPhone(email);
 
       if (!mounted) return;
 

@@ -62,20 +62,32 @@ class ChatService {
         .snapshots();
   }
 
-  Future<AppUser?> findUserByEmail(String email) async {
-    final normalizedEmail = email.trim().toLowerCase();
+  Future<AppUser?> findUserByEmailOrPhone(String value) async {
+    final queryText = value.trim().toLowerCase();
 
-    if (normalizedEmail.isEmpty) return null;
+    if (queryText.isEmpty) return null;
 
-    final query = await _firestore
+    QuerySnapshot emailQuery = await _firestore
         .collection('users')
-        .where('email', isEqualTo: normalizedEmail)
+        .where('email', isEqualTo: queryText)
         .limit(1)
         .get();
 
-    if (query.docs.isEmpty) return null;
+    if (emailQuery.docs.isNotEmpty) {
+      return AppUser.fromFirestore(emailQuery.docs.first);
+    }
 
-    return AppUser.fromFirestore(query.docs.first);
+    QuerySnapshot phoneQuery = await _firestore
+        .collection('users')
+        .where('phone', isEqualTo: queryText)
+        .limit(1)
+        .get();
+
+    if (phoneQuery.docs.isNotEmpty) {
+      return AppUser.fromFirestore(phoneQuery.docs.first);
+    }
+
+    return null;
   }
 
   Future<String> getOrCreatePrivateChat(AppUser otherUser) async {
@@ -103,6 +115,10 @@ class ChatService {
           currentUser.uid: FieldValue.serverTimestamp(),
           otherUser.uid: null,
         },
+      });
+    } else {
+      await chatRef.update({
+        'name': otherUser.name.isNotEmpty ? otherUser.name : otherUser.email,
       });
     }
 

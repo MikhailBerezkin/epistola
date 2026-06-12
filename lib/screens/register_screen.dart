@@ -30,7 +30,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     try {
       final userCredential = await FirebaseAuth.instance
           .createUserWithEmailAndPassword(
-            email: emailController.text.trim(),
+            email: emailController.text.trim().toLowerCase(),
             password: passwordController.text.trim(),
           );
 
@@ -40,7 +40,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
         await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
           'uid': user.uid,
           'name': nameController.text.trim(),
-          'email': emailController.text.trim(),
+          'email': emailController.text.trim().toLowerCase(),
+          'phone': '',
+          'about': '',
+          'avatarUrl': '',
           'createdAt': FieldValue.serverTimestamp(),
         });
       }
