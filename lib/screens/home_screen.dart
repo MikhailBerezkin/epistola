@@ -8,6 +8,7 @@ import 'chat_screen.dart';
 import 'edit_profile_screen.dart';
 import 'user_search_screen.dart';
 import 'welcome_screen.dart';
+import '../services/app_settings.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -391,6 +392,27 @@ class ProfilePage extends StatelessWidget {
                       initialField: EditProfileField.about,
                     );
                   },
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.dark_mode),
+                  title: const Text('Тёмная тема'),
+                  trailing: ValueListenableBuilder<ThemeMode>(
+                    valueListenable: AppSettings.themeModeNotifier,
+                    builder: (context, mode, _) {
+                      return Switch(
+                        value: mode == ThemeMode.dark,
+                        onChanged: (value) {
+                          AppSettings.setThemeMode(
+                            value ? ThemeMode.dark : ThemeMode.light,
+                          );
+                        },
+                      );
+                    },
+                  ),
                 ),
               ),
             ],
