@@ -22,6 +22,8 @@ class _HomeScreenState extends State<HomeScreen> {
   int selectedIndex = 0;
 
   Future<void> logout(BuildContext context) async {
+    HapticFeedback.mediumImpact();
+
     await FirebaseAuth.instance.signOut();
 
     if (!context.mounted) return;

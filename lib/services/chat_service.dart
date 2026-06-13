@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+
 import '../models/app_user.dart';
 
 class ChatService {
@@ -22,54 +23,29 @@ class ChatService {
     });
   }
 
-  Future<int> getUnreadCount(String chatId) async {
-    final user = _auth.currentUser;
-    if (user == null) return 0;
-
-    final chatDoc = await _firestore.collection('chats').doc(chatId).get();
-
-    final data = chatDoc.data();
-    if (data == null) return 0;
-
-    final lastReadMap = (data['lastRead'] as Map<String, dynamic>?) ?? {};
-
-    final lastRead = lastReadMap[user.uid];
-
-    Query query = _firestore
-        .collection('chats')
-        .doc(chatId)
-        .collection('messages');
-
-    if (lastRead is Timestamp) {
-      query = query.where('createdAt', isGreaterThan: lastRead);
-    }
-
-    final snapshot = await query.get();
-
-    return snapshot.docs.where((doc) {
-      final senderId = doc['senderId'];
-      return senderId != user.uid;
-    }).length;
-  }
-
   Stream<QuerySnapshot> getUserChats() {
     final user = _auth.currentUser;
 
+    if (user == null || user.email == null) {
+      return const Stream.empty();
+    }
+
     return _firestore
         .collection('chats')
-        .where('memberEmails', arrayContains: user?.email)
+        .where('memberEmails', arrayContains: user.email)
         .orderBy('lastMessageAt', descending: true)
         .snapshots();
   }
 
   Future<AppUser?> findUserByEmailOrPhone(String value) async {
-    final queryText = value.trim().toLowerCase();
+    final rawText = value.trim();
+    final emailText = rawText.toLowerCase();
 
-    if (queryText.isEmpty) return null;
+    if (rawText.isEmpty) return null;
 
-    QuerySnapshot emailQuery = await _firestore
+    final emailQuery = await _firestore
         .collection('users')
-        .where('email', isEqualTo: queryText)
+        .where('email', isEqualTo: emailText)
         .limit(1)
         .get();
 
@@ -77,9 +53,9 @@ class ChatService {
       return AppUser.fromFirestore(emailQuery.docs.first);
     }
 
-    QuerySnapshot phoneQuery = await _firestore
+    final phoneQuery = await _firestore
         .collection('users')
-        .where('phone', isEqualTo: queryText)
+        .where('phone', isEqualTo: rawText)
         .limit(1)
         .get();
 
@@ -102,9 +78,13 @@ class ChatService {
     final chatRef = _firestore.collection('chats').doc(chatId);
     final chatDoc = await chatRef.get();
 
+    final chatName = otherUser.name.isNotEmpty
+        ? otherUser.name
+        : otherUser.email;
+
     if (!chatDoc.exists) {
       await chatRef.set({
-        'name': otherUser.name.isNotEmpty ? otherUser.name : otherUser.email,
+        'name': chatName,
         'type': 'private',
         'memberIds': [currentUser.uid, otherUser.uid],
         'memberEmails': [currentUser.email, otherUser.email],
@@ -117,9 +97,7 @@ class ChatService {
         },
       });
     } else {
-      await chatRef.update({
-        'name': otherUser.name.isNotEmpty ? otherUser.name : otherUser.email,
-      });
+      await chatRef.update({'name': chatName});
     }
 
     return chatId;
@@ -170,5 +148,34 @@ class ChatService {
     await _firestore.collection('chats').doc(chatId).set({
       'lastRead': {user.uid: FieldValue.serverTimestamp()},
     }, SetOptions(merge: true));
+  }
+
+  Future<int> getUnreadCount(String chatId) async {
+    final user = _auth.currentUser;
+    if (user == null) return 0;
+
+    final chatDoc = await _firestore.collection('chats').doc(chatId).get();
+
+    final data = chatDoc.data();
+    if (data == null) return 0;
+
+    final lastReadMap = (data['lastRead'] as Map<String, dynamic>?) ?? {};
+    final lastRead = lastReadMap[user.uid];
+
+    Query query = _firestore
+        .collection('chats')
+        .doc(chatId)
+        .collection('messages');
+
+    if (lastRead is Timestamp) {
+      query = query.where('createdAt', isGreaterThan: lastRead);
+    }
+
+    final snapshot = await query.get();
+
+    return snapshot.docs.where((doc) {
+      final senderId = doc['senderId'];
+      return senderId != user.uid;
+    }).length;
   }
 }

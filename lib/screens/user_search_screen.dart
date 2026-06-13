@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../models/app_user.dart';
 import '../services/chat_service.dart';
 import 'chat_screen.dart';
-import 'package:flutter/services.dart';
 
 class UserSearchScreen extends StatefulWidget {
   const UserSearchScreen({super.key});
@@ -13,7 +13,7 @@ class UserSearchScreen extends StatefulWidget {
 }
 
 class _UserSearchScreenState extends State<UserSearchScreen> {
-  final emailController = TextEditingController();
+  final searchController = TextEditingController();
   final chatService = ChatService();
 
   AppUser? foundUser;
@@ -21,15 +21,17 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
   String? errorText;
 
   Future<void> searchUser() async {
-    final email = emailController.text.trim();
+    final searchText = searchController.text.trim();
 
-    if (email.isEmpty) {
+    if (searchText.isEmpty) {
       setState(() {
         foundUser = null;
-        errorText = 'Введите email пользователя';
+        errorText = 'Введите email или телефон пользователя';
       });
       return;
     }
+
+    HapticFeedback.selectionClick();
 
     setState(() {
       isLoading = true;
@@ -38,7 +40,7 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
     });
 
     try {
-      final user = await chatService.findUserByEmailOrPhone(email);
+      final user = await chatService.findUserByEmailOrPhone(searchText);
 
       if (!mounted) return;
 
@@ -95,6 +97,12 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
   }
 
   @override
+  void dispose() {
+    searchController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final user = foundUser;
 
@@ -105,12 +113,12 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
         child: Column(
           children: [
             TextField(
-              controller: emailController,
+              controller: searchController,
               keyboardType: TextInputType.emailAddress,
               textInputAction: TextInputAction.search,
               onSubmitted: (_) => searchUser(),
               decoration: InputDecoration(
-                hintText: 'Введите email',
+                hintText: 'Введите email или телефон',
                 prefixIcon: const Icon(Icons.search),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(16),
@@ -122,24 +130,17 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
               width: double.infinity,
               height: 48,
               child: FilledButton.icon(
-                onPressed: isLoading
-                    ? null
-                    : () {
-                        HapticFeedback.selectionClick();
-                        searchUser();
-                      },
+                onPressed: isLoading ? null : searchUser,
                 icon: const Icon(Icons.search),
                 label: Text(isLoading ? 'Поиск...' : 'Найти'),
               ),
             ),
             const SizedBox(height: 24),
-
             if (errorText != null)
               Text(
                 errorText!,
                 style: TextStyle(color: Theme.of(context).colorScheme.error),
               ),
-
             if (user != null)
               Card(
                 child: ListTile(

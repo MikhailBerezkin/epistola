@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../services/chat_service.dart';
+import 'package:flutter/services.dart' show HapticFeedback;
 
 class ChatScreen extends StatefulWidget {
   final String chatId;
@@ -61,6 +62,8 @@ class _ChatScreenState extends State<ChatScreen> {
     final text = messageController.text.trim();
 
     if (text.isEmpty) return;
+
+    HapticFeedback.selectionClick();
 
     messageController.clear();
 
