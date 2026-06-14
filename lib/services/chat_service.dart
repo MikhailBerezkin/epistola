@@ -37,33 +37,52 @@ class ChatService {
         .snapshots();
   }
 
-  Future<AppUser?> findUserByEmailOrPhone(String value) async {
+  Future<List<AppUser>> searchUsers(String value) async {
+    final currentUser = _auth.currentUser;
     final rawText = value.trim();
     final emailText = rawText.toLowerCase();
 
-    if (rawText.isEmpty) return null;
+    if (rawText.isEmpty) return [];
+
+    final results = <String, AppUser>{};
 
     final emailQuery = await _firestore
         .collection('users')
         .where('email', isEqualTo: emailText)
-        .limit(1)
+        .limit(5)
         .get();
 
-    if (emailQuery.docs.isNotEmpty) {
-      return AppUser.fromFirestore(emailQuery.docs.first);
+    for (final doc in emailQuery.docs) {
+      final user = AppUser.fromFirestore(doc);
+
+      if (user.uid != currentUser?.uid) {
+        results[user.uid] = user;
+      }
     }
 
     final phoneQuery = await _firestore
         .collection('users')
         .where('phone', isEqualTo: rawText)
-        .limit(1)
+        .limit(5)
         .get();
 
-    if (phoneQuery.docs.isNotEmpty) {
-      return AppUser.fromFirestore(phoneQuery.docs.first);
+    for (final doc in phoneQuery.docs) {
+      final user = AppUser.fromFirestore(doc);
+
+      if (user.uid != currentUser?.uid) {
+        results[user.uid] = user;
+      }
     }
 
-    return null;
+    return results.values.toList();
+  }
+
+  Future<AppUser?> findUserByEmailOrPhone(String value) async {
+    final users = await searchUsers(value);
+
+    if (users.isEmpty) return null;
+
+    return users.first;
   }
 
   Future<String> getOrCreatePrivateChat(AppUser otherUser) async {

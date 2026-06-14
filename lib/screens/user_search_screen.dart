@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 
 import '../models/app_user.dart';
 import '../services/chat_service.dart';
+import '../widgets/found_user_card.dart';
+import '../widgets/user_search_input.dart';
 import 'chat_screen.dart';
 
 class UserSearchScreen extends StatefulWidget {
@@ -16,16 +18,16 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
   final searchController = TextEditingController();
   final chatService = ChatService();
 
-  AppUser? foundUser;
+  List<AppUser> foundUsers = [];
   bool isLoading = false;
   String? errorText;
 
-  Future<void> searchUser() async {
+  Future<void> searchUsers() async {
     final searchText = searchController.text.trim();
 
     if (searchText.isEmpty) {
       setState(() {
-        foundUser = null;
+        foundUsers = [];
         errorText = 'Введите email или телефон пользователя';
       });
       return;
@@ -35,23 +37,24 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
 
     setState(() {
       isLoading = true;
-      foundUser = null;
+      foundUsers = [];
       errorText = null;
     });
 
     try {
-      final user = await chatService.findUserByEmailOrPhone(searchText);
+      final users = await chatService.searchUsers(searchText);
 
       if (!mounted) return;
 
       setState(() {
-        foundUser = user;
-        errorText = user == null ? 'Пользователь не найден' : null;
+        foundUsers = users;
+        errorText = users.isEmpty ? 'Пользователь не найден' : null;
       });
     } catch (e) {
       if (!mounted) return;
 
       setState(() {
+        foundUsers = [];
         errorText = 'Ошибка поиска пользователя';
       });
     } finally {
@@ -61,11 +64,8 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
     }
   }
 
-  Future<void> openChat() async {
+  Future<void> openChat(AppUser user) async {
     HapticFeedback.lightImpact();
-
-    final user = foundUser;
-    if (user == null) return;
 
     setState(() => isLoading = true);
 
@@ -104,36 +104,16 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final user = foundUser;
-
     return Scaffold(
       appBar: AppBar(title: const Text('Поиск пользователя')),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            TextField(
+            UserSearchInput(
               controller: searchController,
-              keyboardType: TextInputType.emailAddress,
-              textInputAction: TextInputAction.search,
-              onSubmitted: (_) => searchUser(),
-              decoration: InputDecoration(
-                hintText: 'Введите email или телефон',
-                prefixIcon: const Icon(Icons.search),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              height: 48,
-              child: FilledButton.icon(
-                onPressed: isLoading ? null : searchUser,
-                icon: const Icon(Icons.search),
-                label: Text(isLoading ? 'Поиск...' : 'Найти'),
-              ),
+              isLoading: isLoading,
+              onSearch: searchUsers,
             ),
             const SizedBox(height: 24),
             if (errorText != null)
@@ -141,22 +121,19 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
                 errorText!,
                 style: TextStyle(color: Theme.of(context).colorScheme.error),
               ),
-            if (user != null)
-              Card(
-                child: ListTile(
-                  leading: CircleAvatar(
-                    child: Text(
-                      user.name.isNotEmpty
-                          ? user.name[0].toUpperCase()
-                          : user.email[0].toUpperCase(),
-                    ),
-                  ),
-                  title: Text(user.name.isNotEmpty ? user.name : 'Без имени'),
-                  subtitle: Text(user.email),
-                  trailing: FilledButton(
-                    onPressed: isLoading ? null : openChat,
-                    child: const Text('Написать'),
-                  ),
+            if (foundUsers.isNotEmpty)
+              Expanded(
+                child: ListView.builder(
+                  itemCount: foundUsers.length,
+                  itemBuilder: (context, index) {
+                    final user = foundUsers[index];
+
+                    return FoundUserCard(
+                      user: user,
+                      isLoading: isLoading,
+                      onOpenChat: () => openChat(user),
+                    );
+                  },
                 ),
               ),
           ],
