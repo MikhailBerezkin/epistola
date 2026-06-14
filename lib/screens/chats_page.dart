@@ -6,32 +6,8 @@ import '../services/chat_service.dart';
 import '../widgets/chat_tile.dart';
 import 'chat_screen.dart';
 
-class ChatsPage extends StatefulWidget {
+class ChatsPage extends StatelessWidget {
   const ChatsPage({super.key});
-
-  @override
-  State<ChatsPage> createState() => _ChatsPageState();
-}
-
-class _ChatsPageState extends State<ChatsPage> {
-  final searchController = TextEditingController();
-  String searchQuery = '';
-
-  bool matchesSearch(Map<String, dynamic> data) {
-    if (searchQuery.isEmpty) return true;
-
-    final chatName = (data['name'] ?? '').toString().toLowerCase();
-    final lastMessage = (data['lastMessage'] ?? '').toString().toLowerCase();
-    final query = searchQuery.toLowerCase();
-
-    return chatName.contains(query) || lastMessage.contains(query);
-  }
-
-  @override
-  void dispose() {
-    searchController.dispose();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -42,29 +18,6 @@ class _ChatsPageState extends State<ChatsPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          TextField(
-            controller: searchController,
-            onChanged: (value) {
-              setState(() => searchQuery = value.trim());
-            },
-            decoration: InputDecoration(
-              hintText: 'Поиск',
-              prefixIcon: const Icon(Icons.search),
-              suffixIcon: searchQuery.isEmpty
-                  ? null
-                  : IconButton(
-                      onPressed: () {
-                        searchController.clear();
-                        setState(() => searchQuery = '');
-                      },
-                      icon: const Icon(Icons.close),
-                    ),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-            ),
-          ),
-          const SizedBox(height: 24),
           const Text(
             'Чаты',
             style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
@@ -83,23 +36,15 @@ class _ChatsPageState extends State<ChatsPage> {
                 }
 
                 final chats = snapshot.data?.docs ?? [];
-                final filteredChats = chats.where((chat) {
-                  final data = chat.data() as Map<String, dynamic>;
-                  return matchesSearch(data);
-                }).toList();
 
                 if (chats.isEmpty) {
                   return const Center(child: Text('Пока нет чатов'));
                 }
 
-                if (filteredChats.isEmpty) {
-                  return const Center(child: Text('Ничего не найдено'));
-                }
-
                 return ListView.builder(
-                  itemCount: filteredChats.length,
+                  itemCount: chats.length,
                   itemBuilder: (context, index) {
-                    final chat = filteredChats[index];
+                    final chat = chats[index];
                     final data = chat.data() as Map<String, dynamic>;
 
                     final chatName = data['name'] ?? 'Без названия';

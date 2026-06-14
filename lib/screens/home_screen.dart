@@ -5,8 +5,9 @@ import 'package:flutter/services.dart' show HapticFeedback;
 import 'chats_page.dart';
 import 'profile_page.dart';
 import 'spaces_page.dart';
-import 'user_search_screen.dart';
 import 'welcome_screen.dart';
+import 'new_message_screen.dart';
+import 'chat_search_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -50,7 +51,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (selectedIndex == 0) {
       Navigator.push(
         context,
-        MaterialPageRoute(builder: (_) => const UserSearchScreen()),
+        MaterialPageRoute(builder: (_) => const NewMessageScreen()),
       );
     } else if (selectedIndex == 1) {
       debugPrint('Создать пространство');
@@ -66,6 +67,18 @@ class _HomeScreenState extends State<HomeScreen> {
         automaticallyImplyLeading: false,
         title: const Text('Epistola'),
         actions: [
+          IconButton(
+            onPressed: () {
+              HapticFeedback.selectionClick();
+
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const ChatSearchScreen()),
+              );
+            },
+            icon: const Icon(Icons.search),
+            tooltip: 'Поиск',
+          ),
           IconButton(
             onPressed: () => logout(context),
             icon: const Icon(Icons.logout),

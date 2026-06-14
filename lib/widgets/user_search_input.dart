@@ -14,30 +14,30 @@ class UserSearchInput extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        TextField(
-          controller: controller,
-          keyboardType: TextInputType.emailAddress,
-          textInputAction: TextInputAction.search,
-          onSubmitted: (_) => onSearch(),
-          decoration: InputDecoration(
-            hintText: 'Введите email или телефон',
-            prefixIcon: const Icon(Icons.search),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
-          ),
+    return TextField(
+      controller: controller,
+      keyboardType: TextInputType.emailAddress,
+      textInputAction: TextInputAction.search,
+      onSubmitted: (_) => onSearch(),
+      decoration: InputDecoration(
+        hintText: 'Поиск пользователей',
+        prefixIcon: const Icon(Icons.search),
+        suffixIcon: isLoading
+            ? const Padding(
+                padding: EdgeInsets.all(12),
+                child: SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              )
+            : null,
+        filled: true,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(24),
+          borderSide: BorderSide.none,
         ),
-        const SizedBox(height: 12),
-        SizedBox(
-          width: double.infinity,
-          height: 48,
-          child: FilledButton.icon(
-            onPressed: isLoading ? null : onSearch,
-            icon: const Icon(Icons.search),
-            label: Text(isLoading ? 'Поиск...' : 'Найти'),
-          ),
-        ),
-      ],
+      ),
     );
   }
 }

@@ -7,11 +7,11 @@ class ChatService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  Future<void> createGroupChat(String name) async {
+  Future<String?> createGroupChat(String name) async {
     final user = _auth.currentUser;
-    if (user == null) return;
+    if (user == null) return null;
 
-    await _firestore.collection('chats').add({
+    final chatRef = await _firestore.collection('chats').add({
       'name': name,
       'type': 'group',
       'memberIds': [user.uid],
@@ -21,6 +21,8 @@ class ChatService {
       'lastMessageAt': null,
       'lastRead': {user.uid: FieldValue.serverTimestamp()},
     });
+
+    return chatRef.id;
   }
 
   Stream<QuerySnapshot> getUserChats() {
