@@ -7,15 +7,26 @@ class ChatService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  Future<String?> createGroupChat(String name) async {
+  Future<String?> createGroupChat(
+    String name, {
+    List<AppUser> members = const [],
+  }) async {
     final user = _auth.currentUser;
     if (user == null) return null;
+
+    final memberIds = <String>{user.uid};
+    final memberEmails = <String>{if (user.email != null) user.email!};
+
+    for (final member in members) {
+      memberIds.add(member.uid);
+      memberEmails.add(member.email);
+    }
 
     final chatRef = await _firestore.collection('chats').add({
       'name': name,
       'type': 'group',
-      'memberIds': [user.uid],
-      'memberEmails': [user.email],
+      'memberIds': memberIds.toList(),
+      'memberEmails': memberEmails.toList(),
       'createdAt': FieldValue.serverTimestamp(),
       'lastMessage': '',
       'lastMessageAt': null,
@@ -23,6 +34,17 @@ class ChatService {
     });
 
     return chatRef.id;
+  }
+
+  Future<List<AppUser>> getAllUsers() async {
+    final currentUser = _auth.currentUser;
+
+    final snapshot = await _firestore.collection('users').orderBy('name').get();
+
+    return snapshot.docs
+        .map((doc) => AppUser.fromFirestore(doc))
+        .where((user) => user.uid != currentUser?.uid)
+        .toList();
   }
 
   Stream<QuerySnapshot> getUserChats() {
