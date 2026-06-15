@@ -7,6 +7,7 @@ import '../services/chat_service.dart';
 import '../widgets/chat_app_bar_title.dart';
 import '../widgets/message_bubble.dart';
 import '../widgets/message_input.dart';
+import 'group_info_screen.dart';
 
 class ChatScreen extends StatefulWidget {
   final String chatId;
@@ -112,7 +113,13 @@ class _ChatScreenState extends State<ChatScreen> {
                 IconButton(
                   onPressed: () {
                     HapticFeedback.selectionClick();
-                    debugPrint('Открыть настройки группы');
+
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => GroupInfoScreen(chatId: widget.chatId),
+                      ),
+                    );
                   },
                   icon: const Icon(Icons.more_vert),
                   tooltip: 'Настройки группы',

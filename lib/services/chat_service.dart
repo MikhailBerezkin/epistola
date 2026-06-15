@@ -36,6 +36,33 @@ class ChatService {
     return chatRef.id;
   }
 
+  Future<List<AppUser>> getUsersNotInGroup(String chatId) async {
+    final chatDoc = await _firestore.collection('chats').doc(chatId).get();
+    final data = chatDoc.data();
+
+    if (data == null) return [];
+
+    final memberIds = List<String>.from(data['memberIds'] ?? []);
+    final allUsers = await getAllUsers();
+
+    return allUsers.where((user) => !memberIds.contains(user.uid)).toList();
+  }
+
+  Future<void> addMembersToGroup({
+    required String chatId,
+    required List<AppUser> members,
+  }) async {
+    if (members.isEmpty) return;
+
+    final memberIds = members.map((user) => user.uid).toList();
+    final memberEmails = members.map((user) => user.email).toList();
+
+    await _firestore.collection('chats').doc(chatId).update({
+      'memberIds': FieldValue.arrayUnion(memberIds),
+      'memberEmails': FieldValue.arrayUnion(memberEmails),
+    });
+  }
+
   Future<List<AppUser>> getAllUsers() async {
     final currentUser = _auth.currentUser;
 
@@ -45,6 +72,22 @@ class ChatService {
         .map((doc) => AppUser.fromFirestore(doc))
         .where((user) => user.uid != currentUser?.uid)
         .toList();
+  }
+
+  Future<List<AppUser>> getUsersByIds(List<String> userIds) async {
+    if (userIds.isEmpty) return [];
+
+    final users = <AppUser>[];
+
+    for (final uid in userIds) {
+      final doc = await _firestore.collection('users').doc(uid).get();
+
+      if (doc.exists) {
+        users.add(AppUser.fromFirestore(doc));
+      }
+    }
+
+    return users;
   }
 
   Stream<QuerySnapshot> getUserChats() {
