@@ -16,10 +16,12 @@ class ChatService {
 
     final memberIds = <String>{user.uid};
     final memberEmails = <String>{if (user.email != null) user.email!};
+    final memberRoles = <String, String>{user.uid: 'admin'};
 
     for (final member in members) {
       memberIds.add(member.uid);
       memberEmails.add(member.email);
+      memberRoles[member.uid] = 'member';
     }
 
     final chatRef = await _firestore.collection('chats').add({
@@ -27,6 +29,7 @@ class ChatService {
       'type': 'group',
       'memberIds': memberIds.toList(),
       'memberEmails': memberEmails.toList(),
+      'memberRoles': memberRoles,
       'createdAt': FieldValue.serverTimestamp(),
       'lastMessage': '',
       'lastMessageAt': null,
@@ -60,6 +63,16 @@ class ChatService {
     await _firestore.collection('chats').doc(chatId).update({
       'memberIds': FieldValue.arrayUnion(memberIds),
       'memberEmails': FieldValue.arrayUnion(memberEmails),
+    });
+  }
+
+  Future<void> updateMemberRole({
+    required String chatId,
+    required String userId,
+    required String role,
+  }) async {
+    await _firestore.collection('chats').doc(chatId).update({
+      'memberRoles.$userId': role,
     });
   }
 

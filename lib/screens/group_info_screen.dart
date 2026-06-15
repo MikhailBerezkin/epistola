@@ -161,7 +161,8 @@ class GroupInfoScreen extends StatelessWidget {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (_) => GroupMemberScreen(user: user),
+                              builder: (_) =>
+                                  GroupMemberScreen(chatId: chatId, user: user),
                             ),
                           );
                         },
