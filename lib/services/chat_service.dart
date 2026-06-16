@@ -60,9 +60,16 @@ class ChatService {
     final memberIds = members.map((user) => user.uid).toList();
     final memberEmails = members.map((user) => user.email).toList();
 
+    final roleUpdates = <String, dynamic>{};
+
+    for (final member in members) {
+      roleUpdates['memberRoles.${member.uid}'] = 'member';
+    }
+
     await _firestore.collection('chats').doc(chatId).update({
       'memberIds': FieldValue.arrayUnion(memberIds),
       'memberEmails': FieldValue.arrayUnion(memberEmails),
+      ...roleUpdates,
     });
   }
 
