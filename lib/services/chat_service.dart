@@ -149,6 +149,36 @@ class ChatService {
     });
   }
 
+  Future<void> clearExpiredMemberStatus({
+    required String chatId,
+    required String userId,
+  }) async {
+    final chatDoc = await _firestore.collection('chats').doc(chatId).get();
+    final data = chatDoc.data();
+
+    if (data == null) return;
+
+    final memberStatus = (data['memberStatus'] as Map<String, dynamic>?) ?? {};
+
+    final statusData = (memberStatus[userId] as Map<String, dynamic>?) ?? {};
+
+    final status = statusData['status'];
+    final permanent = statusData['permanent'] == true;
+    final expiresAt = statusData['expiresAt'];
+
+    if (status != 'muted' && status != 'banned') return;
+    if (permanent) return;
+    if (expiresAt is! Timestamp) return;
+
+    final isExpired = expiresAt.toDate().isBefore(DateTime.now());
+
+    if (!isExpired) return;
+
+    await _firestore.collection('chats').doc(chatId).update({
+      'memberStatus.$userId': {'status': 'normal'},
+    });
+  }
+
   Future<List<AppUser>> getAllUsers() async {
     final currentUser = _auth.currentUser;
 
@@ -281,6 +311,43 @@ class ChatService {
   }) async {
     final user = _auth.currentUser;
     if (user == null) return;
+
+    final chatDoc = await _firestore.collection('chats').doc(chatId).get();
+    final chatData = chatDoc.data();
+
+    if (chatData == null) return;
+
+    final chatType = chatData['type'] ?? 'private';
+    final isGroup = chatType == 'group';
+
+    if (isGroup) {
+      final memberRoles =
+          (chatData['memberRoles'] as Map<String, dynamic>?) ?? {};
+      final memberStatus =
+          (chatData['memberStatus'] as Map<String, dynamic>?) ?? {};
+
+      final role = memberRoles[user.uid] ?? 'member';
+      final statusData =
+          (memberStatus[user.uid] as Map<String, dynamic>?) ??
+          {'status': 'normal'};
+
+      final status = statusData['status'] ?? 'normal';
+      final permanent = statusData['permanent'] == true;
+      final expiresAt = statusData['expiresAt'];
+
+      final statusIsActive =
+          permanent ||
+          (expiresAt is Timestamp &&
+              expiresAt.toDate().isAfter(DateTime.now()));
+
+      final isGuest = role == 'guest';
+      final isMuted = status == 'muted' && statusIsActive;
+      final isBanned = status == 'banned' && statusIsActive;
+
+      if (isGuest || isMuted || isBanned) {
+        return;
+      }
+    }
 
     final userDoc = await _firestore.collection('users').doc(user.uid).get();
 

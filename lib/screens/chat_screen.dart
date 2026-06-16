@@ -150,6 +150,15 @@ class _ChatScreenState extends State<ChatScreen> {
             {'status': 'normal'};
         final status = statusData['status'] ?? 'normal';
         final statusIsActive = isStatusActive(statusData);
+        if (isGroup &&
+            !statusIsActive &&
+            status != 'normal' &&
+            currentUser != null) {
+          chatService.clearExpiredMemberStatus(
+            chatId: widget.chatId,
+            userId: currentUser.uid,
+          );
+        }
 
         final isMuted = isGroup && status == 'muted' && statusIsActive;
         final isBanned = isGroup && status == 'banned' && statusIsActive;

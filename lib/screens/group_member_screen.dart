@@ -42,6 +42,19 @@ class GroupMemberScreen extends StatelessWidget {
     }
   }
 
+  bool isStatusActive(Map<String, dynamic> statusData) {
+    final permanent = statusData['permanent'] == true;
+    final expiresAt = statusData['expiresAt'];
+
+    if (permanent) return true;
+
+    if (expiresAt is Timestamp) {
+      return expiresAt.toDate().isAfter(DateTime.now());
+    }
+
+    return false;
+  }
+
   String formatStatusDetails(Map<String, dynamic> statusData) {
     final reason = statusData['reason'];
     final expiresAt = statusData['expiresAt'];
@@ -229,6 +242,14 @@ class GroupMemberScreen extends StatelessWidget {
         final status = statusData['status'] ?? 'normal';
         final statusTitle = getStatusTitle(status);
         final statusDetails = formatStatusDetails(statusData);
+        final statusIsActive = isStatusActive(statusData);
+
+        if (!statusIsActive && status != 'normal') {
+          ChatService().clearExpiredMemberStatus(
+            chatId: chatId,
+            userId: user.uid,
+          );
+        }
 
         final currentUserRole = memberRoles[currentUserId] ?? 'member';
         final isSelf = currentUserId == user.uid;
