@@ -42,6 +42,46 @@ class _ChatScreenState extends State<ChatScreen> {
     return '$hour:$minute';
   }
 
+  String formatStatusDetails(Map<String, dynamic> statusData) {
+    final reason = statusData['reason'];
+    final expiresAt = statusData['expiresAt'];
+    final permanent = statusData['permanent'] == true;
+
+    final parts = <String>[];
+
+    if (reason != null && reason.toString().isNotEmpty) {
+      parts.add('Причина: $reason');
+    }
+
+    if (permanent) {
+      parts.add('Срок: навсегда');
+    } else if (expiresAt is Timestamp) {
+      final dateTime = expiresAt.toDate();
+      final day = dateTime.day.toString().padLeft(2, '0');
+      final month = dateTime.month.toString().padLeft(2, '0');
+      final year = dateTime.year.toString();
+      final hour = dateTime.hour.toString().padLeft(2, '0');
+      final minute = dateTime.minute.toString().padLeft(2, '0');
+
+      parts.add('До: $day.$month.$year $hour:$minute');
+    }
+
+    return parts.join('\n');
+  }
+
+  bool isStatusActive(Map<String, dynamic> statusData) {
+    final permanent = statusData['permanent'] == true;
+    final expiresAt = statusData['expiresAt'];
+
+    if (permanent) return true;
+
+    if (expiresAt is Timestamp) {
+      return expiresAt.toDate().isAfter(DateTime.now());
+    }
+
+    return false;
+  }
+
   void scrollToBottom({bool animated = true}) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!scrollController.hasClients) return;
@@ -95,11 +135,76 @@ class _ChatScreenState extends State<ChatScreen> {
 
         final chatType = chatData?['type'] ?? 'private';
         final memberIds = (chatData?['memberIds'] as List?) ?? [];
+        final memberRoles =
+            (chatData?['memberRoles'] as Map<String, dynamic>?) ?? {};
+        final memberStatus =
+            (chatData?['memberStatus'] as Map<String, dynamic>?) ?? {};
+
         final isGroup = chatType == 'group';
+
+        final currentUserRole = memberRoles[currentUser?.uid] ?? 'member';
+        final isGuest = isGroup && currentUserRole == 'guest';
+
+        final statusData =
+            (memberStatus[currentUser?.uid] as Map<String, dynamic>?) ??
+            {'status': 'normal'};
+        final status = statusData['status'] ?? 'normal';
+        final statusIsActive = isStatusActive(statusData);
+
+        final isMuted = isGroup && status == 'muted' && statusIsActive;
+        final isBanned = isGroup && status == 'banned' && statusIsActive;
+
+        final canSendMessages = !isGuest && !isMuted && !isBanned;
 
         final subtitle = isGroup
             ? '${memberIds.length} участников'
             : 'личный чат';
+
+        if (isBanned) {
+          final statusDetails = formatStatusDetails(statusData);
+
+          return Scaffold(
+            appBar: AppBar(title: const Text('Доступ ограничен')),
+            body: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.block,
+                          size: 48,
+                          color: Theme.of(context).colorScheme.error,
+                        ),
+                        const SizedBox(height: 16),
+                        const Text(
+                          'Вы заблокированы в этой группе',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        if (statusDetails.isNotEmpty) ...[
+                          const SizedBox(height: 12),
+                          Text(statusDetails, textAlign: TextAlign.center),
+                        ],
+                        const SizedBox(height: 24),
+                        FilledButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: const Text('Назад'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+        }
 
         return Scaffold(
           appBar: AppBar(
@@ -182,7 +287,24 @@ class _ChatScreenState extends State<ChatScreen> {
                   },
                 ),
               ),
-              MessageInput(controller: messageController, onSend: sendMessage),
+              if (canSendMessages)
+                MessageInput(controller: messageController, onSend: sendMessage)
+              else
+                SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Text(
+                      isGuest
+                          ? 'Вы гость в этой группе и можете только читать сообщения'
+                          : formatStatusDetails(statusData),
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.outline,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
             ],
           ),
         );
