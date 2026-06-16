@@ -26,11 +26,47 @@ class GroupMemberScreen extends StatelessWidget {
         return 'Модератор';
       case 'guest':
         return 'Гость';
-      case 'banned':
-        return 'Заблокирован';
       default:
         return 'Участник';
     }
+  }
+
+  String getStatusTitle(String status) {
+    switch (status) {
+      case 'muted':
+        return 'Мьют';
+      case 'banned':
+        return 'Бан';
+      default:
+        return 'Нормальный';
+    }
+  }
+
+  String formatStatusDetails(Map<String, dynamic> statusData) {
+    final reason = statusData['reason'];
+    final expiresAt = statusData['expiresAt'];
+    final permanent = statusData['permanent'] == true;
+
+    final parts = <String>[];
+
+    if (reason != null && reason.toString().isNotEmpty) {
+      parts.add('Причина: $reason');
+    }
+
+    if (permanent) {
+      parts.add('Срок: навсегда');
+    } else if (expiresAt is Timestamp) {
+      final dateTime = expiresAt.toDate();
+      final day = dateTime.day.toString().padLeft(2, '0');
+      final month = dateTime.month.toString().padLeft(2, '0');
+      final year = dateTime.year.toString();
+      final hour = dateTime.hour.toString().padLeft(2, '0');
+      final minute = dateTime.minute.toString().padLeft(2, '0');
+
+      parts.add('До: $day.$month.$year $hour:$minute');
+    }
+
+    return parts.join('\n');
   }
 
   Future<void> updateRole({required String role}) async {
@@ -38,6 +74,129 @@ class GroupMemberScreen extends StatelessWidget {
       chatId: chatId,
       userId: user.uid,
       role: role,
+    );
+  }
+
+  Future<void> showMuteSheet(BuildContext context) async {
+    final service = ChatService();
+
+    Future<void> muteFor(Duration? duration) async {
+      HapticFeedback.mediumImpact();
+
+      final expiresAt = duration == null ? null : DateTime.now().add(duration);
+
+      await service.muteMember(
+        chatId: chatId,
+        userId: user.uid,
+        reason: 'Флуд',
+        expiresAt: expiresAt,
+      );
+
+      if (context.mounted) Navigator.pop(context);
+    }
+
+    await showModalBottomSheet<void>(
+      context: context,
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const ListTile(
+                title: Text(
+                  'Выдать мьют',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                subtitle: Text('Причина: Флуд'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.timer),
+                title: const Text('5 минут'),
+                onTap: () => muteFor(const Duration(minutes: 5)),
+              ),
+              ListTile(
+                leading: const Icon(Icons.timer),
+                title: const Text('30 минут'),
+                onTap: () => muteFor(const Duration(minutes: 30)),
+              ),
+              ListTile(
+                leading: const Icon(Icons.timer),
+                title: const Text('1 час'),
+                onTap: () => muteFor(const Duration(hours: 1)),
+              ),
+              ListTile(
+                leading: const Icon(Icons.today),
+                title: const Text('1 день'),
+                onTap: () => muteFor(const Duration(days: 1)),
+              ),
+              ListTile(
+                leading: const Icon(Icons.all_inclusive),
+                title: const Text('Навсегда'),
+                onTap: () => muteFor(null),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> showBanSheet(BuildContext context) async {
+    final service = ChatService();
+
+    Future<void> banFor(Duration? duration) async {
+      HapticFeedback.mediumImpact();
+
+      final expiresAt = duration == null ? null : DateTime.now().add(duration);
+
+      await service.banMember(
+        chatId: chatId,
+        userId: user.uid,
+        reason: 'Нарушение правил',
+        expiresAt: expiresAt,
+      );
+
+      if (context.mounted) Navigator.pop(context);
+    }
+
+    await showModalBottomSheet<void>(
+      context: context,
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const ListTile(
+                title: Text(
+                  'Забанить участника',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                subtitle: Text('Причина: Нарушение правил'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.today),
+                title: const Text('1 день'),
+                onTap: () => banFor(const Duration(days: 1)),
+              ),
+              ListTile(
+                leading: const Icon(Icons.date_range),
+                title: const Text('7 дней'),
+                onTap: () => banFor(const Duration(days: 7)),
+              ),
+              ListTile(
+                leading: const Icon(Icons.calendar_month),
+                title: const Text('30 дней'),
+                onTap: () => banFor(const Duration(days: 30)),
+              ),
+              ListTile(
+                leading: const Icon(Icons.all_inclusive),
+                title: const Text('Навсегда'),
+                onTap: () => banFor(null),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -56,11 +215,20 @@ class GroupMemberScreen extends StatelessWidget {
         final data = snapshot.data?.data() as Map<String, dynamic>?;
         final memberRoles =
             (data?['memberRoles'] as Map<String, dynamic>?) ?? {};
+        final memberStatus =
+            (data?['memberStatus'] as Map<String, dynamic>?) ?? {};
 
         final currentUserId = FirebaseAuth.instance.currentUser?.uid;
 
         final role = memberRoles[user.uid] ?? 'member';
         final roleTitle = getRoleTitle(role);
+
+        final statusData =
+            (memberStatus[user.uid] as Map<String, dynamic>?) ??
+            {'status': 'normal'};
+        final status = statusData['status'] ?? 'normal';
+        final statusTitle = getStatusTitle(status);
+        final statusDetails = formatStatusDetails(statusData);
 
         final currentUserRole = memberRoles[currentUserId] ?? 'member';
         final isSelf = currentUserId == user.uid;
@@ -71,9 +239,9 @@ class GroupMemberScreen extends StatelessWidget {
 
         final targetIsOwner = role == 'owner';
         final targetIsAdmin = role == 'admin';
+        final isTargetGuest = role == 'guest';
 
-        final showBan =
-            canManage && !targetIsOwner && !targetIsAdmin && role != 'banned';
+        final canModerate = canManage && !targetIsOwner && !targetIsAdmin;
 
         return Scaffold(
           appBar: AppBar(title: const Text('Участник группы')),
@@ -210,31 +378,80 @@ class GroupMemberScreen extends StatelessWidget {
                       : null,
                 ),
               ),
-              if (showBan) ...[
+              if (status != 'normal')
+                Card(
+                  child: ListTile(
+                    leading: Icon(
+                      status == 'banned' ? Icons.block : Icons.volume_off,
+                    ),
+                    title: Text(statusTitle),
+                    subtitle: statusDetails.isEmpty
+                        ? null
+                        : Text(statusDetails),
+                  ),
+                ),
+              if (canModerate) ...[
                 const SizedBox(height: 24),
                 const Text(
                   'Модерация',
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 8),
-                Card(
-                  child: ListTile(
-                    leading: Icon(
-                      Icons.block,
-                      color: Theme.of(context).colorScheme.error,
+                if (!isTargetGuest && status != 'muted' && status != 'banned')
+                  Card(
+                    child: ListTile(
+                      leading: const Icon(Icons.volume_off),
+                      title: const Text('Выдать мьют'),
+                      subtitle: const Text(
+                        'Пользователь сможет читать, но не писать',
+                      ),
+                      onTap: () => showMuteSheet(context),
                     ),
-                    title: Text(
-                      'Забанить',
-                      style: TextStyle(
+                  ),
+                if (status == 'muted')
+                  Card(
+                    child: ListTile(
+                      leading: const Icon(Icons.volume_up),
+                      title: const Text('Снять мьют'),
+                      onTap: () async {
+                        HapticFeedback.mediumImpact();
+                        await ChatService().unmuteMember(
+                          chatId: chatId,
+                          userId: user.uid,
+                        );
+                      },
+                    ),
+                  ),
+                if (status != 'banned')
+                  Card(
+                    child: ListTile(
+                      leading: Icon(
+                        Icons.block,
                         color: Theme.of(context).colorScheme.error,
                       ),
+                      title: Text(
+                        'Забанить',
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                        ),
+                      ),
+                      onTap: () => showBanSheet(context),
                     ),
-                    onTap: () async {
-                      HapticFeedback.mediumImpact();
-                      await updateRole(role: 'banned');
-                    },
                   ),
-                ),
+                if (status == 'banned')
+                  Card(
+                    child: ListTile(
+                      leading: const Icon(Icons.lock_open),
+                      title: const Text('Разбанить'),
+                      onTap: () async {
+                        HapticFeedback.mediumImpact();
+                        await ChatService().unbanMember(
+                          chatId: chatId,
+                          userId: user.uid,
+                        );
+                      },
+                    ),
+                  ),
               ],
             ],
           ),

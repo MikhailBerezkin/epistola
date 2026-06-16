@@ -89,6 +89,66 @@ class ChatService {
     });
   }
 
+  Future<void> muteMember({
+    required String chatId,
+    required String userId,
+    required String reason,
+    DateTime? expiresAt,
+  }) async {
+    final currentUser = _auth.currentUser;
+    if (currentUser == null) return;
+
+    await _firestore.collection('chats').doc(chatId).update({
+      'memberStatus.$userId': {
+        'status': 'muted',
+        'reason': reason,
+        'createdBy': currentUser.uid,
+        'createdAt': FieldValue.serverTimestamp(),
+        'expiresAt': expiresAt == null ? null : Timestamp.fromDate(expiresAt),
+        'permanent': expiresAt == null,
+      },
+    });
+  }
+
+  Future<void> unmuteMember({
+    required String chatId,
+    required String userId,
+  }) async {
+    await _firestore.collection('chats').doc(chatId).update({
+      'memberStatus.$userId': {'status': 'normal'},
+    });
+  }
+
+  Future<void> banMember({
+    required String chatId,
+    required String userId,
+    required String reason,
+    DateTime? expiresAt,
+  }) async {
+    final currentUser = _auth.currentUser;
+    if (currentUser == null) return;
+
+    await _firestore.collection('chats').doc(chatId).update({
+      'memberStatus.$userId': {
+        'status': 'banned',
+        'reason': reason,
+        'createdBy': currentUser.uid,
+        'createdAt': FieldValue.serverTimestamp(),
+        'expiresAt': expiresAt == null ? null : Timestamp.fromDate(expiresAt),
+        'permanent': expiresAt == null,
+      },
+    });
+  }
+
+  Future<void> unbanMember({
+    required String chatId,
+    required String userId,
+  }) async {
+    await _firestore.collection('chats').doc(chatId).update({
+      'memberStatus.$userId': {'status': 'normal'},
+    });
+  }
+
   Future<List<AppUser>> getAllUsers() async {
     final currentUser = _auth.currentUser;
 
