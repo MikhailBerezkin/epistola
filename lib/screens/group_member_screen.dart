@@ -24,8 +24,8 @@ class GroupMemberScreen extends StatelessWidget {
         return 'Администратор';
       case 'moderator':
         return 'Модератор';
-      case 'readOnly':
-        return 'Только чтение';
+      case 'guest':
+        return 'Гость';
       case 'banned':
         return 'Заблокирован';
       default:
@@ -72,33 +72,8 @@ class GroupMemberScreen extends StatelessWidget {
         final targetIsOwner = role == 'owner';
         final targetIsAdmin = role == 'admin';
 
-        final showAssignAdmin =
-            canManage && isCurrentUserOwner && !targetIsOwner && !targetIsAdmin;
-
-        final showAssignModerator =
-            canManage &&
-            !targetIsOwner &&
-            !targetIsAdmin &&
-            role != 'moderator';
-
-        final showMakeMember =
-            canManage &&
-            !targetIsOwner &&
-            role != 'member' &&
-            (isCurrentUserOwner || role != 'admin');
-
-        final showReadOnly =
-            canManage && !targetIsOwner && !targetIsAdmin && role != 'readOnly';
-
         final showBan =
             canManage && !targetIsOwner && !targetIsAdmin && role != 'banned';
-
-        final showManagementBlock =
-            showAssignAdmin ||
-            showAssignModerator ||
-            showMakeMember ||
-            showReadOnly ||
-            showBan;
 
         return Scaffold(
           appBar: AppBar(title: const Text('Участник группы')),
@@ -163,64 +138,85 @@ class GroupMemberScreen extends StatelessWidget {
                   leading: const Icon(Icons.admin_panel_settings),
                   title: const Text('Роль'),
                   subtitle: Text(roleTitle),
+                  trailing: canManage
+                      ? IconButton(
+                          icon: const Icon(Icons.edit),
+                          onPressed: () async {
+                            final selectedRole =
+                                await showModalBottomSheet<String>(
+                                  context: context,
+                                  builder: (context) {
+                                    return SafeArea(
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          const ListTile(
+                                            title: Text(
+                                              'Выберите роль',
+                                              style: TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                          ),
+                                          ListTile(
+                                            leading: const Icon(
+                                              Icons.visibility,
+                                            ),
+                                            title: const Text('Гость'),
+                                            onTap: () =>
+                                                Navigator.pop(context, 'guest'),
+                                          ),
+                                          ListTile(
+                                            leading: const Icon(Icons.person),
+                                            title: const Text('Участник'),
+                                            onTap: () => Navigator.pop(
+                                              context,
+                                              'member',
+                                            ),
+                                          ),
+                                          ListTile(
+                                            leading: const Icon(Icons.shield),
+                                            title: const Text('Модератор'),
+                                            onTap: () => Navigator.pop(
+                                              context,
+                                              'moderator',
+                                            ),
+                                          ),
+                                          if (isCurrentUserOwner)
+                                            ListTile(
+                                              leading: const Icon(
+                                                Icons.admin_panel_settings,
+                                              ),
+                                              title: const Text(
+                                                'Администратор',
+                                              ),
+                                              onTap: () => Navigator.pop(
+                                                context,
+                                                'admin',
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                    );
+                                  },
+                                );
+
+                            if (selectedRole != null) {
+                              HapticFeedback.selectionClick();
+                              await updateRole(role: selectedRole);
+                            }
+                          },
+                        )
+                      : null,
                 ),
               ),
-              if (showManagementBlock) ...[
+              if (showBan) ...[
                 const SizedBox(height: 24),
                 const Text(
-                  'Управление участником',
+                  'Модерация',
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 8),
-              ],
-              if (showAssignAdmin)
-                Card(
-                  child: ListTile(
-                    leading: const Icon(Icons.admin_panel_settings),
-                    title: const Text('Назначить администратором'),
-                    onTap: () async {
-                      HapticFeedback.selectionClick();
-                      await updateRole(role: 'admin');
-                    },
-                  ),
-                ),
-              if (showAssignModerator)
-                Card(
-                  child: ListTile(
-                    leading: const Icon(Icons.shield),
-                    title: const Text('Назначить модератором'),
-                    onTap: () async {
-                      HapticFeedback.selectionClick();
-                      await updateRole(role: 'moderator');
-                    },
-                  ),
-                ),
-              if (showMakeMember)
-                Card(
-                  child: ListTile(
-                    leading: const Icon(Icons.person),
-                    title: const Text('Сделать участником'),
-                    onTap: () async {
-                      HapticFeedback.selectionClick();
-                      await updateRole(role: 'member');
-                    },
-                  ),
-                ),
-              if (showReadOnly)
-                Card(
-                  child: ListTile(
-                    leading: const Icon(Icons.visibility),
-                    title: const Text('Только чтение'),
-                    subtitle: const Text(
-                      'Участник сможет читать, но не писать',
-                    ),
-                    onTap: () async {
-                      HapticFeedback.selectionClick();
-                      await updateRole(role: 'readOnly');
-                    },
-                  ),
-                ),
-              if (showBan)
                 Card(
                   child: ListTile(
                     leading: Icon(
@@ -239,6 +235,7 @@ class GroupMemberScreen extends StatelessWidget {
                     },
                   ),
                 ),
+              ],
             ],
           ),
         );
