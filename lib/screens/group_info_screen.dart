@@ -6,6 +6,7 @@ import '../models/app_user.dart';
 import '../services/chat_service.dart';
 import 'group_member_screen.dart';
 import 'add_members_screen.dart';
+import 'group_settings_screen.dart';
 
 class GroupInfoScreen extends StatelessWidget {
   final String chatId;
@@ -90,7 +91,13 @@ class GroupInfoScreen extends StatelessWidget {
                       trailing: const Icon(Icons.chevron_right),
                       onTap: () {
                         HapticFeedback.selectionClick();
-                        debugPrint('Настройки группы');
+
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => GroupSettingsScreen(chatId: chatId),
+                          ),
+                        );
                       },
                     ),
                   ),

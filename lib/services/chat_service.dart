@@ -35,6 +35,7 @@ class ChatService {
       'memberEmails': memberEmails.toList(),
       'memberRoles': memberRoles,
       'memberStatus': memberStatus,
+      'groupSettings': {'messagePermission': 'all'},
       'createdAt': FieldValue.serverTimestamp(),
       'lastMessage': '',
       'lastMessageAt': null,
@@ -87,6 +88,15 @@ class ChatService {
     await _firestore.collection('chats').doc(chatId).update({
       'memberRoles.$userId': role,
     });
+  }
+
+  Future<void> updateGroupMessagePermission({
+    required String chatId,
+    required String permission,
+  }) async {
+    await _firestore.collection('chats').doc(chatId).set({
+      'groupSettings': {'messagePermission': permission},
+    }, SetOptions(merge: true));
   }
 
   Future<void> muteMember({
@@ -159,7 +169,6 @@ class ChatService {
     if (data == null) return;
 
     final memberStatus = (data['memberStatus'] as Map<String, dynamic>?) ?? {};
-
     final statusData = (memberStatus[userId] as Map<String, dynamic>?) ?? {};
 
     final status = statusData['status'];
@@ -340,11 +349,22 @@ class ChatService {
           (expiresAt is Timestamp &&
               expiresAt.toDate().isAfter(DateTime.now()));
 
+      final groupSettings =
+          (chatData['groupSettings'] as Map<String, dynamic>?) ?? {};
+      final messagePermission = groupSettings['messagePermission'] ?? 'all';
+
+      final canWriteByGroupPermission =
+          messagePermission == 'all' ||
+          (messagePermission == 'moderators' &&
+              (role == 'moderator' || role == 'admin' || role == 'owner')) ||
+          (messagePermission == 'admins' &&
+              (role == 'admin' || role == 'owner'));
+
       final isGuest = role == 'guest';
       final isMuted = status == 'muted' && statusIsActive;
       final isBanned = status == 'banned' && statusIsActive;
 
-      if (isGuest || isMuted || isBanned) {
+      if (isGuest || isMuted || isBanned || !canWriteByGroupPermission) {
         return;
       }
     }
