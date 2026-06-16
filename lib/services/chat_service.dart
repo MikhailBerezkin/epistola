@@ -17,11 +17,15 @@ class ChatService {
     final memberIds = <String>{user.uid};
     final memberEmails = <String>{if (user.email != null) user.email!};
     final memberRoles = <String, String>{user.uid: 'admin'};
+    final memberStatus = <String, Map<String, dynamic>>{
+      user.uid: {'status': 'normal'},
+    };
 
     for (final member in members) {
       memberIds.add(member.uid);
       memberEmails.add(member.email);
       memberRoles[member.uid] = 'member';
+      memberStatus[member.uid] = {'status': 'normal'};
     }
 
     final chatRef = await _firestore.collection('chats').add({
@@ -30,6 +34,7 @@ class ChatService {
       'memberIds': memberIds.toList(),
       'memberEmails': memberEmails.toList(),
       'memberRoles': memberRoles,
+      'memberStatus': memberStatus,
       'createdAt': FieldValue.serverTimestamp(),
       'lastMessage': '',
       'lastMessageAt': null,
@@ -60,16 +65,17 @@ class ChatService {
     final memberIds = members.map((user) => user.uid).toList();
     final memberEmails = members.map((user) => user.email).toList();
 
-    final roleUpdates = <String, dynamic>{};
+    final memberUpdates = <String, dynamic>{};
 
     for (final member in members) {
-      roleUpdates['memberRoles.${member.uid}'] = 'member';
+      memberUpdates['memberRoles.${member.uid}'] = 'member';
+      memberUpdates['memberStatus.${member.uid}'] = {'status': 'normal'};
     }
 
     await _firestore.collection('chats').doc(chatId).update({
       'memberIds': FieldValue.arrayUnion(memberIds),
       'memberEmails': FieldValue.arrayUnion(memberEmails),
-      ...roleUpdates,
+      ...memberUpdates,
     });
   }
 
