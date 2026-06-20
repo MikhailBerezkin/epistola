@@ -233,13 +233,13 @@ class ChatService {
   Stream<QuerySnapshot> getUserChats() {
     final user = _auth.currentUser;
 
-    if (user == null || user.email == null) {
+    if (user == null) {
       return const Stream.empty();
     }
 
     return _firestore
         .collection('chats')
-        .where('memberEmails', arrayContains: user.email)
+        .where('memberIds', arrayContains: user.uid)
         .orderBy('lastMessageAt', descending: true)
         .snapshots();
   }
