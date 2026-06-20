@@ -5,6 +5,7 @@ import 'package:flutter/services.dart' show HapticFeedback;
 
 import '../models/app_user.dart';
 import '../services/chat_service.dart';
+import 'chat_screen.dart';
 
 class GroupMemberScreen extends StatelessWidget {
   final String chatId;
@@ -316,6 +317,37 @@ class GroupMemberScreen extends StatelessWidget {
                   subtitle: Text(about),
                 ),
               ),
+              if (!isSelf) ...[
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: () async {
+                      HapticFeedback.selectionClick();
+
+                      final chatId = await ChatService().getOrCreatePrivateChat(
+                        user,
+                      );
+
+                      if (!context.mounted) return;
+
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => ChatScreen(
+                            chatId: chatId,
+                            chatName: user.name.isNotEmpty
+                                ? user.name
+                                : user.email,
+                          ),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.message),
+                    label: const Text('Написать'),
+                  ),
+                ),
+              ],
               const SizedBox(height: 24),
               const Text(
                 'Информация об участнике',
