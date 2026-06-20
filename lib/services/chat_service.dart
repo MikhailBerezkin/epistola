@@ -37,8 +37,8 @@ class ChatService {
       'memberStatus': memberStatus,
       'groupSettings': {'messagePermission': 'all'},
       'createdAt': FieldValue.serverTimestamp(),
-      'lastMessage': '',
-      'lastMessageAt': null,
+      'lastMessage': 'Группа создана',
+      'lastMessageAt': FieldValue.serverTimestamp(),
       'lastRead': {user.uid: FieldValue.serverTimestamp()},
     });
 
