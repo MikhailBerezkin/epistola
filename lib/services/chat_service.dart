@@ -80,6 +80,21 @@ class ChatService {
     });
   }
 
+  Future<void> leaveGroup(String chatId) async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+
+    await _firestore.collection('chats').doc(chatId).update({
+      'memberIds': FieldValue.arrayRemove([user.uid]),
+      'memberEmails': FieldValue.arrayRemove([
+        if (user.email != null) user.email,
+      ]),
+      'memberRoles.${user.uid}': FieldValue.delete(),
+      'memberStatus.${user.uid}': FieldValue.delete(),
+      'lastRead.${user.uid}': FieldValue.delete(),
+    });
+  }
+
   Future<void> updateMemberRole({
     required String chatId,
     required String userId,

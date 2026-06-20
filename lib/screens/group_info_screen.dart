@@ -12,6 +12,20 @@ class GroupInfoScreen extends StatelessWidget {
   final String chatId;
 
   const GroupInfoScreen({super.key, required this.chatId});
+  String getRoleTitle(String role) {
+    switch (role) {
+      case 'owner':
+        return 'Владелец';
+      case 'admin':
+        return 'Администратор';
+      case 'moderator':
+        return 'Модератор';
+      case 'guest':
+        return 'Гость';
+      default:
+        return 'Участник';
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -41,11 +55,19 @@ class GroupInfoScreen extends StatelessWidget {
 
           final groupName = data['name'] ?? 'Группа';
           final memberIds = List<String>.from(data['memberIds'] ?? []);
+          final memberRoles =
+              (data['memberRoles'] as Map<String, dynamic>?) ?? {};
 
           return FutureBuilder<List<AppUser>>(
             future: chatService.getUsersByIds(memberIds),
             builder: (context, usersSnapshot) {
-              final users = usersSnapshot.data ?? [];
+              final users = [...(usersSnapshot.data ?? [])];
+
+              users.sort((a, b) {
+                final aName = a.name.isNotEmpty ? a.name : a.email;
+                final bName = b.name.isNotEmpty ? b.name : b.email;
+                return aName.toLowerCase().compareTo(bName.toLowerCase());
+              });
 
               return ListView(
                 padding: const EdgeInsets.all(16),
@@ -131,9 +153,40 @@ class GroupInfoScreen extends StatelessWidget {
                           color: Theme.of(context).colorScheme.error,
                         ),
                       ),
-                      onTap: () {
+                      onTap: () async {
                         HapticFeedback.mediumImpact();
-                        debugPrint('Покинуть группу');
+
+                        final shouldLeave = await showDialog<bool>(
+                          context: context,
+                          builder: (context) {
+                            return AlertDialog(
+                              title: const Text('Покинуть группу?'),
+                              content: const Text(
+                                'Вы больше не будете видеть эту группу в списке чатов.',
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () =>
+                                      Navigator.pop(context, false),
+                                  child: const Text('Отмена'),
+                                ),
+                                FilledButton(
+                                  onPressed: () => Navigator.pop(context, true),
+                                  child: const Text('Покинуть'),
+                                ),
+                              ],
+                            );
+                          },
+                        );
+
+                        if (shouldLeave != true) return;
+
+                        await chatService.leaveGroup(chatId);
+
+                        if (!context.mounted) return;
+
+                        Navigator.pop(context);
+                        Navigator.pop(context);
                       },
                     ),
                   ),
@@ -161,7 +214,9 @@ class GroupInfoScreen extends StatelessWidget {
                         title: Text(
                           user.name.isNotEmpty ? user.name : 'Без имени',
                         ),
-                        subtitle: Text(user.email),
+                        subtitle: Text(
+                          '${getRoleTitle(memberRoles[user.uid] ?? 'member')} • ${user.email}',
+                        ),
                         onTap: () {
                           HapticFeedback.selectionClick();
 
