@@ -7,6 +7,7 @@ import '../services/chat_service.dart';
 import 'group_member_screen.dart';
 import 'add_members_screen.dart';
 import 'group_settings_screen.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class GroupInfoScreen extends StatelessWidget {
   final String chatId;
@@ -57,6 +58,12 @@ class GroupInfoScreen extends StatelessWidget {
           final memberIds = List<String>.from(data['memberIds'] ?? []);
           final memberRoles =
               (data['memberRoles'] as Map<String, dynamic>?) ?? {};
+          final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+
+          final currentUserRole = memberRoles[currentUserId] ?? 'member';
+
+          final canManageGroup =
+              currentUserRole == 'admin' || currentUserRole == 'owner';
 
           return FutureBuilder<List<AppUser>>(
             future: chatService.getUsersByIds(memberIds),
@@ -181,15 +188,90 @@ class GroupInfoScreen extends StatelessWidget {
 
                         if (shouldLeave != true) return;
 
-                        await chatService.leaveGroup(chatId);
+                        final left = await chatService.leaveGroupSafely(chatId);
 
                         if (!context.mounted) return;
+
+                        if (!left) {
+                          await showDialog<void>(
+                            context: context,
+                            builder: (context) {
+                              return AlertDialog(
+                                title: const Text('Вы последний администратор'),
+                                content: const Text(
+                                  'Перед выходом нужно передать права администратора другому участнику или распустить группу.',
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(context),
+                                    child: const Text('Понятно'),
+                                  ),
+                                ],
+                              );
+                            },
+                          );
+
+                          return;
+                        }
 
                         Navigator.pop(context);
                         Navigator.pop(context);
                       },
                     ),
                   ),
+                  if (canManageGroup)
+                    Card(
+                      child: ListTile(
+                        leading: const Icon(
+                          Icons.delete_forever,
+                          color: Colors.red,
+                        ),
+                        title: const Text(
+                          'Распустить группу',
+                          style: TextStyle(color: Colors.red),
+                        ),
+                        subtitle: const Text(
+                          'Закрыть группу для всех участников',
+                        ),
+                        onTap: () async {
+                          HapticFeedback.heavyImpact();
+
+                          final shouldDissolve = await showDialog<bool>(
+                            context: context,
+                            builder: (context) {
+                              return AlertDialog(
+                                title: const Text('Распустить группу?'),
+                                content: const Text(
+                                  'Группа будет закрыта для всех участников.\n\n'
+                                  'История сообщений пока не удаляется.',
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () =>
+                                        Navigator.pop(context, false),
+                                    child: const Text('Отмена'),
+                                  ),
+                                  FilledButton(
+                                    onPressed: () =>
+                                        Navigator.pop(context, true),
+                                    child: const Text('Распустить'),
+                                  ),
+                                ],
+                              );
+                            },
+                          );
+
+                          if (shouldDissolve != true) return;
+
+                          await chatService.dissolveGroup(chatId);
+
+                          if (!context.mounted) return;
+
+                          Navigator.pop(context);
+                          Navigator.pop(context);
+                        },
+                      ),
+                    ),
 
                   const SizedBox(height: 24),
                   const Text(

@@ -258,6 +258,8 @@ class GroupMemberScreen extends StatelessWidget {
         final isCurrentUserOwner = currentUserRole == 'owner';
         final isCurrentUserAdmin = currentUserRole == 'admin';
         final canManage = !isSelf && (isCurrentUserOwner || isCurrentUserAdmin);
+        final canTransferAdmin =
+            canManage && role != 'admin' && role != 'owner';
 
         final targetIsOwner = role == 'owner';
         final targetIsAdmin = role == 'admin';
@@ -395,6 +397,30 @@ class GroupMemberScreen extends StatelessWidget {
                                               'member',
                                             ),
                                           ),
+                                          if (canTransferAdmin) ...[
+                                            const Divider(),
+                                            ListTile(
+                                              leading: Icon(
+                                                Icons.workspace_premium,
+                                                color: Theme.of(
+                                                  context,
+                                                ).colorScheme.error,
+                                              ),
+                                              title: Text(
+                                                'Передать права администратора',
+                                                style: TextStyle(
+                                                  color: Theme.of(
+                                                    context,
+                                                  ).colorScheme.error,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                              onTap: () => Navigator.pop(
+                                                context,
+                                                'transfer_admin',
+                                              ),
+                                            ),
+                                          ],
                                           ListTile(
                                             leading: const Icon(Icons.shield),
                                             title: const Text('Модератор'),
@@ -421,6 +447,57 @@ class GroupMemberScreen extends StatelessWidget {
                                     );
                                   },
                                 );
+                            if (!context.mounted) return;
+
+                            if (selectedRole == 'transfer_admin') {
+                              final shouldTransfer = await showDialog<bool>(
+                                context: context,
+                                builder: (context) {
+                                  return AlertDialog(
+                                    title: Text(
+                                      'Передать права администратора $displayName?',
+                                    ),
+                                    content: Text(
+                                      '$displayName станет администратором.\n\n'
+                                      'Вы станете участником и сможете покинуть группу.',
+                                    ),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () =>
+                                            Navigator.pop(context, false),
+                                        child: const Text('Отмена'),
+                                      ),
+                                      FilledButton(
+                                        onPressed: () =>
+                                            Navigator.pop(context, true),
+                                        child: const Text('Передать'),
+                                      ),
+                                    ],
+                                  );
+                                },
+                              );
+
+                              if (shouldTransfer == true) {
+                                HapticFeedback.mediumImpact();
+
+                                await ChatService().transferAdminRights(
+                                  chatId: chatId,
+                                  newAdminId: user.uid,
+                                );
+
+                                if (!context.mounted) return;
+
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                      'Права администратора переданы',
+                                    ),
+                                  ),
+                                );
+                              }
+
+                              return;
+                            }
 
                             if (selectedRole != null) {
                               HapticFeedback.selectionClick();
