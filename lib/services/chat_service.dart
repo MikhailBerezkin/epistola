@@ -302,29 +302,23 @@ class ChatService {
     final chatId = ids.join('_');
 
     final chatRef = _firestore.collection('chats').doc(chatId);
-    final chatDoc = await chatRef.get();
 
     final chatName = otherUser.name.isNotEmpty
         ? otherUser.name
         : otherUser.email;
 
-    if (!chatDoc.exists) {
-      await chatRef.set({
-        'name': chatName,
-        'type': 'private',
-        'memberIds': [currentUser.uid, otherUser.uid],
-        'memberEmails': [currentUser.email, otherUser.email],
-        'createdAt': FieldValue.serverTimestamp(),
-        'lastMessage': '',
-        'lastMessageAt': null,
-        'lastRead': {
-          currentUser.uid: FieldValue.serverTimestamp(),
-          otherUser.uid: null,
-        },
-      });
-    } else {
-      await chatRef.update({'name': chatName});
-    }
+    final currentUserEmail = currentUser.email;
+
+    await chatRef.set({
+      'name': chatName,
+      'type': 'private',
+      'memberIds': FieldValue.arrayUnion([currentUser.uid, otherUser.uid]),
+      'memberEmails': FieldValue.arrayUnion([
+        if (currentUserEmail != null) currentUserEmail,
+        otherUser.email,
+      ]),
+      'lastRead': {currentUser.uid: FieldValue.serverTimestamp()},
+    }, SetOptions(merge: true));
 
     return chatId;
   }
