@@ -6,6 +6,8 @@ import 'package:flutter/services.dart' show HapticFeedback;
 import '../models/app_user.dart';
 import '../services/chat_service.dart';
 import 'chat_screen.dart';
+import '../helpers/role_helper.dart';
+import '../helpers/status_helper.dart';
 
 class GroupMemberScreen extends StatelessWidget {
   final String chatId;
@@ -16,72 +18,6 @@ class GroupMemberScreen extends StatelessWidget {
     required this.chatId,
     required this.user,
   });
-
-  String getRoleTitle(String role) {
-    switch (role) {
-      case 'owner':
-        return 'Владелец';
-      case 'admin':
-        return 'Администратор';
-      case 'moderator':
-        return 'Модератор';
-      case 'guest':
-        return 'Гость';
-      default:
-        return 'Участник';
-    }
-  }
-
-  String getStatusTitle(String status) {
-    switch (status) {
-      case 'muted':
-        return 'Мьют';
-      case 'banned':
-        return 'Бан';
-      default:
-        return 'Нормальный';
-    }
-  }
-
-  bool isStatusActive(Map<String, dynamic> statusData) {
-    final permanent = statusData['permanent'] == true;
-    final expiresAt = statusData['expiresAt'];
-
-    if (permanent) return true;
-
-    if (expiresAt is Timestamp) {
-      return expiresAt.toDate().isAfter(DateTime.now());
-    }
-
-    return false;
-  }
-
-  String formatStatusDetails(Map<String, dynamic> statusData) {
-    final reason = statusData['reason'];
-    final expiresAt = statusData['expiresAt'];
-    final permanent = statusData['permanent'] == true;
-
-    final parts = <String>[];
-
-    if (reason != null && reason.toString().isNotEmpty) {
-      parts.add('Причина: $reason');
-    }
-
-    if (permanent) {
-      parts.add('Срок: навсегда');
-    } else if (expiresAt is Timestamp) {
-      final dateTime = expiresAt.toDate();
-      final day = dateTime.day.toString().padLeft(2, '0');
-      final month = dateTime.month.toString().padLeft(2, '0');
-      final year = dateTime.year.toString();
-      final hour = dateTime.hour.toString().padLeft(2, '0');
-      final minute = dateTime.minute.toString().padLeft(2, '0');
-
-      parts.add('До: $day.$month.$year $hour:$minute');
-    }
-
-    return parts.join('\n');
-  }
 
   Future<void> updateRole({required String role}) async {
     await ChatService().updateMemberRole(
@@ -235,15 +171,15 @@ class GroupMemberScreen extends StatelessWidget {
         final currentUserId = FirebaseAuth.instance.currentUser?.uid;
 
         final role = memberRoles[user.uid] ?? 'member';
-        final roleTitle = getRoleTitle(role);
+        final roleTitle = RoleHelper.title(role);
 
         final statusData =
             (memberStatus[user.uid] as Map<String, dynamic>?) ??
             {'status': 'normal'};
         final status = statusData['status'] ?? 'normal';
-        final statusTitle = getStatusTitle(status);
-        final statusDetails = formatStatusDetails(statusData);
-        final statusIsActive = isStatusActive(statusData);
+        final statusTitle = StatusHelper.title(status);
+        final statusDetails = StatusHelper.formatDetails(statusData);
+        final statusIsActive = StatusHelper.isActive(statusData);
 
         final currentUserRole = memberRoles[currentUserId] ?? 'member';
         final isSelf = currentUserId == user.uid;

@@ -8,42 +8,12 @@ import 'group_member_screen.dart';
 import 'add_members_screen.dart';
 import 'group_settings_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../helpers/role_helper.dart';
 
 class GroupInfoScreen extends StatelessWidget {
   final String chatId;
 
   const GroupInfoScreen({super.key, required this.chatId});
-  String getRoleTitle(String role) {
-    switch (role) {
-      case 'owner':
-        return 'Владелец';
-      case 'admin':
-        return 'Администратор';
-      case 'moderator':
-        return 'Модератор';
-      case 'guest':
-        return 'Гость';
-      default:
-        return 'Участник';
-    }
-  }
-
-  Color getRoleColor(String role) {
-    switch (role) {
-      case 'owner':
-        return Colors.orange;
-      case 'admin':
-        return Colors.purple;
-      case 'moderator':
-        return Colors.blue;
-      case 'member':
-        return Colors.green;
-      case 'guest':
-        return Colors.grey;
-      default:
-        return Colors.grey;
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -354,9 +324,9 @@ class GroupInfoScreen extends StatelessWidget {
                             ),
                             children: [
                               TextSpan(
-                                text: getRoleTitle(role),
+                                text: RoleHelper.title(role),
                                 style: TextStyle(
-                                  color: getRoleColor(role),
+                                  color: RoleHelper.color(role),
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),

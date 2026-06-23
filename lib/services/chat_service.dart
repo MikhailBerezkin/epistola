@@ -418,7 +418,7 @@ class ChatService {
       'type': 'private',
       'memberIds': FieldValue.arrayUnion([currentUser.uid, otherUser.uid]),
       'memberEmails': FieldValue.arrayUnion([
-        if (currentUserEmail != null) currentUserEmail,
+        ?currentUserEmail,
         otherUser.email,
       ]),
       'lastRead': {currentUser.uid: FieldValue.serverTimestamp()},
