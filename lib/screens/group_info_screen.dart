@@ -142,23 +142,25 @@ class GroupInfoScreen extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 24),
-                  Card(
-                    child: ListTile(
-                      leading: const Icon(Icons.settings),
-                      title: const Text('Настройки'),
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: () {
-                        HapticFeedback.selectionClick();
+                  if (canManageGroup)
+                    Card(
+                      child: ListTile(
+                        leading: const Icon(Icons.settings),
+                        title: const Text('Настройки'),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () {
+                          HapticFeedback.selectionClick();
 
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => GroupSettingsScreen(chatId: chatId),
-                          ),
-                        );
-                      },
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) =>
+                                  GroupSettingsScreen(chatId: chatId),
+                            ),
+                          );
+                        },
+                      ),
                     ),
-                  ),
                   if (canAddMembers)
                     Card(
                       child: ListTile(
