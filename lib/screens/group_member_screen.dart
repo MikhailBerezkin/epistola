@@ -144,9 +144,9 @@ class GroupMemberScreen extends StatelessWidget {
                 onTap: () => muteFor(const Duration(days: 1)),
               ),
               ListTile(
-                leading: const Icon(Icons.all_inclusive),
-                title: const Text('Навсегда'),
-                onTap: () => muteFor(null),
+                leading: const Icon(Icons.date_range),
+                title: const Text('7 дней'),
+                onTap: () => muteFor(const Duration(days: 7)),
               ),
             ],
           ),
@@ -245,27 +245,45 @@ class GroupMemberScreen extends StatelessWidget {
         final statusDetails = formatStatusDetails(statusData);
         final statusIsActive = isStatusActive(statusData);
 
-        if (!statusIsActive && status != 'normal') {
+        final currentUserRole = memberRoles[currentUserId] ?? 'member';
+        final isSelf = currentUserId == user.uid;
+        final canClearExpiredStatus =
+            currentUserRole == 'admin' || currentUserRole == 'owner';
+
+        if (canClearExpiredStatus && !statusIsActive && status != 'normal') {
           ChatService().clearExpiredMemberStatus(
             chatId: chatId,
             userId: user.uid,
           );
         }
 
-        final currentUserRole = memberRoles[currentUserId] ?? 'member';
-        final isSelf = currentUserId == user.uid;
-
         final isCurrentUserOwner = currentUserRole == 'owner';
         final isCurrentUserAdmin = currentUserRole == 'admin';
-        final canManage = !isSelf && (isCurrentUserOwner || isCurrentUserAdmin);
-        final canTransferAdmin =
-            canManage && role != 'admin' && role != 'owner';
+        final isCurrentUserModerator = currentUserRole == 'moderator';
 
         final targetIsOwner = role == 'owner';
         final targetIsAdmin = role == 'admin';
         final isTargetGuest = role == 'guest';
 
-        final canModerate = canManage && !targetIsOwner && !targetIsAdmin;
+        final canManage = !isSelf && (isCurrentUserOwner || isCurrentUserAdmin);
+
+        final canMute =
+            !isSelf &&
+            (isCurrentUserOwner ||
+                isCurrentUserAdmin ||
+                isCurrentUserModerator) &&
+            !targetIsOwner &&
+            !targetIsAdmin;
+
+        final canTransferAdmin =
+            canManage && role != 'admin' && role != 'owner';
+
+        final canModerate = canMute;
+        final canBan =
+            !isSelf &&
+            (isCurrentUserOwner || isCurrentUserAdmin) &&
+            !targetIsOwner &&
+            !targetIsAdmin;
 
         return Scaffold(
           appBar: AppBar(title: const Text('Участник группы')),
@@ -508,7 +526,7 @@ class GroupMemberScreen extends StatelessWidget {
                       : null,
                 ),
               ),
-              if (status != 'normal')
+              if (status != 'normal' && statusIsActive)
                 Card(
                   child: ListTile(
                     leading: Icon(
@@ -552,7 +570,7 @@ class GroupMemberScreen extends StatelessWidget {
                       },
                     ),
                   ),
-                if (status != 'banned')
+                if (canBan && status != 'banned')
                   Card(
                     child: ListTile(
                       leading: Icon(
@@ -568,7 +586,7 @@ class GroupMemberScreen extends StatelessWidget {
                       onTap: () => showBanSheet(context),
                     ),
                   ),
-                if (status == 'banned')
+                if (canBan && status == 'banned')
                   Card(
                     child: ListTile(
                       leading: const Icon(Icons.lock_open),

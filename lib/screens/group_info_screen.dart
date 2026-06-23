@@ -64,6 +64,35 @@ class GroupInfoScreen extends StatelessWidget {
 
           final canManageGroup =
               currentUserRole == 'admin' || currentUserRole == 'owner';
+          final groupSettings =
+              (data['groupSettings'] as Map<String, dynamic>?) ?? {};
+          final messagePermission = groupSettings['messagePermission'] ?? 'all';
+
+          final memberStatus =
+              (data['memberStatus'] as Map<String, dynamic>?) ?? {};
+
+          final currentStatusData =
+              (memberStatus[currentUserId] as Map<String, dynamic>?) ??
+              {'status': 'normal'};
+
+          final currentStatus = currentStatusData['status'] ?? 'normal';
+
+          final canAddMembers =
+              currentUserRole != 'guest' &&
+              currentStatus != 'muted' &&
+              currentStatus != 'banned' &&
+              ((messagePermission == 'all' &&
+                      (currentUserRole == 'member' ||
+                          currentUserRole == 'moderator' ||
+                          currentUserRole == 'admin' ||
+                          currentUserRole == 'owner')) ||
+                  (messagePermission == 'moderators' &&
+                      (currentUserRole == 'moderator' ||
+                          currentUserRole == 'admin' ||
+                          currentUserRole == 'owner')) ||
+                  (messagePermission == 'admins' &&
+                      (currentUserRole == 'admin' ||
+                          currentUserRole == 'owner')));
 
           return FutureBuilder<List<AppUser>>(
             future: chatService.getUsersByIds(memberIds),
@@ -130,24 +159,24 @@ class GroupInfoScreen extends StatelessWidget {
                       },
                     ),
                   ),
-                  Card(
-                    child: ListTile(
-                      leading: const Icon(Icons.person_add),
-                      title: const Text('Добавить участника'),
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: () {
-                        HapticFeedback.selectionClick();
+                  if (canAddMembers)
+                    Card(
+                      child: ListTile(
+                        leading: const Icon(Icons.person_add),
+                        title: const Text('Добавить участника'),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () {
+                          HapticFeedback.selectionClick();
 
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => AddMembersScreen(chatId: chatId),
-                          ),
-                        );
-                      },
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => AddMembersScreen(chatId: chatId),
+                            ),
+                          );
+                        },
+                      ),
                     ),
-                  ),
-
                   Card(
                     child: ListTile(
                       leading: Icon(

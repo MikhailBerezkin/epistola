@@ -304,7 +304,11 @@ class _MessageInputAreaState extends State<_MessageInputArea> {
         final status = statusData['status'] ?? 'normal';
         final statusIsActive = _isStatusActive(statusData);
 
+        final canClearExpiredStatus =
+            currentUserRole == 'admin' || currentUserRole == 'owner';
+
         if (isGroup &&
+            canClearExpiredStatus &&
             !statusIsActive &&
             status != 'normal' &&
             currentUser != null) {

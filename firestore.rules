@@ -7,42 +7,194 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function isChatMember(chatId) {
-      return signedIn()
-             && request.auth.uid in get(
-               /databases/$(database)/documents/chats/$(chatId)
-             ).data.memberIds;
+    function chatDoc(chatId) {
+      return get(/databases/$(database)/documents/chats/$(chatId));
     }
 
-    match /users/{userId} {
+    function isChatMember(chatId) {
+      return signedIn()
+          && request.auth.uid in chatDoc(chatId).data.memberIds;
+    }
 
+    function getRole(chatId) {
+      return chatDoc(chatId).data.memberRoles[request.auth.uid];
+    }
+
+    function getStatus(chatId) {
+      return chatDoc(chatId).data.memberStatus[request.auth.uid].status;
+    }
+
+    function getMessagePermission(chatId) {
+      return chatDoc(chatId).data.groupSettings.messagePermission;
+    }
+
+    function isAdminOrOwner(chatId) {
+      return getRole(chatId) == "admin"
+          || getRole(chatId) == "owner";
+    }
+
+    function isModeratorOrAbove(chatId) {
+      return getRole(chatId) == "moderator"
+          || getRole(chatId) == "admin"
+          || getRole(chatId) == "owner";
+    }
+
+    function canWrite(chatId) {
+      return isChatMember(chatId)
+          && getRole(chatId) != "guest"
+          && getStatus(chatId) != "muted"
+          && getStatus(chatId) != "banned"
+          && (
+            getMessagePermission(chatId) == "all"
+            ||
+            (
+              getMessagePermission(chatId) == "moderators"
+              && isModeratorOrAbove(chatId)
+            )
+            ||
+            (
+              getMessagePermission(chatId) == "admins"
+              && isAdminOrOwner(chatId)
+            )
+          );
+    }
+
+    function currentRoleInChat() {
+      return resource.data.memberRoles[request.auth.uid];
+    }
+
+    function isCurrentMemberInChat() {
+      return signedIn()
+          && request.auth.uid in resource.data.memberIds;
+    }
+
+    function isCurrentAdminOrOwner() {
+      return currentRoleInChat() == "admin"
+          || currentRoleInChat() == "owner";
+    }
+
+    function isCurrentModeratorOrAbove() {
+      return currentRoleInChat() == "moderator"
+          || currentRoleInChat() == "admin"
+          || currentRoleInChat() == "owner";
+    }
+
+    function changedKeys() {
+      return request.resource.data.diff(resource.data).affectedKeys();
+    }
+
+    function isOnlyLastReadUpdate() {
+      return changedKeys().hasOnly(["lastRead"]);
+    }
+
+    function isOnlyLastMessageUpdate() {
+      return changedKeys().hasOnly(["lastMessage", "lastMessageAt"]);
+    }
+
+    function isAddMembersUpdate() {
+      return changedKeys().hasOnly([
+        "memberIds",
+        "memberEmails",
+        "memberRoles",
+        "memberStatus"
+      ]);
+    }
+
+function getMessagePermissionFromResource() {
+  return resource.data.groupSettings.messagePermission;
+}
+
+function currentStatusInChat() {
+  return resource.data.memberStatus[request.auth.uid].status;
+}
+
+function canAddMembersByPermission() {
+  return isCurrentMemberInChat()
+      && currentRoleInChat() != "guest"
+      && currentStatusInChat() != "muted"
+      && currentStatusInChat() != "banned"
+      && (
+        (
+          getMessagePermissionFromResource() == "all"
+          && (
+            currentRoleInChat() == "member"
+            || currentRoleInChat() == "moderator"
+            || currentRoleInChat() == "admin"
+            || currentRoleInChat() == "owner"
+          )
+        )
+        ||
+        (
+          getMessagePermissionFromResource() == "moderators"
+          && isCurrentModeratorOrAbove()
+        )
+        ||
+        (
+          getMessagePermissionFromResource() == "admins"
+          && isCurrentAdminOrOwner()
+        )
+      );
+}
+function isOnlyMemberStatusUpdate() {
+  return changedKeys().hasOnly(["memberStatus"]);
+}
+
+function requestedMemberStatusValues() {
+  return request.resource.data.memberStatus.values();
+}
+
+function isOnlyMuteOrNormalStatusUpdate() {
+  return requestedMemberStatusValues().hasOnly([
+    {"status": "normal"},
+    {"status": "muted"}
+  ]);
+}
+
+function canUpdateMemberStatus() {
+  return isCurrentMemberInChat()
+      && (
+        isCurrentAdminOrOwner()
+        ||
+        (
+          isCurrentModeratorOrAbove()
+          && isOnlyMuteOrNormalStatusUpdate()
+        )
+      );
+}
+function isCurrentModeratorOnly() {
+  return currentRoleInChat() == "moderator";
+}
+
+    match /users/{userId} {
       allow read: if signedIn();
 
       allow create: if signedIn()
-                    && request.auth.uid == userId;
+          && request.auth.uid == userId;
 
       allow update: if signedIn()
-                    && request.auth.uid == userId;
+          && request.auth.uid == userId;
 
       allow delete: if false;
     }
 
     match /chats/{chatId} {
-
       allow read: if signedIn()
-                  && request.auth.uid in resource.data.memberIds;
+          && request.auth.uid in resource.data.memberIds;
 
       allow create: if signedIn();
 
-      allow update: if signedIn();
+      allow update: if isCurrentAdminOrOwner()
+    || (isCurrentMemberInChat() && isOnlyLastReadUpdate())
+    || (canWrite(chatId) && isOnlyLastMessageUpdate())
+    || (canAddMembersByPermission() && isAddMembersUpdate())
+    || (canUpdateMemberStatus() && isOnlyMemberStatusUpdate());
 
       allow delete: if false;
 
       match /messages/{messageId} {
-
         allow read: if isChatMember(chatId);
 
-        allow create: if signedIn();
+        allow create: if canWrite(chatId);
 
         allow update, delete: if false;
       }
