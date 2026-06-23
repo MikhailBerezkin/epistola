@@ -87,7 +87,7 @@ class ChatService {
     await _firestore.collection('chats').doc(chatId).update({
       'memberIds': FieldValue.arrayRemove([user.uid]),
       'memberEmails': FieldValue.arrayRemove([
-        if (user.email != null) user.email,
+        if (user.email != null) user.email!,
       ]),
       'memberRoles.${user.uid}': FieldValue.delete(),
       'memberStatus.${user.uid}': FieldValue.delete(),

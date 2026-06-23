@@ -163,6 +163,19 @@ function canUpdateMemberStatus() {
 }
 function isCurrentModeratorOnly() {
   return currentRoleInChat() == "moderator";
+}function isLeaveGroupUpdate() {
+  return isCurrentMemberInChat()
+      && changedKeys().hasOnly([
+        "memberIds",
+        "memberEmails",
+        "memberRoles",
+        "memberStatus",
+        "lastRead"
+      ])
+      && !(request.auth.uid in request.resource.data.memberIds)
+      && !(request.auth.uid in request.resource.data.memberRoles.keys())
+      && !(request.auth.uid in request.resource.data.memberStatus.keys())
+      && !(request.auth.uid in request.resource.data.lastRead.keys());
 }
 
     match /users/{userId} {
@@ -187,7 +200,8 @@ function isCurrentModeratorOnly() {
     || (isCurrentMemberInChat() && isOnlyLastReadUpdate())
     || (canWrite(chatId) && isOnlyLastMessageUpdate())
     || (canAddMembersByPermission() && isAddMembersUpdate())
-    || (canUpdateMemberStatus() && isOnlyMemberStatusUpdate());
+    || (canUpdateMemberStatus() && isOnlyMemberStatusUpdate())
+    || isLeaveGroupUpdate();
 
       allow delete: if false;
 
