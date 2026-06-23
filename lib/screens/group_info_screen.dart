@@ -28,6 +28,23 @@ class GroupInfoScreen extends StatelessWidget {
     }
   }
 
+  Color getRoleColor(String role) {
+    switch (role) {
+      case 'owner':
+        return Colors.orange;
+      case 'admin':
+        return Colors.purple;
+      case 'moderator':
+        return Colors.blue;
+      case 'member':
+        return Colors.green;
+      case 'guest':
+        return Colors.grey;
+      default:
+        return Colors.grey;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final chatService = ChatService();
@@ -316,6 +333,8 @@ class GroupInfoScreen extends StatelessWidget {
                     const Text('Участники не найдены')
                   else
                     ...users.map((user) {
+                      final role = memberRoles[user.uid] ?? 'member';
+
                       return ListTile(
                         leading: CircleAvatar(
                           child: Text(
@@ -327,8 +346,23 @@ class GroupInfoScreen extends StatelessWidget {
                         title: Text(
                           user.name.isNotEmpty ? user.name : 'Без имени',
                         ),
-                        subtitle: Text(
-                          '${getRoleTitle(memberRoles[user.uid] ?? 'member')} • ${user.email}',
+                        subtitle: RichText(
+                          text: TextSpan(
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.outline,
+                              fontSize: 14,
+                            ),
+                            children: [
+                              TextSpan(
+                                text: getRoleTitle(role),
+                                style: TextStyle(
+                                  color: getRoleColor(role),
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              TextSpan(text: ' • ${user.email}'),
+                            ],
+                          ),
                         ),
                         onTap: () {
                           HapticFeedback.selectionClick();

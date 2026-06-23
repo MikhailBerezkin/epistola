@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 class MessageBubble extends StatelessWidget {
   final String text;
   final String senderName;
+  final String senderRole;
   final String timeText;
   final bool isMe;
 
@@ -10,9 +11,21 @@ class MessageBubble extends StatelessWidget {
     super.key,
     required this.text,
     required this.senderName,
+    required this.senderRole,
     required this.timeText,
     required this.isMe,
   });
+
+  Color getSenderNameColor(BuildContext context) {
+    switch (senderRole) {
+      case 'admin':
+        return Colors.purple;
+      case 'moderator':
+        return Colors.blue;
+      default:
+        return Theme.of(context).colorScheme.outline;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -39,7 +52,7 @@ class MessageBubble extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
-                  color: Theme.of(context).colorScheme.outline,
+                  color: getSenderNameColor(context),
                 ),
               ),
               const SizedBox(height: 4),

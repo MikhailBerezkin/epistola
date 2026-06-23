@@ -54,11 +54,27 @@ class _ChatScreenState extends State<ChatScreen> {
       body: Column(
         children: [
           Expanded(
-            child: Stack(
-              children: [
-                _MessagesList(chatId: widget.chatId),
-                _BannedOverlay(chatId: widget.chatId),
-              ],
+            child: StreamBuilder<DocumentSnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('chats')
+                  .doc(widget.chatId)
+                  .snapshots(),
+              builder: (context, snapshot) {
+                final data = snapshot.data?.data() as Map<String, dynamic>?;
+
+                final memberRoles =
+                    (data?['memberRoles'] as Map<String, dynamic>?) ?? {};
+
+                return Stack(
+                  children: [
+                    _MessagesList(
+                      chatId: widget.chatId,
+                      memberRoles: memberRoles,
+                    ),
+                    _BannedOverlay(chatId: widget.chatId),
+                  ],
+                );
+              },
             ),
           ),
           _MessageInputArea(
@@ -127,8 +143,9 @@ class _ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
 
 class _MessagesList extends StatefulWidget {
   final String chatId;
+  final Map<String, dynamic> memberRoles;
 
-  const _MessagesList({required this.chatId});
+  const _MessagesList({required this.chatId, required this.memberRoles});
 
   @override
   State<_MessagesList> createState() => _MessagesListState();
@@ -217,10 +234,12 @@ class _MessagesListState extends State<_MessagesList> {
             final createdAt = data['createdAt'];
             final timeText = formatMessageTime(createdAt);
             final isMe = senderId == currentUser?.uid;
+            final senderRole = widget.memberRoles[senderId] ?? 'member';
 
             return MessageBubble(
               text: text,
               senderName: senderName,
+              senderRole: senderRole,
               timeText: timeText,
               isMe: isMe,
             );
