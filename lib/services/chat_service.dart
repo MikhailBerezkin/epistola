@@ -413,17 +413,27 @@ class ChatService {
 
     final currentUserEmail = currentUser.email;
 
-    await chatRef.set({
-      'name': chatName,
-      'type': 'private',
-      'memberIds': FieldValue.arrayUnion([currentUser.uid, otherUser.uid]),
-      'memberEmails': FieldValue.arrayUnion([
-        ?currentUserEmail,
-        otherUser.email,
-      ]),
-      'lastRead': {currentUser.uid: FieldValue.serverTimestamp()},
-    }, SetOptions(merge: true));
-
+    try {
+      await chatRef.set({
+        'name': chatName,
+        'type': 'private',
+        'memberIds': FieldValue.arrayUnion([currentUser.uid, otherUser.uid]),
+        'memberEmails': FieldValue.arrayUnion([
+          ?currentUserEmail,
+          otherUser.email,
+        ]),
+        'memberRoles': {currentUser.uid: 'member', otherUser.uid: 'member'},
+        'memberStatus': {
+          currentUser.uid: {'status': 'normal'},
+          otherUser.uid: {'status': 'normal'},
+        },
+        'groupSettings': {'messagePermission': 'all'},
+        'lastRead': {currentUser.uid: FieldValue.serverTimestamp()},
+        'isDissolved': false,
+      }, SetOptions(merge: true));
+    } catch (e) {
+      rethrow;
+    }
     return chatId;
   }
 
@@ -437,7 +447,9 @@ class ChatService {
     final chatDoc = await _firestore.collection('chats').doc(chatId).get();
     final chatData = chatDoc.data();
 
-    if (chatData == null) return;
+    if (chatData == null) {
+      return;
+    }
 
     final chatType = chatData['type'] ?? 'private';
     final isGroup = chatType == 'group';

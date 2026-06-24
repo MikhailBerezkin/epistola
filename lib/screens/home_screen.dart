@@ -87,10 +87,12 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
       body: getCurrentPage(),
-      floatingActionButton: FloatingActionButton(
-        onPressed: onAddPressed,
-        child: const Icon(Icons.add),
-      ),
+      floatingActionButton: selectedIndex == 0
+          ? FloatingActionButton(
+              onPressed: onAddPressed,
+              child: const Icon(Icons.add),
+            )
+          : null,
       bottomNavigationBar: NavigationBar(
         selectedIndex: selectedIndex,
         onDestinationSelected: (index) {
