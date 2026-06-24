@@ -61,8 +61,8 @@ class GroupMemberScreen extends StatelessWidget {
               ),
               ListTile(
                 leading: const Icon(Icons.timer),
-                title: const Text('5 минут'),
-                onTap: () => muteFor(const Duration(minutes: 5)),
+                title: const Text('2 минуты'),
+                onTap: () => muteFor(const Duration(minutes: 2)),
               ),
               ListTile(
                 leading: const Icon(Icons.timer),
@@ -180,6 +180,8 @@ class GroupMemberScreen extends StatelessWidget {
         final statusTitle = StatusHelper.title(status);
         final statusDetails = StatusHelper.formatDetails(statusData);
         final statusIsActive = StatusHelper.isActive(statusData);
+        final isMutedActive = status == 'muted' && statusIsActive;
+        final isBannedActive = status == 'banned' && statusIsActive;
 
         final currentUserRole = memberRoles[currentUserId] ?? 'member';
         final isSelf = currentUserId == user.uid;
@@ -481,7 +483,7 @@ class GroupMemberScreen extends StatelessWidget {
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 8),
-                if (!isTargetGuest && status != 'muted' && status != 'banned')
+                if (!isTargetGuest && !isMutedActive && !isBannedActive)
                   Card(
                     child: ListTile(
                       leading: const Icon(Icons.volume_off),
@@ -492,7 +494,7 @@ class GroupMemberScreen extends StatelessWidget {
                       onTap: () => showMuteSheet(context),
                     ),
                   ),
-                if (status == 'muted')
+                if (isMutedActive)
                   Card(
                     child: ListTile(
                       leading: const Icon(Icons.volume_up),
@@ -506,7 +508,7 @@ class GroupMemberScreen extends StatelessWidget {
                       },
                     ),
                   ),
-                if (canBan && status != 'banned')
+                if (canBan && !isBannedActive)
                   Card(
                     child: ListTile(
                       leading: Icon(
@@ -522,7 +524,7 @@ class GroupMemberScreen extends StatelessWidget {
                       onTap: () => showBanSheet(context),
                     ),
                   ),
-                if (canBan && status == 'banned')
+                if (canBan && isBannedActive)
                   Card(
                     child: ListTile(
                       leading: const Icon(Icons.lock_open),
