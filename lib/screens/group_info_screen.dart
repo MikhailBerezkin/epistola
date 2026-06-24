@@ -10,6 +10,8 @@ import '../widgets/group/group_header.dart';
 import '../widgets/group/group_settings_card.dart';
 import '../widgets/group/add_members_card.dart';
 import '../widgets/group/group_members_section.dart';
+import '../widgets/group/leave_group_card.dart';
+import '../widgets/group/dissolve_group_card.dart';
 
 class GroupInfoScreen extends StatelessWidget {
   final String chatId;
@@ -126,28 +128,78 @@ class GroupInfoScreen extends StatelessWidget {
                         );
                       },
                     ),
-                  Card(
-                    child: ListTile(
-                      leading: Icon(
-                        Icons.logout,
-                        color: Theme.of(context).colorScheme.error,
-                      ),
-                      title: Text(
-                        'Покинуть группу',
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.error,
-                        ),
-                      ),
-                      onTap: () async {
-                        HapticFeedback.mediumImpact();
+                  LeaveGroupCard(
+                    onTap: () async {
+                      HapticFeedback.mediumImpact();
 
-                        final shouldLeave = await showDialog<bool>(
+                      final shouldLeave = await showDialog<bool>(
+                        context: context,
+                        builder: (context) {
+                          return AlertDialog(
+                            title: const Text('Покинуть группу?'),
+                            content: const Text(
+                              'Вы больше не будете видеть эту группу в списке чатов.',
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(context, false),
+                                child: const Text('Отмена'),
+                              ),
+                              FilledButton(
+                                onPressed: () => Navigator.pop(context, true),
+                                child: const Text('Покинуть'),
+                              ),
+                            ],
+                          );
+                        },
+                      );
+
+                      if (shouldLeave != true) return;
+
+                      final left = await chatService.leaveGroupSafely(chatId);
+
+                      if (!context.mounted) return;
+
+                      if (!left) {
+                        await showDialog<void>(
                           context: context,
                           builder: (context) {
                             return AlertDialog(
-                              title: const Text('Покинуть группу?'),
+                              title: const Text('Вы последний администратор'),
                               content: const Text(
-                                'Вы больше не будете видеть эту группу в списке чатов.',
+                                'Перед выходом нужно передать права администратора другому участнику или распустить группу.',
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(context),
+                                  child: const Text('Понятно'),
+                                ),
+                              ],
+                            );
+                          },
+                        );
+
+                        return;
+                      }
+
+                      Navigator.pop(context);
+                      Navigator.pop(context);
+                    },
+                  ),
+
+                  if (canManageGroup)
+                    DissolveGroupCard(
+                      onTap: () async {
+                        HapticFeedback.heavyImpact();
+
+                        final shouldDissolve = await showDialog<bool>(
+                          context: context,
+                          builder: (context) {
+                            return AlertDialog(
+                              title: const Text('Распустить группу?'),
+                              content: const Text(
+                                'Группа будет закрыта для всех участников.\n\n'
+                                'История сообщений пока не удаляется.',
                               ),
                               actions: [
                                 TextButton(
@@ -157,98 +209,22 @@ class GroupInfoScreen extends StatelessWidget {
                                 ),
                                 FilledButton(
                                   onPressed: () => Navigator.pop(context, true),
-                                  child: const Text('Покинуть'),
+                                  child: const Text('Распустить'),
                                 ),
                               ],
                             );
                           },
                         );
 
-                        if (shouldLeave != true) return;
+                        if (shouldDissolve != true) return;
 
-                        final left = await chatService.leaveGroupSafely(chatId);
+                        await chatService.dissolveGroup(chatId);
 
                         if (!context.mounted) return;
-
-                        if (!left) {
-                          await showDialog<void>(
-                            context: context,
-                            builder: (context) {
-                              return AlertDialog(
-                                title: const Text('Вы последний администратор'),
-                                content: const Text(
-                                  'Перед выходом нужно передать права администратора другому участнику или распустить группу.',
-                                ),
-                                actions: [
-                                  TextButton(
-                                    onPressed: () => Navigator.pop(context),
-                                    child: const Text('Понятно'),
-                                  ),
-                                ],
-                              );
-                            },
-                          );
-
-                          return;
-                        }
 
                         Navigator.pop(context);
                         Navigator.pop(context);
                       },
-                    ),
-                  ),
-                  if (canManageGroup)
-                    Card(
-                      child: ListTile(
-                        leading: const Icon(
-                          Icons.delete_forever,
-                          color: Colors.red,
-                        ),
-                        title: const Text(
-                          'Распустить группу',
-                          style: TextStyle(color: Colors.red),
-                        ),
-                        subtitle: const Text(
-                          'Закрыть группу для всех участников',
-                        ),
-                        onTap: () async {
-                          HapticFeedback.heavyImpact();
-
-                          final shouldDissolve = await showDialog<bool>(
-                            context: context,
-                            builder: (context) {
-                              return AlertDialog(
-                                title: const Text('Распустить группу?'),
-                                content: const Text(
-                                  'Группа будет закрыта для всех участников.\n\n'
-                                  'История сообщений пока не удаляется.',
-                                ),
-                                actions: [
-                                  TextButton(
-                                    onPressed: () =>
-                                        Navigator.pop(context, false),
-                                    child: const Text('Отмена'),
-                                  ),
-                                  FilledButton(
-                                    onPressed: () =>
-                                        Navigator.pop(context, true),
-                                    child: const Text('Распустить'),
-                                  ),
-                                ],
-                              );
-                            },
-                          );
-
-                          if (shouldDissolve != true) return;
-
-                          await chatService.dissolveGroup(chatId);
-
-                          if (!context.mounted) return;
-
-                          Navigator.pop(context);
-                          Navigator.pop(context);
-                        },
-                      ),
                     ),
 
                   const SizedBox(height: 24),
