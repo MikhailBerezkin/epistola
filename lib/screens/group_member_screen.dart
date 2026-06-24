@@ -12,6 +12,8 @@ import '../widgets/group/mute_duration_sheet.dart';
 import '../widgets/group/ban_duration_sheet.dart';
 import '../widgets/group/member_status_card.dart';
 import '../widgets/group/member_role_card.dart';
+import '../widgets/group/role_selection_sheet.dart';
+import '../widgets/group/moderation_actions_section.dart';
 
 class GroupMemberScreen extends StatelessWidget {
   final String chatId;
@@ -252,57 +254,9 @@ class GroupMemberScreen extends StatelessWidget {
                   final selectedRole = await showModalBottomSheet<String>(
                     context: context,
                     builder: (context) {
-                      return SafeArea(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const ListTile(
-                              title: Text(
-                                'Выберите роль',
-                                style: TextStyle(fontWeight: FontWeight.bold),
-                              ),
-                            ),
-                            ListTile(
-                              leading: const Icon(Icons.visibility),
-                              title: const Text('Гость'),
-                              onTap: () => Navigator.pop(context, 'guest'),
-                            ),
-                            ListTile(
-                              leading: const Icon(Icons.person),
-                              title: const Text('Участник'),
-                              onTap: () => Navigator.pop(context, 'member'),
-                            ),
-                            if (canTransferAdmin) ...[
-                              const Divider(),
-                              ListTile(
-                                leading: Icon(
-                                  Icons.workspace_premium,
-                                  color: Theme.of(context).colorScheme.error,
-                                ),
-                                title: Text(
-                                  'Передать права администратора',
-                                  style: TextStyle(
-                                    color: Theme.of(context).colorScheme.error,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                                onTap: () =>
-                                    Navigator.pop(context, 'transfer_admin'),
-                              ),
-                            ],
-                            ListTile(
-                              leading: const Icon(Icons.shield),
-                              title: const Text('Модератор'),
-                              onTap: () => Navigator.pop(context, 'moderator'),
-                            ),
-                            if (isCurrentUserOwner)
-                              ListTile(
-                                leading: const Icon(Icons.admin_panel_settings),
-                                title: const Text('Администратор'),
-                                onTap: () => Navigator.pop(context, 'admin'),
-                              ),
-                          ],
-                        ),
+                      return RoleSelectionSheet(
+                        canTransferAdmin: canTransferAdmin,
+                        isCurrentUserOwner: isCurrentUserOwner,
                       );
                     },
                   );
@@ -367,69 +321,35 @@ class GroupMemberScreen extends StatelessWidget {
                   statusTitle: statusTitle,
                   statusDetails: statusDetails,
                 ),
-              if (canModerate) ...[
-                const SizedBox(height: 24),
-                const Text(
-                  'Модерация',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 8),
-                if (!isTargetGuest && !isMutedActive && !isBannedActive)
-                  Card(
-                    child: ListTile(
-                      leading: const Icon(Icons.volume_off),
-                      title: const Text('Выдать мьют'),
-                      subtitle: const Text(
-                        'Пользователь сможет читать, но не писать',
-                      ),
-                      onTap: () => showMuteSheet(context),
-                    ),
-                  ),
-                if (isMutedActive)
-                  Card(
-                    child: ListTile(
-                      leading: const Icon(Icons.volume_up),
-                      title: const Text('Снять мьют'),
-                      onTap: () async {
-                        HapticFeedback.mediumImpact();
-                        await ChatService().unmuteMember(
-                          chatId: chatId,
-                          userId: user.uid,
-                        );
-                      },
-                    ),
-                  ),
-                if (canBan && !isBannedActive)
-                  Card(
-                    child: ListTile(
-                      leading: Icon(
-                        Icons.block,
-                        color: Theme.of(context).colorScheme.error,
-                      ),
-                      title: Text(
-                        'Забанить',
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.error,
-                        ),
-                      ),
-                      onTap: () => showBanSheet(context),
-                    ),
-                  ),
-                if (canBan && isBannedActive)
-                  Card(
-                    child: ListTile(
-                      leading: const Icon(Icons.lock_open),
-                      title: const Text('Разбанить'),
-                      onTap: () async {
-                        HapticFeedback.mediumImpact();
-                        await ChatService().unbanMember(
-                          chatId: chatId,
-                          userId: user.uid,
-                        );
-                      },
-                    ),
-                  ),
-              ],
+              ModerationActionsSection(
+                canModerate: canModerate,
+                canBan: canBan,
+                isTargetGuest: isTargetGuest,
+                isMutedActive: isMutedActive,
+                isBannedActive: isBannedActive,
+
+                onMute: () => showMuteSheet(context),
+
+                onUnmute: () async {
+                  HapticFeedback.mediumImpact();
+
+                  await ChatService().unmuteMember(
+                    chatId: chatId,
+                    userId: user.uid,
+                  );
+                },
+
+                onBan: () => showBanSheet(context),
+
+                onUnban: () async {
+                  HapticFeedback.mediumImpact();
+
+                  await ChatService().unbanMember(
+                    chatId: chatId,
+                    userId: user.uid,
+                  );
+                },
+              ),
             ],
           ),
         );
