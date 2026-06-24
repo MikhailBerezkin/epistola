@@ -23,6 +23,25 @@ service cloud.firestore {
     function getStatus(chatId) {
       return chatDoc(chatId).data.memberStatus[request.auth.uid].status;
     }
+    function getStatusData(chatId) {
+  return chatDoc(chatId).data.memberStatus[request.auth.uid];
+}
+
+function isStatusActive(chatId) {
+  return getStatusData(chatId).permanent == true
+      || (
+        getStatusData(chatId).expiresAt is timestamp
+        && getStatusData(chatId).expiresAt > request.time
+      );
+}
+
+function isActivelyMutedOrBanned(chatId) {
+  return (
+        getStatus(chatId) == "muted"
+        || getStatus(chatId) == "banned"
+      )
+      && isStatusActive(chatId);
+}
 
     function getMessagePermission(chatId) {
       return chatDoc(chatId).data.groupSettings.messagePermission;
@@ -50,21 +69,20 @@ service cloud.firestore {
         ||
         (
           getRole(chatId) != "guest"
-          && getStatus(chatId) != "muted"
-          && getStatus(chatId) != "banned"
-          && (
-            getMessagePermission(chatId) == "all"
-            ||
-            (
-              getMessagePermission(chatId) == "moderators"
-              && isModeratorOrAbove(chatId)
-            )
-            ||
-            (
-              getMessagePermission(chatId) == "admins"
-              && isAdminOrOwner(chatId)
-            )
-          )
+&& !isActivelyMutedOrBanned(chatId)
+&& (
+  getMessagePermission(chatId) == "all"
+  ||
+  (
+    getMessagePermission(chatId) == "moderators"
+    && isModeratorOrAbove(chatId)
+  )
+  ||
+  (
+    getMessagePermission(chatId) == "admins"
+    && isAdminOrOwner(chatId)
+  )
+)
         )
       );
 }

@@ -1,14 +1,15 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show HapticFeedback;
-
 import '../models/app_user.dart';
 import '../services/chat_service.dart';
-import 'group_member_screen.dart';
 import 'add_members_screen.dart';
 import 'group_settings_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import '../helpers/role_helper.dart';
+import '../widgets/group/group_header.dart';
+import '../widgets/group/group_settings_card.dart';
+import '../widgets/group/add_members_card.dart';
+import '../widgets/group/group_members_section.dart';
 
 class GroupInfoScreen extends StatelessWidget {
   final String chatId;
@@ -84,7 +85,7 @@ class GroupInfoScreen extends StatelessWidget {
           return FutureBuilder<List<AppUser>>(
             future: chatService.getUsersByIds(memberIds),
             builder: (context, usersSnapshot) {
-              final users = [...(usersSnapshot.data ?? [])];
+              final users = List<AppUser>.from(usersSnapshot.data ?? []);
 
               users.sort((a, b) {
                 final aName = a.name.isNotEmpty ? a.name : a.email;
@@ -95,76 +96,35 @@ class GroupInfoScreen extends StatelessWidget {
               return ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
-                  const SizedBox(height: 16),
-                  CircleAvatar(
-                    radius: 48,
-                    child: Text(
-                      groupName.toString().isNotEmpty
-                          ? groupName.toString()[0].toUpperCase()
-                          : '?',
-                      style: const TextStyle(
-                        fontSize: 32,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+                  GroupHeader(
+                    groupName: groupName,
+                    memberCount: memberIds.length,
                   ),
-                  const SizedBox(height: 16),
-                  Center(
-                    child: Text(
-                      groupName,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Center(
-                    child: Text(
-                      '${memberIds.length} участников',
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.outline,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 24),
                   if (canManageGroup)
-                    Card(
-                      child: ListTile(
-                        leading: const Icon(Icons.settings),
-                        title: const Text('Настройки'),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: () {
-                          HapticFeedback.selectionClick();
+                    GroupSettingsCard(
+                      onTap: () {
+                        HapticFeedback.selectionClick();
 
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) =>
-                                  GroupSettingsScreen(chatId: chatId),
-                            ),
-                          );
-                        },
-                      ),
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => GroupSettingsScreen(chatId: chatId),
+                          ),
+                        );
+                      },
                     ),
                   if (canAddMembers)
-                    Card(
-                      child: ListTile(
-                        leading: const Icon(Icons.person_add),
-                        title: const Text('Добавить участника'),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: () {
-                          HapticFeedback.selectionClick();
+                    AddMembersCard(
+                      onTap: () {
+                        HapticFeedback.selectionClick();
 
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => AddMembersScreen(chatId: chatId),
-                            ),
-                          );
-                        },
-                      ),
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => AddMembersScreen(chatId: chatId),
+                          ),
+                        );
+                      },
                     ),
                   Card(
                     child: ListTile(
@@ -292,61 +252,14 @@ class GroupInfoScreen extends StatelessWidget {
                     ),
 
                   const SizedBox(height: 24),
-                  const Text(
-                    'Участники',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  GroupMembersSection(
+                    chatId: chatId,
+                    users: users,
+                    memberRoles: memberRoles,
+                    isLoading:
+                        usersSnapshot.connectionState ==
+                        ConnectionState.waiting,
                   ),
-                  const SizedBox(height: 8),
-                  if (usersSnapshot.connectionState == ConnectionState.waiting)
-                    const Center(child: CircularProgressIndicator())
-                  else if (users.isEmpty)
-                    const Text('Участники не найдены')
-                  else
-                    ...users.map((user) {
-                      final role = memberRoles[user.uid] ?? 'member';
-
-                      return ListTile(
-                        leading: CircleAvatar(
-                          child: Text(
-                            user.name.isNotEmpty
-                                ? user.name[0].toUpperCase()
-                                : user.email[0].toUpperCase(),
-                          ),
-                        ),
-                        title: Text(
-                          user.name.isNotEmpty ? user.name : 'Без имени',
-                        ),
-                        subtitle: RichText(
-                          text: TextSpan(
-                            style: TextStyle(
-                              color: Theme.of(context).colorScheme.outline,
-                              fontSize: 14,
-                            ),
-                            children: [
-                              TextSpan(
-                                text: RoleHelper.title(role),
-                                style: TextStyle(
-                                  color: RoleHelper.color(role),
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                              TextSpan(text: ' • ${user.email}'),
-                            ],
-                          ),
-                        ),
-                        onTap: () {
-                          HapticFeedback.selectionClick();
-
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) =>
-                                  GroupMemberScreen(chatId: chatId, user: user),
-                            ),
-                          );
-                        },
-                      );
-                    }),
                 ],
               );
             },

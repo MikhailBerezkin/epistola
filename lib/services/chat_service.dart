@@ -462,6 +462,7 @@ class ChatService {
     if (isGroup) {
       final memberRoles =
           (chatData['memberRoles'] as Map<String, dynamic>?) ?? {};
+
       final memberStatus =
           (chatData['memberStatus'] as Map<String, dynamic>?) ?? {};
 
@@ -470,7 +471,7 @@ class ChatService {
           (memberStatus[user.uid] as Map<String, dynamic>?) ??
           {'status': 'normal'};
 
-      final status = statusData['status'] ?? 'normal';
+      var status = statusData['status'] ?? 'normal';
       final permanent = statusData['permanent'] == true;
       final expiresAt = statusData['expiresAt'];
 
@@ -478,6 +479,19 @@ class ChatService {
           permanent ||
           (expiresAt is Timestamp &&
               expiresAt.toDate().isAfter(DateTime.now()));
+
+      if ((status == 'muted' || status == 'banned') &&
+          !statusIsActive &&
+          expiresAt is Timestamp) {
+        try {
+          await clearExpiredMemberStatus(chatId: chatId, userId: user.uid);
+        } catch (_) {
+          // Firestore rules may reject self-cleanup.
+          // The expired status is still treated as normal locally.
+        }
+
+        status = 'normal';
+      }
 
       final groupSettings =
           (chatData['groupSettings'] as Map<String, dynamic>?) ?? {};

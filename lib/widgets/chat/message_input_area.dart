@@ -25,6 +25,7 @@ class MessageInputArea extends StatefulWidget {
 
 class _MessageInputAreaState extends State<MessageInputArea> {
   Timer? hideRestrictionTimer;
+  Timer? statusExpirationTimer;
   bool showRestriction = true;
 
   @override
@@ -43,7 +44,35 @@ class _MessageInputAreaState extends State<MessageInputArea> {
   @override
   void dispose() {
     hideRestrictionTimer?.cancel();
+    statusExpirationTimer?.cancel();
     super.dispose();
+  }
+
+  void scheduleStatusExpirationRebuild(Map<String, dynamic> statusData) {
+    final permanent = statusData['permanent'] == true;
+    final expiresAt = statusData['expiresAt'];
+
+    statusExpirationTimer?.cancel();
+
+    if (permanent || expiresAt is! Timestamp) return;
+
+    final duration = expiresAt.toDate().difference(DateTime.now());
+
+    if (duration.isNegative || duration == Duration.zero) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        setState(() {});
+      });
+      return;
+    }
+
+    statusExpirationTimer = Timer(
+      duration + const Duration(milliseconds: 200),
+      () {
+        if (!mounted) return;
+        setState(() {});
+      },
+    );
   }
 
   @override
@@ -77,6 +106,8 @@ class _MessageInputAreaState extends State<MessageInputArea> {
         final statusData =
             (memberStatus[currentUser?.uid] as Map<String, dynamic>?) ??
             {'status': 'normal'};
+
+        scheduleStatusExpirationRebuild(statusData);
 
         final status = statusData['status'] ?? 'normal';
         final statusIsActive = _isStatusActive(statusData);
