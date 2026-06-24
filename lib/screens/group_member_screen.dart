@@ -8,6 +8,8 @@ import '../services/chat_service.dart';
 import 'chat_screen.dart';
 import '../helpers/role_helper.dart';
 import '../helpers/status_helper.dart';
+import '../widgets/group/mute_duration_sheet.dart';
+import '../widgets/group/ban_duration_sheet.dart';
 
 class GroupMemberScreen extends StatelessWidget {
   final String chatId;
@@ -30,10 +32,10 @@ class GroupMemberScreen extends StatelessWidget {
   Future<void> showMuteSheet(BuildContext context) async {
     final service = ChatService();
 
-    Future<void> muteFor(Duration? duration) async {
+    Future<void> muteFor(Duration duration) async {
       HapticFeedback.mediumImpact();
 
-      final expiresAt = duration == null ? null : DateTime.now().add(duration);
+      final expiresAt = DateTime.now().add(duration);
 
       await service.muteMember(
         chatId: chatId,
@@ -48,45 +50,7 @@ class GroupMemberScreen extends StatelessWidget {
     await showModalBottomSheet<void>(
       context: context,
       builder: (context) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const ListTile(
-                title: Text(
-                  'Выдать мьют',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-                subtitle: Text('Причина: Флуд'),
-              ),
-              ListTile(
-                leading: const Icon(Icons.timer),
-                title: const Text('2 минуты'),
-                onTap: () => muteFor(const Duration(minutes: 2)),
-              ),
-              ListTile(
-                leading: const Icon(Icons.timer),
-                title: const Text('30 минут'),
-                onTap: () => muteFor(const Duration(minutes: 30)),
-              ),
-              ListTile(
-                leading: const Icon(Icons.timer),
-                title: const Text('1 час'),
-                onTap: () => muteFor(const Duration(hours: 1)),
-              ),
-              ListTile(
-                leading: const Icon(Icons.today),
-                title: const Text('1 день'),
-                onTap: () => muteFor(const Duration(days: 1)),
-              ),
-              ListTile(
-                leading: const Icon(Icons.date_range),
-                title: const Text('7 дней'),
-                onTap: () => muteFor(const Duration(days: 7)),
-              ),
-            ],
-          ),
-        );
+        return MuteDurationSheet(onDurationSelected: muteFor);
       },
     );
   }
@@ -112,40 +76,7 @@ class GroupMemberScreen extends StatelessWidget {
     await showModalBottomSheet<void>(
       context: context,
       builder: (context) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const ListTile(
-                title: Text(
-                  'Забанить участника',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-                subtitle: Text('Причина: Нарушение правил'),
-              ),
-              ListTile(
-                leading: const Icon(Icons.today),
-                title: const Text('1 день'),
-                onTap: () => banFor(const Duration(days: 1)),
-              ),
-              ListTile(
-                leading: const Icon(Icons.date_range),
-                title: const Text('7 дней'),
-                onTap: () => banFor(const Duration(days: 7)),
-              ),
-              ListTile(
-                leading: const Icon(Icons.calendar_month),
-                title: const Text('30 дней'),
-                onTap: () => banFor(const Duration(days: 30)),
-              ),
-              ListTile(
-                leading: const Icon(Icons.all_inclusive),
-                title: const Text('Навсегда'),
-                onTap: () => banFor(null),
-              ),
-            ],
-          ),
-        );
+        return BanDurationSheet(onDurationSelected: banFor);
       },
     );
   }
