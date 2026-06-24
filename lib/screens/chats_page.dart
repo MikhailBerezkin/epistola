@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show HapticFeedback;
 
@@ -8,6 +9,47 @@ import 'chat_screen.dart';
 
 class ChatsPage extends StatelessWidget {
   const ChatsPage({super.key});
+
+  Future<String> _getDisplayChatName(
+    ChatService chatService,
+    Map<String, dynamic> data,
+  ) async {
+    final type = data['type'] ?? 'group';
+
+    if (type != 'private') {
+      return data['name'] ?? 'Без названия';
+    }
+
+    final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+    final memberIds = List<String>.from(data['memberIds'] ?? []);
+
+    if (currentUserId == null || memberIds.isEmpty) {
+      return 'Личный чат';
+    }
+
+    final otherUserId = memberIds.firstWhere(
+      (uid) => uid != currentUserId,
+      orElse: () => '',
+    );
+
+    if (otherUserId.isEmpty) {
+      return 'Личный чат';
+    }
+
+    final users = await chatService.getUsersByIds([otherUserId]);
+
+    if (users.isEmpty) {
+      return 'Личный чат';
+    }
+
+    final otherUser = users.first;
+
+    if (otherUser.name.isNotEmpty) {
+      return otherUser.name;
+    }
+
+    return otherUser.email;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -47,23 +89,32 @@ class ChatsPage extends StatelessWidget {
                     final chat = chats[index];
                     final data = chat.data() as Map<String, dynamic>;
 
-                    final chatName = data['name'] ?? 'Без названия';
                     final lastMessage = data['lastMessage'] ?? '';
 
-                    return ChatTile(
-                      chatId: chat.id,
-                      chatName: chatName,
-                      lastMessage: lastMessage,
-                      lastMessageAt: data['lastMessageAt'],
-                      onTap: () {
-                        HapticFeedback.lightImpact();
+                    return FutureBuilder<String>(
+                      future: _getDisplayChatName(chatService, data),
+                      builder: (context, nameSnapshot) {
+                        final chatName =
+                            nameSnapshot.data ?? data['name'] ?? 'Чат';
 
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) =>
-                                ChatScreen(chatId: chat.id, chatName: chatName),
-                          ),
+                        return ChatTile(
+                          chatId: chat.id,
+                          chatName: chatName,
+                          lastMessage: lastMessage,
+                          lastMessageAt: data['lastMessageAt'],
+                          onTap: () {
+                            HapticFeedback.lightImpact();
+
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => ChatScreen(
+                                  chatId: chat.id,
+                                  chatName: chatName,
+                                ),
+                              ),
+                            );
+                          },
                         );
                       },
                     );

@@ -189,9 +189,7 @@ function canUpdateMemberStatus() {
         )
       );
 }
-function isCurrentModeratorOnly() {
-  return currentRoleInChat() == "moderator";
-}function isLeaveGroupUpdate() {
+function isLeaveGroupUpdate() {
   return isCurrentMemberInChat()
       && changedKeys().hasOnly([
         "memberIds",

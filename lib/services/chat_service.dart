@@ -407,21 +407,17 @@ class ChatService {
 
     final chatRef = _firestore.collection('chats').doc(chatId);
 
-    final chatName = otherUser.name.isNotEmpty
-        ? otherUser.name
-        : otherUser.email;
-
     final currentUserEmail = currentUser.email;
+    final memberEmails = <String>[?currentUserEmail, otherUser.email];
 
-    try {
+    final chatSnapshot = await chatRef.get();
+
+    if (!chatSnapshot.exists) {
       await chatRef.set({
-        'name': chatName,
+        'name': 'private_chat',
         'type': 'private',
-        'memberIds': FieldValue.arrayUnion([currentUser.uid, otherUser.uid]),
-        'memberEmails': FieldValue.arrayUnion([
-          ?currentUserEmail,
-          otherUser.email,
-        ]),
+        'memberIds': [currentUser.uid, otherUser.uid],
+        'memberEmails': memberEmails,
         'memberRoles': {currentUser.uid: 'member', otherUser.uid: 'member'},
         'memberStatus': {
           currentUser.uid: {'status': 'normal'},
@@ -430,10 +426,24 @@ class ChatService {
         'groupSettings': {'messagePermission': 'all'},
         'lastRead': {currentUser.uid: FieldValue.serverTimestamp()},
         'isDissolved': false,
+        'createdAt': FieldValue.serverTimestamp(),
+        'lastMessage': '',
+        'lastMessageAt': FieldValue.serverTimestamp(),
+      });
+    } else {
+      await chatRef.set({
+        'memberIds': FieldValue.arrayUnion([currentUser.uid, otherUser.uid]),
+        'memberEmails': FieldValue.arrayUnion(memberEmails),
+        'memberRoles': {currentUser.uid: 'member', otherUser.uid: 'member'},
+        'memberStatus': {
+          currentUser.uid: {'status': 'normal'},
+          otherUser.uid: {'status': 'normal'},
+        },
+        'lastRead': {currentUser.uid: FieldValue.serverTimestamp()},
+        'isDissolved': false,
       }, SetOptions(merge: true));
-    } catch (e) {
-      rethrow;
     }
+
     return chatId;
   }
 
