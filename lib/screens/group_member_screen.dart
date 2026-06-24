@@ -10,6 +10,8 @@ import '../helpers/role_helper.dart';
 import '../helpers/status_helper.dart';
 import '../widgets/group/mute_duration_sheet.dart';
 import '../widgets/group/ban_duration_sheet.dart';
+import '../widgets/group/member_status_card.dart';
+import '../widgets/group/member_role_card.dart';
 
 class GroupMemberScreen extends StatelessWidget {
   final String chatId;
@@ -243,169 +245,127 @@ class GroupMemberScreen extends StatelessWidget {
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
-              Card(
-                child: ListTile(
-                  leading: const Icon(Icons.admin_panel_settings),
-                  title: const Text('Роль'),
-                  subtitle: Text(roleTitle),
-                  trailing: canManage
-                      ? IconButton(
-                          icon: const Icon(Icons.edit),
-                          onPressed: () async {
-                            final selectedRole =
-                                await showModalBottomSheet<String>(
-                                  context: context,
-                                  builder: (context) {
-                                    return SafeArea(
-                                      child: Column(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          const ListTile(
-                                            title: Text(
-                                              'Выберите роль',
-                                              style: TextStyle(
-                                                fontWeight: FontWeight.bold,
-                                              ),
-                                            ),
-                                          ),
-                                          ListTile(
-                                            leading: const Icon(
-                                              Icons.visibility,
-                                            ),
-                                            title: const Text('Гость'),
-                                            onTap: () =>
-                                                Navigator.pop(context, 'guest'),
-                                          ),
-                                          ListTile(
-                                            leading: const Icon(Icons.person),
-                                            title: const Text('Участник'),
-                                            onTap: () => Navigator.pop(
-                                              context,
-                                              'member',
-                                            ),
-                                          ),
-                                          if (canTransferAdmin) ...[
-                                            const Divider(),
-                                            ListTile(
-                                              leading: Icon(
-                                                Icons.workspace_premium,
-                                                color: Theme.of(
-                                                  context,
-                                                ).colorScheme.error,
-                                              ),
-                                              title: Text(
-                                                'Передать права администратора',
-                                                style: TextStyle(
-                                                  color: Theme.of(
-                                                    context,
-                                                  ).colorScheme.error,
-                                                  fontWeight: FontWeight.w600,
-                                                ),
-                                              ),
-                                              onTap: () => Navigator.pop(
-                                                context,
-                                                'transfer_admin',
-                                              ),
-                                            ),
-                                          ],
-                                          ListTile(
-                                            leading: const Icon(Icons.shield),
-                                            title: const Text('Модератор'),
-                                            onTap: () => Navigator.pop(
-                                              context,
-                                              'moderator',
-                                            ),
-                                          ),
-                                          if (isCurrentUserOwner)
-                                            ListTile(
-                                              leading: const Icon(
-                                                Icons.admin_panel_settings,
-                                              ),
-                                              title: const Text(
-                                                'Администратор',
-                                              ),
-                                              onTap: () => Navigator.pop(
-                                                context,
-                                                'admin',
-                                              ),
-                                            ),
-                                        ],
-                                      ),
-                                    );
-                                  },
-                                );
-                            if (!context.mounted) return;
-
-                            if (selectedRole == 'transfer_admin') {
-                              final shouldTransfer = await showDialog<bool>(
-                                context: context,
-                                builder: (context) {
-                                  return AlertDialog(
-                                    title: Text(
-                                      'Передать права администратора $displayName?',
-                                    ),
-                                    content: Text(
-                                      '$displayName станет администратором.\n\n'
-                                      'Вы станете участником и сможете покинуть группу.',
-                                    ),
-                                    actions: [
-                                      TextButton(
-                                        onPressed: () =>
-                                            Navigator.pop(context, false),
-                                        child: const Text('Отмена'),
-                                      ),
-                                      FilledButton(
-                                        onPressed: () =>
-                                            Navigator.pop(context, true),
-                                        child: const Text('Передать'),
-                                      ),
-                                    ],
-                                  );
-                                },
-                              );
-
-                              if (shouldTransfer == true) {
-                                HapticFeedback.mediumImpact();
-
-                                await ChatService().transferAdminRights(
-                                  chatId: chatId,
-                                  newAdminId: user.uid,
-                                );
-
-                                if (!context.mounted) return;
-
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text(
-                                      'Права администратора переданы',
-                                    ),
+              MemberRoleCard(
+                roleTitle: roleTitle,
+                canManage: canManage,
+                onEdit: () async {
+                  final selectedRole = await showModalBottomSheet<String>(
+                    context: context,
+                    builder: (context) {
+                      return SafeArea(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const ListTile(
+                              title: Text(
+                                'Выберите роль',
+                                style: TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                            ListTile(
+                              leading: const Icon(Icons.visibility),
+                              title: const Text('Гость'),
+                              onTap: () => Navigator.pop(context, 'guest'),
+                            ),
+                            ListTile(
+                              leading: const Icon(Icons.person),
+                              title: const Text('Участник'),
+                              onTap: () => Navigator.pop(context, 'member'),
+                            ),
+                            if (canTransferAdmin) ...[
+                              const Divider(),
+                              ListTile(
+                                leading: Icon(
+                                  Icons.workspace_premium,
+                                  color: Theme.of(context).colorScheme.error,
+                                ),
+                                title: Text(
+                                  'Передать права администратора',
+                                  style: TextStyle(
+                                    color: Theme.of(context).colorScheme.error,
+                                    fontWeight: FontWeight.w600,
                                   ),
-                                );
-                              }
+                                ),
+                                onTap: () =>
+                                    Navigator.pop(context, 'transfer_admin'),
+                              ),
+                            ],
+                            ListTile(
+                              leading: const Icon(Icons.shield),
+                              title: const Text('Модератор'),
+                              onTap: () => Navigator.pop(context, 'moderator'),
+                            ),
+                            if (isCurrentUserOwner)
+                              ListTile(
+                                leading: const Icon(Icons.admin_panel_settings),
+                                title: const Text('Администратор'),
+                                onTap: () => Navigator.pop(context, 'admin'),
+                              ),
+                          ],
+                        ),
+                      );
+                    },
+                  );
 
-                              return;
-                            }
+                  if (!context.mounted) return;
 
-                            if (selectedRole != null) {
-                              HapticFeedback.selectionClick();
-                              await updateRole(role: selectedRole);
-                            }
-                          },
-                        )
-                      : null,
-                ),
+                  if (selectedRole == 'transfer_admin') {
+                    final shouldTransfer = await showDialog<bool>(
+                      context: context,
+                      builder: (context) {
+                        return AlertDialog(
+                          title: Text(
+                            'Передать права администратора $displayName?',
+                          ),
+                          content: Text(
+                            '$displayName станет администратором.\n\n'
+                            'Вы станете участником и сможете покинуть группу.',
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context, false),
+                              child: const Text('Отмена'),
+                            ),
+                            FilledButton(
+                              onPressed: () => Navigator.pop(context, true),
+                              child: const Text('Передать'),
+                            ),
+                          ],
+                        );
+                      },
+                    );
+
+                    if (shouldTransfer == true) {
+                      HapticFeedback.mediumImpact();
+
+                      await ChatService().transferAdminRights(
+                        chatId: chatId,
+                        newAdminId: user.uid,
+                      );
+
+                      if (!context.mounted) return;
+
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Права администратора переданы'),
+                        ),
+                      );
+                    }
+
+                    return;
+                  }
+
+                  if (selectedRole != null) {
+                    HapticFeedback.selectionClick();
+                    await updateRole(role: selectedRole);
+                  }
+                },
               ),
               if (status != 'normal' && statusIsActive)
-                Card(
-                  child: ListTile(
-                    leading: Icon(
-                      status == 'banned' ? Icons.block : Icons.volume_off,
-                    ),
-                    title: Text(statusTitle),
-                    subtitle: statusDetails.isEmpty
-                        ? null
-                        : Text(statusDetails),
-                  ),
+                MemberStatusCard(
+                  status: status,
+                  statusTitle: statusTitle,
+                  statusDetails: statusDetails,
                 ),
               if (canModerate) ...[
                 const SizedBox(height: 24),
