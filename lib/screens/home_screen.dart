@@ -8,6 +8,7 @@ import 'spaces_page.dart';
 import 'welcome_screen.dart';
 import 'new_message_screen.dart';
 import 'chat_search_screen.dart';
+import 'contacts_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -40,6 +41,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (selectedIndex == 1) {
       return const SpacesPage();
+    }
+
+    if (selectedIndex == 2) {
+      return const ContactsScreen();
     }
 
     return const ProfilePage();
@@ -79,11 +84,6 @@ class _HomeScreenState extends State<HomeScreen> {
             icon: const Icon(Icons.search),
             tooltip: 'Поиск',
           ),
-          IconButton(
-            onPressed: () => logout(context),
-            icon: const Icon(Icons.logout),
-            tooltip: 'Выйти',
-          ),
         ],
       ),
       body: getCurrentPage(),
@@ -109,6 +109,11 @@ class _HomeScreenState extends State<HomeScreen> {
             icon: Icon(Icons.hub_outlined),
             selectedIcon: Icon(Icons.hub),
             label: 'Пространства',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.menu_book_outlined),
+            selectedIcon: Icon(Icons.menu_book),
+            label: 'Контакты',
           ),
           NavigationDestination(
             icon: Icon(Icons.person_outline),

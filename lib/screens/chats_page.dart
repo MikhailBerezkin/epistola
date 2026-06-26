@@ -7,8 +7,17 @@ import '../services/chat_service.dart';
 import '../widgets/chat_tile.dart';
 import 'chat_screen.dart';
 
-class ChatsPage extends StatelessWidget {
+enum ChatFilter { private, group }
+
+class ChatsPage extends StatefulWidget {
   const ChatsPage({super.key});
+
+  @override
+  State<ChatsPage> createState() => _ChatsPageState();
+}
+
+class _ChatsPageState extends State<ChatsPage> {
+  ChatFilter _selectedFilter = ChatFilter.private;
 
   Future<String> _getDisplayChatName(
     ChatService chatService,
@@ -60,9 +69,38 @@ class ChatsPage extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text(
-            'Чаты',
-            style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Чаты',
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          SegmentedButton<ChatFilter>(
+            segments: const [
+              ButtonSegment(
+                value: ChatFilter.private,
+                label: Text('Личные'),
+                icon: Icon(Icons.person_outline),
+              ),
+              ButtonSegment(
+                value: ChatFilter.group,
+                label: Text('Группы'),
+                icon: Icon(Icons.groups_outlined),
+              ),
+            ],
+            selected: {_selectedFilter},
+            onSelectionChanged: (selected) {
+              HapticFeedback.selectionClick();
+
+              setState(() {
+                _selectedFilter = selected.first;
+              });
+            },
           ),
           const SizedBox(height: 16),
           Expanded(
@@ -79,14 +117,29 @@ class ChatsPage extends StatelessWidget {
 
                 final chats = snapshot.data?.docs ?? [];
 
-                if (chats.isEmpty) {
-                  return const Center(child: Text('Пока нет чатов'));
+                final filteredChats = chats.where((chat) {
+                  final data = chat.data() as Map<String, dynamic>;
+                  final type = data['type'] ?? 'group';
+
+                  if (_selectedFilter == ChatFilter.private) {
+                    return type == 'private';
+                  }
+
+                  return type == 'group';
+                }).toList();
+
+                if (filteredChats.isEmpty) {
+                  final message = _selectedFilter == ChatFilter.private
+                      ? 'Пока нет личных чатов'
+                      : 'Пока нет групп';
+
+                  return Center(child: Text(message));
                 }
 
                 return ListView.builder(
-                  itemCount: chats.length,
+                  itemCount: filteredChats.length,
                   itemBuilder: (context, index) {
-                    final chat = chats[index];
+                    final chat = filteredChats[index];
                     final data = chat.data() as Map<String, dynamic>;
 
                     final lastMessage = data['lastMessage'] ?? '';
