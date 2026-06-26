@@ -2,12 +2,13 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-enum EditProfileField { name, phone, about }
+enum EditProfileField { name, phone, contactEmail, about }
 
 class EditProfileScreen extends StatefulWidget {
   final String uid;
   final String name;
   final String phone;
+  final String contactEmail;
   final String about;
   final EditProfileField initialField;
 
@@ -16,6 +17,7 @@ class EditProfileScreen extends StatefulWidget {
     required this.uid,
     required this.name,
     required this.phone,
+    required this.contactEmail,
     required this.about,
     this.initialField = EditProfileField.name,
   });
@@ -27,10 +29,12 @@ class EditProfileScreen extends StatefulWidget {
 class _EditProfileScreenState extends State<EditProfileScreen> {
   late final TextEditingController nameController;
   late final TextEditingController phoneController;
+  late final TextEditingController contactEmailController;
   late final TextEditingController aboutController;
 
   final nameFocusNode = FocusNode();
   final phoneFocusNode = FocusNode();
+  final contactEmailFocusNode = FocusNode();
   final aboutFocusNode = FocusNode();
 
   bool isLoading = false;
@@ -41,6 +45,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
     nameController = TextEditingController(text: widget.name);
     phoneController = TextEditingController(text: widget.phone);
+    contactEmailController = TextEditingController(text: widget.contactEmail);
     aboutController = TextEditingController(text: widget.about);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -50,6 +55,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           break;
         case EditProfileField.phone:
           phoneFocusNode.requestFocus();
+          break;
+        case EditProfileField.contactEmail:
+          contactEmailFocusNode.requestFocus();
           break;
         case EditProfileField.about:
           aboutFocusNode.requestFocus();
@@ -61,6 +69,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   Future<void> saveProfile() async {
     final name = nameController.text.trim();
     final phone = phoneController.text.trim();
+    final contactEmail = contactEmailController.text.trim();
     final about = aboutController.text.trim();
 
     if (name.isEmpty) return;
@@ -68,7 +77,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     setState(() => isLoading = true);
 
     await FirebaseFirestore.instance.collection('users').doc(widget.uid).update(
-      {'name': name, 'phone': phone, 'about': about},
+      {
+        'name': name,
+        'phone': phone,
+        'contactEmail': contactEmail,
+        'about': about,
+      },
     );
     HapticFeedback.mediumImpact();
 
@@ -82,10 +96,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   void dispose() {
     nameController.dispose();
     phoneController.dispose();
+    contactEmailController.dispose();
     aboutController.dispose();
 
     nameFocusNode.dispose();
     phoneFocusNode.dispose();
+    contactEmailFocusNode.dispose();
     aboutFocusNode.dispose();
 
     super.dispose();
@@ -109,6 +125,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               ),
             ),
             const SizedBox(height: 16),
+
             TextField(
               controller: phoneController,
               focusNode: phoneFocusNode,
@@ -116,6 +133,17 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               textInputAction: TextInputAction.next,
               decoration: const InputDecoration(
                 labelText: 'Телефон',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: contactEmailController,
+              focusNode: contactEmailFocusNode,
+              keyboardType: TextInputType.emailAddress,
+              textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(
+                labelText: 'E-mail',
                 border: OutlineInputBorder(),
               ),
             ),

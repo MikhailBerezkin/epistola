@@ -1,10 +1,11 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show HapticFeedback;
 
-import '../services/app_settings.dart';
+import '../widgets/profile_header.dart';
+import '../widgets/profile_info_card.dart';
 import 'edit_profile_screen.dart';
+import 'settings_screen.dart';
 
 class ProfilePage extends StatelessWidget {
   const ProfilePage({super.key});
@@ -16,6 +17,7 @@ class ProfilePage extends StatelessWidget {
     required String phone,
     required String about,
     required EditProfileField initialField,
+    required String contactEmail,
   }) {
     Navigator.push(
       context,
@@ -26,6 +28,7 @@ class ProfilePage extends StatelessWidget {
           phone: phone,
           about: about,
           initialField: initialField,
+          contactEmail: contactEmail,
         ),
       ),
     );
@@ -54,27 +57,35 @@ class ProfilePage extends StatelessWidget {
         final userName = data?['name'] ?? 'Пользователь';
         final phone = data?['phone'] ?? '';
         final about = data?['about'] ?? '';
+        final contactEmail = data?['contactEmail'] ?? '';
+
+        final hasPhone = phone.toString().isNotEmpty;
+        final hasEmail = contactEmail.toString().isNotEmpty;
+
+        final contactTitle = hasPhone && hasEmail
+            ? 'Телефон / e-mail'
+            : hasPhone
+            ? 'Телефон'
+            : hasEmail
+            ? 'E-mail'
+            : 'Контакты';
+
+        final contactSubtitle = hasPhone && hasEmail
+            ? '$phone\n$contactEmail'
+            : hasPhone
+            ? phone.toString()
+            : hasEmail
+            ? contactEmail.toString()
+            : 'Не указаны';
 
         return Padding(
           padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
+          child: ListView(
             children: [
-              const SizedBox(height: 24),
-              CircleAvatar(
-                radius: 48,
-                child: Text(
-                  userName.isNotEmpty ? userName[0].toUpperCase() : '?',
-                  style: const TextStyle(
-                    fontSize: 32,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              InkWell(
-                borderRadius: BorderRadius.circular(16),
-                onTap: () {
+              ProfileHeader(
+                name: userName,
+                email: '',
+                onNameTap: () {
                   openEditProfile(
                     context: context,
                     uid: user.uid,
@@ -82,106 +93,101 @@ class ProfilePage extends StatelessWidget {
                     phone: phone,
                     about: about,
                     initialField: EditProfileField.name,
+                    contactEmail: contactEmail,
                   );
                 },
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 4,
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        userName,
-                        style: const TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      const Icon(Icons.edit, size: 20),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                user.email ?? '',
-                style: TextStyle(color: Theme.of(context).colorScheme.outline),
               ),
               const SizedBox(height: 24),
-              Card(
-                child: ListTile(
-                  leading: const Icon(Icons.badge),
-                  title: const Text('UID'),
-                  subtitle: Text(user.uid),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Card(
-                child: ListTile(
-                  leading: const Icon(Icons.phone),
-                  title: const Text('Телефон'),
-                  subtitle: Text(
-                    phone.toString().isNotEmpty ? phone : 'Не указан',
-                  ),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () {
-                    openEditProfile(
-                      context: context,
-                      uid: user.uid,
-                      name: userName,
-                      phone: phone,
-                      about: about,
-                      initialField: EditProfileField.phone,
-                    );
-                  },
-                ),
-              ),
-              const SizedBox(height: 12),
-              Card(
-                child: ListTile(
-                  leading: const Icon(Icons.info_outline),
-                  title: const Text('О себе'),
-                  subtitle: Text(
-                    about.toString().isNotEmpty ? about : 'Пока пусто',
-                  ),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () {
-                    openEditProfile(
-                      context: context,
-                      uid: user.uid,
-                      name: userName,
-                      phone: phone,
-                      about: about,
-                      initialField: EditProfileField.about,
-                    );
-                  },
-                ),
-              ),
-              const SizedBox(height: 12),
-              Card(
-                child: ListTile(
-                  leading: const Icon(Icons.dark_mode),
-                  title: const Text('Тёмная тема'),
-                  trailing: ValueListenableBuilder<ThemeMode>(
-                    valueListenable: AppSettings.themeModeNotifier,
-                    builder: (context, mode, _) {
-                      return Switch(
-                        value: mode == ThemeMode.dark,
-                        onChanged: (value) {
-                          HapticFeedback.selectionClick();
 
-                          AppSettings.setThemeMode(
-                            value ? ThemeMode.dark : ThemeMode.light,
+              ProfileInfoCard(
+                icon: Icons.contact_phone,
+                title: contactTitle,
+                subtitle: contactSubtitle,
+                showChevron: true,
+                onTap: () async {
+                  final selectedField =
+                      await showModalBottomSheet<EditProfileField>(
+                        context: context,
+                        showDragHandle: true,
+                        builder: (context) {
+                          return SafeArea(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const ListTile(
+                                  title: Text(
+                                    'Контактная информация',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                                ListTile(
+                                  leading: const Icon(Icons.phone),
+                                  title: const Text('Телефон'),
+                                  onTap: () => Navigator.pop(
+                                    context,
+                                    EditProfileField.phone,
+                                  ),
+                                ),
+                                ListTile(
+                                  leading: const Icon(Icons.email_outlined),
+                                  title: const Text('E-mail'),
+                                  onTap: () => Navigator.pop(
+                                    context,
+                                    EditProfileField.contactEmail,
+                                  ),
+                                ),
+                              ],
+                            ),
                           );
                         },
                       );
-                    },
-                  ),
-                ),
+
+                  if (selectedField == null || !context.mounted) return;
+
+                  openEditProfile(
+                    context: context,
+                    uid: user.uid,
+                    name: userName,
+                    phone: phone,
+                    contactEmail: contactEmail,
+                    about: about,
+                    initialField: selectedField,
+                  );
+                },
+              ),
+              const SizedBox(height: 12),
+              ProfileInfoCard(
+                icon: Icons.info_outline,
+                title: 'О себе',
+                subtitle: about.toString().isNotEmpty ? about : 'Пока пусто',
+                showChevron: true,
+                onTap: () {
+                  openEditProfile(
+                    context: context,
+                    uid: user.uid,
+                    name: userName,
+                    phone: phone,
+                    about: about,
+                    initialField: EditProfileField.about,
+                    contactEmail: contactEmail,
+                  );
+                },
+              ),
+              const SizedBox(height: 12),
+
+              ProfileInfoCard(
+                icon: Icons.settings,
+                title: 'Настройки',
+                subtitle: 'Тема, уведомления, выход',
+                showChevron: true,
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                  );
+                },
               ),
             ],
           ),
