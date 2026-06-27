@@ -8,6 +8,8 @@ import '../widgets/chat/message_input_area.dart';
 import '../widgets/chat/banned_overlay.dart';
 
 import 'dart:async';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../services/notification_service.dart';
 
 class ChatScreen extends StatefulWidget {
   final String chatId;
@@ -22,11 +24,49 @@ class ChatScreen extends StatefulWidget {
 class _ChatScreenState extends State<ChatScreen> {
   final messageController = TextEditingController();
   final chatService = ChatService();
+  StreamSubscription<QuerySnapshot>? messagesSubscription;
+  String? lastNotifiedMessageId;
 
   @override
   void initState() {
     super.initState();
     chatService.markChatAsRead(widget.chatId);
+    startIncomingMessageListener();
+  }
+
+  void startIncomingMessageListener() {
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) return;
+
+    messagesSubscription = FirebaseFirestore.instance
+        .collection('chats')
+        .doc(widget.chatId)
+        .collection('messages')
+        .orderBy('createdAt', descending: true)
+        .limit(1)
+        .snapshots()
+        .listen((snapshot) async {
+          if (snapshot.docs.isEmpty) return;
+
+          final latestMessage = snapshot.docs.first;
+          final data = latestMessage.data();
+
+          final messageId = latestMessage.id;
+          final senderId = data['senderId'];
+
+          if (lastNotifiedMessageId == null) {
+            lastNotifiedMessageId = messageId;
+            return;
+          }
+
+          if (messageId == lastNotifiedMessageId) return;
+
+          lastNotifiedMessageId = messageId;
+
+          if (senderId == currentUser.uid) return;
+
+          await NotificationService.vibrate();
+        });
   }
 
   Future<void> sendMessage() async {
@@ -42,6 +82,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
+    messagesSubscription?.cancel();
     messageController.dispose();
     super.dispose();
   }
