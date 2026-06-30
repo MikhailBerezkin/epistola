@@ -1,7 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show HapticFeedback;
-
+import 'package:flutter/services.dart';
 import 'chats_page.dart';
 import 'profile_page.dart';
 import 'spaces_page.dart';
@@ -67,61 +66,80 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        title: const Text('Epistola'),
-        actions: [
-          IconButton(
-            onPressed: () {
-              HapticFeedback.selectionClick();
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
 
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const ChatSearchScreen()),
-              );
-            },
-            icon: const Icon(Icons.search),
-            tooltip: 'Поиск',
-          ),
-        ],
-      ),
-      body: getCurrentPage(),
-      floatingActionButton: selectedIndex == 0
-          ? FloatingActionButton(
-              onPressed: onAddPressed,
-              child: const Icon(Icons.add),
-            )
-          : null,
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: selectedIndex,
-        onDestinationSelected: (index) {
-          HapticFeedback.selectionClick();
-          setState(() => selectedIndex = index);
-        },
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.chat_bubble_outline),
-            selectedIcon: Icon(Icons.chat_bubble),
-            label: 'Чаты',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.hub_outlined),
-            selectedIcon: Icon(Icons.hub),
-            label: 'Пространства',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.menu_book_outlined),
-            selectedIcon: Icon(Icons.menu_book),
-            label: 'Контакты',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.person_outline),
-            selectedIcon: Icon(Icons.person),
-            label: 'Профиль',
-          ),
-        ],
-      ),
-    );
+        if (selectedIndex != 0) {
+          setState(() {
+            selectedIndex = 0;
+          });
+          return;
+        }
+
+        SystemNavigator.pop();
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          automaticallyImplyLeading: false,
+          title: const Text('Epistola'),
+          actions: selectedIndex == 0
+              ? [
+                  IconButton(
+                    onPressed: () {
+                      HapticFeedback.selectionClick();
+
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const ChatSearchScreen(),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.search),
+                    tooltip: 'Поиск',
+                  ),
+                ]
+              : [],
+        ),
+        body: getCurrentPage(),
+        floatingActionButton: selectedIndex == 0
+            ? FloatingActionButton(
+                onPressed: onAddPressed,
+                child: const Icon(Icons.add),
+              )
+            : null,
+        bottomNavigationBar: NavigationBar(
+          selectedIndex: selectedIndex,
+          onDestinationSelected: (index) {
+            HapticFeedback.selectionClick();
+            setState(() => selectedIndex = index);
+          },
+          destinations: const [
+            NavigationDestination(
+              icon: Icon(Icons.chat_bubble_outline),
+              selectedIcon: Icon(Icons.chat_bubble),
+              label: 'Чаты',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.hub_outlined),
+              selectedIcon: Icon(Icons.hub),
+              label: 'Пространства',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.menu_book_outlined),
+              selectedIcon: Icon(Icons.menu_book),
+              label: 'Контакты',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.person_outline),
+              selectedIcon: Icon(Icons.person),
+              label: 'Профиль',
+            ),
+          ],
+        ),
+      ), // Scaffold
+    ); // PopScope
   }
 }

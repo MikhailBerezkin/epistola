@@ -17,9 +17,16 @@ class ContactsScreen extends StatefulWidget {
 class _ContactsScreenState extends State<ContactsScreen> {
   final ChatService _chatService = ChatService();
   final TextEditingController _searchController = TextEditingController();
+  late final Future<List<AppUser>> _usersFuture;
 
   String _query = '';
   ContactsSortMode _sortMode = ContactsSortMode.alphabet;
+
+  @override
+  void initState() {
+    super.initState();
+    _usersFuture = _chatService.getAllUsers();
+  }
 
   @override
   void dispose() {
@@ -211,7 +218,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
         ],
       ),
       body: FutureBuilder<List<AppUser>>(
-        future: _chatService.getAllUsers(),
+        future: _usersFuture,
         builder: (context, snapshot) {
           if (snapshot.hasError) {
             return Center(child: Text('Ошибка: ${snapshot.error}'));

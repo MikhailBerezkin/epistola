@@ -3,8 +3,6 @@ import 'package:flutter/services.dart';
 
 import '../models/app_user.dart';
 import '../services/chat_service.dart';
-import '../widgets/found_user_card.dart';
-import '../widgets/user_search_input.dart';
 import 'chat_screen.dart';
 
 class UserSearchScreen extends StatefulWidget {
@@ -15,75 +13,82 @@ class UserSearchScreen extends StatefulWidget {
 }
 
 class _UserSearchScreenState extends State<UserSearchScreen> {
-  final searchController = TextEditingController();
-  final chatService = ChatService();
+  final ChatService _chatService = ChatService();
+  final TextEditingController _searchController = TextEditingController();
 
-  List<AppUser> foundUsers = [];
-  bool isLoading = false;
-  String? errorText;
+  late final Future<List<AppUser>> _usersFuture;
 
-  Future<void> searchUsers() async {
-    final searchText = searchController.text.trim();
+  String _query = '';
+  bool _isOpeningChat = false;
 
-    if (searchText.isEmpty) {
-      setState(() {
-        foundUsers = [];
-        errorText = 'Введите email или телефон пользователя';
-      });
-      return;
-    }
-
-    HapticFeedback.selectionClick();
-
-    setState(() {
-      isLoading = true;
-      foundUsers = [];
-      errorText = null;
-    });
-
-    try {
-      final users = await chatService.searchUsers(searchText);
-
-      if (!mounted) return;
-
-      setState(() {
-        foundUsers = users;
-        errorText = users.isEmpty ? 'Пользователь не найден' : null;
-      });
-    } catch (e) {
-      if (!mounted) return;
-
-      setState(() {
-        foundUsers = [];
-        errorText = 'Ошибка поиска пользователя';
-      });
-    } finally {
-      if (mounted) {
-        setState(() => isLoading = false);
-      }
-    }
+  @override
+  void initState() {
+    super.initState();
+    _usersFuture = _chatService.getAllUsers();
   }
 
-  Future<void> openChat(AppUser user) async {
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  String _displayName(AppUser user) {
+    return user.name.isNotEmpty ? user.name : 'Без имени';
+  }
+
+  String _subtitle(AppUser user) {
+    if (user.phone.isNotEmpty) {
+      return '${user.phone} • ${user.email}';
+    }
+
+    return user.email;
+  }
+
+  List<AppUser> _filterAndSortUsers(List<AppUser> users) {
+    final normalizedQuery = _query.trim().toLowerCase();
+
+    final filteredUsers = users.where((user) {
+      if (normalizedQuery.isEmpty) return true;
+
+      final name = user.name.toLowerCase();
+      final email = user.email.toLowerCase();
+      final phone = user.phone.toLowerCase();
+
+      return name.contains(normalizedQuery) ||
+          email.contains(normalizedQuery) ||
+          phone.contains(normalizedQuery);
+    }).toList();
+
+    filteredUsers.sort((a, b) {
+      return _displayName(
+        a,
+      ).toLowerCase().compareTo(_displayName(b).toLowerCase());
+    });
+
+    return filteredUsers;
+  }
+
+  Future<void> _openChat(AppUser user) async {
+    if (_isOpeningChat) return;
+
     HapticFeedback.lightImpact();
 
-    setState(() => isLoading = true);
+    setState(() => _isOpeningChat = true);
 
     try {
-      final chatId = await chatService.getOrCreatePrivateChat(user);
+      final chatId = await _chatService.getOrCreatePrivateChat(user);
 
       if (!mounted) return;
 
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (_) => ChatScreen(
-            chatId: chatId,
-            chatName: user.name.isNotEmpty ? user.name : user.email,
-          ),
+          builder: (_) =>
+              ChatScreen(chatId: chatId, chatName: _displayName(user)),
         ),
       );
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
 
       ScaffoldMessenger.of(
@@ -91,53 +96,93 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
       ).showSnackBar(const SnackBar(content: Text('Не удалось открыть чат')));
     } finally {
       if (mounted) {
-        setState(() => isLoading = false);
+        setState(() => _isOpeningChat = false);
       }
     }
   }
 
-  @override
-  void dispose() {
-    searchController.dispose();
-    super.dispose();
+  Widget _buildUserTile(AppUser user) {
+    final displayName = _displayName(user);
+
+    return ListTile(
+      enabled: !_isOpeningChat,
+      leading: CircleAvatar(child: Text(displayName[0].toUpperCase())),
+      title: Text(displayName),
+      subtitle: Text(_subtitle(user)),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: () => _openChat(user),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Поиск пользователя')),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            UserSearchInput(
-              controller: searchController,
-              isLoading: isLoading,
-              onSearch: searchUsers,
-            ),
-            const SizedBox(height: 24),
-            if (errorText != null)
-              Text(
-                errorText!,
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
-              ),
-            if (foundUsers.isNotEmpty)
-              Expanded(
-                child: ListView.builder(
-                  itemCount: foundUsers.length,
-                  itemBuilder: (context, index) {
-                    final user = foundUsers[index];
+      body: FutureBuilder<List<AppUser>>(
+        future: _usersFuture,
+        builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return Center(child: Text('Ошибка: ${snapshot.error}'));
+          }
 
-                    return FoundUserCard(
-                      user: user,
-                      isLoading: isLoading,
-                      onOpenChat: () => openChat(user),
-                    );
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          final users = snapshot.data ?? [];
+          final visibleUsers = _filterAndSortUsers(users);
+
+          return Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                child: TextField(
+                  controller: _searchController,
+                  enabled: !_isOpeningChat,
+                  decoration: InputDecoration(
+                    prefixIcon: const Icon(Icons.search),
+                    hintText: 'Поиск по имени, email или телефону',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    suffixIcon: _query.isEmpty
+                        ? null
+                        : IconButton(
+                            icon: const Icon(Icons.close),
+                            onPressed: () {
+                              _searchController.clear();
+
+                              setState(() {
+                                _query = '';
+                              });
+                            },
+                          ),
+                  ),
+                  onChanged: (value) {
+                    setState(() {
+                      _query = value;
+                    });
                   },
                 ),
               ),
-          ],
-        ),
+              const Divider(height: 1),
+              if (visibleUsers.isEmpty)
+                const Expanded(
+                  child: Center(child: Text('Пользователи не найдены')),
+                )
+              else
+                Expanded(
+                  child: ListView.separated(
+                    itemCount: visibleUsers.length,
+                    separatorBuilder: (_, _) => const Divider(height: 1),
+                    itemBuilder: (context, index) {
+                      return _buildUserTile(visibleUsers[index]);
+                    },
+                  ),
+                ),
+            ],
+          );
+        },
       ),
     );
   }
