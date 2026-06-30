@@ -222,6 +222,9 @@ function isPrivateChatSelfRepair() {
       'isDissolved'
     ]);
 }
+function isPrivateChatIdParticipant(chatId) {
+  return chatId.matches('.*' + request.auth.uid + '.*');
+}
 
     match /users/{userId} {
       allow read: if signedIn();
@@ -236,8 +239,14 @@ function isPrivateChatSelfRepair() {
     }
 
     match /chats/{chatId} {
-      allow read: if signedIn()
-          && request.auth.uid in resource.data.memberIds;
+      allow get: if signedIn()
+  && (
+    isPrivateChatIdParticipant(chatId)
+    || request.auth.uid in resource.data.memberIds
+  );
+
+allow list: if signedIn()
+  && request.auth.uid in resource.data.memberIds;
 
       allow create: if signedIn();
 

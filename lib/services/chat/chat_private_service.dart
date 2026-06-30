@@ -16,7 +16,11 @@ class ChatPrivateService extends ChatBaseService {
     final chatRef = firestore.collection('chats').doc(chatId);
 
     final currentUserEmail = currentUser.email;
-    final memberEmails = <String>[?currentUserEmail, otherUser.email];
+    final memberEmails = <String>[
+      if (currentUserEmail != null && currentUserEmail.isNotEmpty)
+        currentUserEmail,
+      if (otherUser.email.isNotEmpty) otherUser.email,
+    ];
 
     final chatSnapshot = await chatRef.get();
 
@@ -38,19 +42,21 @@ class ChatPrivateService extends ChatBaseService {
         'lastMessage': '',
         'lastMessageAt': FieldValue.serverTimestamp(),
       });
-    } else {
-      await chatRef.set({
-        'memberIds': FieldValue.arrayUnion([currentUser.uid, otherUser.uid]),
-        'memberEmails': FieldValue.arrayUnion(memberEmails),
-        'memberRoles': {currentUser.uid: 'member', otherUser.uid: 'member'},
-        'memberStatus': {
-          currentUser.uid: {'status': 'normal'},
-          otherUser.uid: {'status': 'normal'},
-        },
-        'lastRead': {currentUser.uid: FieldValue.serverTimestamp()},
-        'isDissolved': false,
-      }, SetOptions(merge: true));
+
+      return chatId;
     }
+
+    await chatRef.update({
+      'type': 'private',
+      'memberIds': FieldValue.arrayUnion([currentUser.uid, otherUser.uid]),
+      'memberEmails': FieldValue.arrayUnion(memberEmails),
+      'memberRoles.${currentUser.uid}': 'member',
+      'memberRoles.${otherUser.uid}': 'member',
+      'memberStatus.${currentUser.uid}.status': 'normal',
+      'memberStatus.${otherUser.uid}.status': 'normal',
+      'lastRead.${currentUser.uid}': FieldValue.serverTimestamp(),
+      'isDissolved': false,
+    });
 
     return chatId;
   }
