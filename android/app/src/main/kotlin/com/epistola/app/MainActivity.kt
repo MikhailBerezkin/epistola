@@ -1,4 +1,4 @@
-package com.example.epistola
+package com.epistola.app
 
 import io.flutter.embedding.android.FlutterActivity
 

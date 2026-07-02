@@ -41,46 +41,46 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyCfuv0DI5AC_otHZn8zwHFEvLAHQ1VeTqg',
-    appId: '1:995006917916:web:4fad7f564a305b2e8aded9',
-    messagingSenderId: '995006917916',
-    projectId: 'epistola-app',
-    authDomain: 'epistola-app.firebaseapp.com',
-    storageBucket: 'epistola-app.firebasestorage.app',
+    apiKey: 'AIzaSyB_d5FrzM3OAwXHC4caG2ppmnHfG7LGv_w',
+    appId: '1:636745926786:web:e2c56f3ab818fe578e4c9b',
+    messagingSenderId: '636745926786',
+    projectId: 'epistola-434b7',
+    authDomain: 'epistola-434b7.firebaseapp.com',
+    storageBucket: 'epistola-434b7.firebasestorage.app',
+    measurementId: 'G-CST8DBH89X',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyAx_3erbskZmbSSU7m9nNk679aVycMgTgE',
-    appId: '1:995006917916:android:573a75e9a577391e8aded9',
-    messagingSenderId: '995006917916',
-    projectId: 'epistola-app',
-    storageBucket: 'epistola-app.firebasestorage.app',
+    apiKey: 'AIzaSyBWFu9QITMQrDmkV5pXkEfDvR4I3Jk0UvA',
+    appId: '1:636745926786:android:e5fb63f4eb7e59528e4c9b',
+    messagingSenderId: '636745926786',
+    projectId: 'epistola-434b7',
+    storageBucket: 'epistola-434b7.firebasestorage.app',
   );
-
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyAhQQw3-ao0rkz16ZOm_wQjuTsuH3KrRKA',
-    appId: '1:995006917916:ios:389825d8eb02a9b08aded9',
-    messagingSenderId: '995006917916',
-    projectId: 'epistola-app',
-    storageBucket: 'epistola-app.firebasestorage.app',
+    apiKey: 'AIzaSyBuKp_TCUEP9UEcbKi93olN6D5JM5NNuyM',
+    appId: '1:636745926786:ios:dce4f8c000848ab28e4c9b',
+    messagingSenderId: '636745926786',
+    projectId: 'epistola-434b7',
+    storageBucket: 'epistola-434b7.firebasestorage.app',
     iosBundleId: 'com.example.epistola',
   );
-
   static const FirebaseOptions macos = FirebaseOptions(
-    apiKey: 'AIzaSyAhQQw3-ao0rkz16ZOm_wQjuTsuH3KrRKA',
-    appId: '1:995006917916:ios:389825d8eb02a9b08aded9',
-    messagingSenderId: '995006917916',
-    projectId: 'epistola-app',
-    storageBucket: 'epistola-app.firebasestorage.app',
+    apiKey: 'AIzaSyBuKp_TCUEP9UEcbKi93olN6D5JM5NNuyM',
+    appId: '1:636745926786:ios:dce4f8c000848ab28e4c9b',
+    messagingSenderId: '636745926786',
+    projectId: 'epistola-434b7',
+    storageBucket: 'epistola-434b7.firebasestorage.app',
     iosBundleId: 'com.example.epistola',
   );
 
   static const FirebaseOptions windows = FirebaseOptions(
-    apiKey: 'AIzaSyCfuv0DI5AC_otHZn8zwHFEvLAHQ1VeTqg',
-    appId: '1:995006917916:web:5b648683689d8ab38aded9',
-    messagingSenderId: '995006917916',
-    projectId: 'epistola-app',
-    authDomain: 'epistola-app.firebaseapp.com',
-    storageBucket: 'epistola-app.firebasestorage.app',
+    apiKey: 'AIzaSyB_d5FrzM3OAwXHC4caG2ppmnHfG7LGv_w',
+    appId: '1:636745926786:web:39abc834d8a7e7ce8e4c9b',
+    messagingSenderId: '636745926786',
+    projectId: 'epistola-434b7',
+    authDomain: 'epistola-434b7.firebaseapp.com',
+    storageBucket: 'epistola-434b7.firebasestorage.app',
+    measurementId: 'G-T51KTGN8X6',
   );
 }
