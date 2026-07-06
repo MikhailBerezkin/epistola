@@ -4,6 +4,14 @@
 
 ---
 
+ARCHITECTURE/
+    00_overview.md
+    01_backend.md
+    02_firestore.md
+    03_media.md
+    04_ui.md
+    ...         нужно переработать структуру ARCHITECTURE.md разделить её на отдельные части или файлы.
+
 # Статус документа
 
 | Параметр | Значение |

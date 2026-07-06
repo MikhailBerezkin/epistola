@@ -276,6 +276,24 @@ firebase.cmd deploy --only firestore:indexes
 - Просмотр изображений
 - Карточки файлов
 
+v0.6.2-dev - Media Foundation
+
+Media Foundation (v0.6.2)
+
+✔ Firebase Storage подключён
+
+✔ Storage Rules вынесены отдельно
+
+✔ Построен MediaStorageProvider
+
+✔ Построен FirebaseMediaStorageProvider
+
+✔ Добавлен MediaStorageService
+
+✔ Добавлен MediaPaths
+
+✔ Подготовлена возможность смены backend хранения
+
 ## Следующие этапы
 
 - Пользовательские аватары
