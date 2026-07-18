@@ -11,6 +11,49 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/chats/$(chatId));
     }
 
+    function currentUserDoc() {
+      return get(
+        /databases/$(database)/documents/users/$(request.auth.uid)
+      );
+    }
+
+    function hasValidMessageFields() {
+      return request.resource.data.keys().hasAll([
+            'text',
+            'senderId',
+            'senderEmail',
+            'senderName',
+            'createdAt'
+          ])
+          && request.resource.data.keys().hasOnly([
+            'text',
+            'senderId',
+            'senderEmail',
+            'senderName',
+            'createdAt'
+          ]);
+    }
+
+    function isValidNewMessage() {
+      let message = request.resource.data;
+      let profile = currentUserDoc().data;
+
+      return signedIn()
+          && hasValidMessageFields()
+          && message.text is string
+          && message.text == message.text.trim()
+          && message.text.size() > 0
+          && message.text.size() <= 4096
+          && message.senderId is string
+          && message.senderId == request.auth.uid
+          && message.senderEmail is string
+          && message.senderEmail == request.auth.token.email
+          && message.senderName is string
+          && message.senderName == profile.get('name', '')
+          && message.createdAt is timestamp
+          && message.createdAt == request.time;
+    }
+
     function isChatMember(chatId) {
       return signedIn()
           && request.auth.uid in chatDoc(chatId).data.memberIds;
@@ -23,69 +66,70 @@ service cloud.firestore {
     function getStatus(chatId) {
       return chatDoc(chatId).data.memberStatus[request.auth.uid].status;
     }
+
     function getStatusData(chatId) {
-  return chatDoc(chatId).data.memberStatus[request.auth.uid];
-}
+      return chatDoc(chatId).data.memberStatus[request.auth.uid];
+    }
 
-function isStatusActive(chatId) {
-  return getStatusData(chatId).permanent == true
-      || (
-        getStatusData(chatId).expiresAt is timestamp
-        && getStatusData(chatId).expiresAt > request.time
-      );
-}
+    function isStatusActive(chatId) {
+      return getStatusData(chatId).permanent == true
+          || (
+            getStatusData(chatId).expiresAt is timestamp
+            && getStatusData(chatId).expiresAt > request.time
+          );
+    }
 
-function isActivelyMutedOrBanned(chatId) {
-  return (
-        getStatus(chatId) == "muted"
-        || getStatus(chatId) == "banned"
-      )
-      && isStatusActive(chatId);
-}
+    function isActivelyMutedOrBanned(chatId) {
+      return (
+            getStatus(chatId) == 'muted'
+            || getStatus(chatId) == 'banned'
+          )
+          && isStatusActive(chatId);
+    }
 
     function getMessagePermission(chatId) {
       return chatDoc(chatId).data.groupSettings.messagePermission;
     }
 
     function isAdminOrOwner(chatId) {
-      return getRole(chatId) == "admin"
-          || getRole(chatId) == "owner";
+      return getRole(chatId) == 'admin'
+          || getRole(chatId) == 'owner';
     }
 
     function isModeratorOrAbove(chatId) {
-      return getRole(chatId) == "moderator"
-          || getRole(chatId) == "admin"
-          || getRole(chatId) == "owner";
+      return getRole(chatId) == 'moderator'
+          || getRole(chatId) == 'admin'
+          || getRole(chatId) == 'owner';
     }
+
     function isPrivateChat(chatId) {
-  return get(/databases/$(database)/documents/chats/$(chatId))
-      .data.type == "private";
-}
+      return chatDoc(chatId).data.type == 'private';
+    }
 
     function canWrite(chatId) {
-  return isChatMember(chatId)
-      && (
-        isPrivateChat(chatId)
-        ||
-        (
-          getRole(chatId) != "guest"
-&& !isActivelyMutedOrBanned(chatId)
-&& (
-  getMessagePermission(chatId) == "all"
-  ||
-  (
-    getMessagePermission(chatId) == "moderators"
-    && isModeratorOrAbove(chatId)
-  )
-  ||
-  (
-    getMessagePermission(chatId) == "admins"
-    && isAdminOrOwner(chatId)
-  )
-)
-        )
-      );
-}
+      return isChatMember(chatId)
+          && (
+            isPrivateChat(chatId)
+            ||
+            (
+              getRole(chatId) != 'guest'
+              && !isActivelyMutedOrBanned(chatId)
+              && (
+                getMessagePermission(chatId) == 'all'
+                ||
+                (
+                  getMessagePermission(chatId) == 'moderators'
+                  && isModeratorOrAbove(chatId)
+                )
+                ||
+                (
+                  getMessagePermission(chatId) == 'admins'
+                  && isAdminOrOwner(chatId)
+                )
+              )
+            )
+          );
+    }
 
     function currentRoleInChat() {
       return resource.data.memberRoles[request.auth.uid];
@@ -97,14 +141,14 @@ function isActivelyMutedOrBanned(chatId) {
     }
 
     function isCurrentAdminOrOwner() {
-      return currentRoleInChat() == "admin"
-          || currentRoleInChat() == "owner";
+      return currentRoleInChat() == 'admin'
+          || currentRoleInChat() == 'owner';
     }
 
     function isCurrentModeratorOrAbove() {
-      return currentRoleInChat() == "moderator"
-          || currentRoleInChat() == "admin"
-          || currentRoleInChat() == "owner";
+      return currentRoleInChat() == 'moderator'
+          || currentRoleInChat() == 'admin'
+          || currentRoleInChat() == 'owner';
     }
 
     function changedKeys() {
@@ -112,119 +156,123 @@ function isActivelyMutedOrBanned(chatId) {
     }
 
     function isOnlyLastReadUpdate() {
-      return changedKeys().hasOnly(["lastRead"]);
+      return changedKeys().hasOnly(['lastRead']);
     }
 
     function isOnlyLastMessageUpdate() {
-      return changedKeys().hasOnly(["lastMessage", "lastMessageAt"]);
+      return changedKeys().hasOnly(['lastMessage', 'lastMessageAt']);
     }
 
     function isAddMembersUpdate() {
       return changedKeys().hasOnly([
-        "memberIds",
-        "memberEmails",
-        "memberRoles",
-        "memberStatus"
+        'memberIds',
+        'memberEmails',
+        'memberRoles',
+        'memberStatus'
       ]);
     }
 
-function getMessagePermissionFromResource() {
-  return resource.data.groupSettings.messagePermission;
-}
+    function getMessagePermissionFromResource() {
+      return resource.data.groupSettings.messagePermission;
+    }
 
-function currentStatusInChat() {
-  return resource.data.memberStatus[request.auth.uid].status;
-}
+    function currentStatusInChat() {
+      return resource.data.memberStatus[request.auth.uid].status;
+    }
 
-function canAddMembersByPermission() {
-  return isCurrentMemberInChat()
-      && currentRoleInChat() != "guest"
-      && currentStatusInChat() != "muted"
-      && currentStatusInChat() != "banned"
-      && (
-        (
-          getMessagePermissionFromResource() == "all"
+    function canAddMembersByPermission() {
+      return isCurrentMemberInChat()
+          && currentRoleInChat() != 'guest'
+          && currentStatusInChat() != 'muted'
+          && currentStatusInChat() != 'banned'
           && (
-            currentRoleInChat() == "member"
-            || currentRoleInChat() == "moderator"
-            || currentRoleInChat() == "admin"
-            || currentRoleInChat() == "owner"
-          )
-        )
-        ||
-        (
-          getMessagePermissionFromResource() == "moderators"
-          && isCurrentModeratorOrAbove()
-        )
-        ||
-        (
-          getMessagePermissionFromResource() == "admins"
-          && isCurrentAdminOrOwner()
-        )
-      );
-}
-function isOnlyMemberStatusUpdate() {
-  return changedKeys().hasOnly(["memberStatus"]);
-}
+            (
+              getMessagePermissionFromResource() == 'all'
+              && (
+                currentRoleInChat() == 'member'
+                || currentRoleInChat() == 'moderator'
+                || currentRoleInChat() == 'admin'
+                || currentRoleInChat() == 'owner'
+              )
+            )
+            ||
+            (
+              getMessagePermissionFromResource() == 'moderators'
+              && isCurrentModeratorOrAbove()
+            )
+            ||
+            (
+              getMessagePermissionFromResource() == 'admins'
+              && isCurrentAdminOrOwner()
+            )
+          );
+    }
 
-function requestedMemberStatusValues() {
-  return request.resource.data.memberStatus.values();
-}
+    function isOnlyMemberStatusUpdate() {
+      return changedKeys().hasOnly(['memberStatus']);
+    }
 
-function isOnlyMuteOrNormalStatusUpdate() {
-  return requestedMemberStatusValues().hasOnly([
-    {"status": "normal"},
-    {"status": "muted"}
-  ]);
-}
+    function requestedMemberStatusValues() {
+      return request.resource.data.memberStatus.values();
+    }
 
-function canUpdateMemberStatus() {
-  return isCurrentMemberInChat()
-      && (
-        isCurrentAdminOrOwner()
-        ||
-        (
-          isCurrentModeratorOrAbove()
-          && isOnlyMuteOrNormalStatusUpdate()
-        )
-      );
-}
-function isLeaveGroupUpdate() {
-  return isCurrentMemberInChat()
-      && changedKeys().hasOnly([
-        "memberIds",
-        "memberEmails",
-        "memberRoles",
-        "memberStatus",
-        "lastRead"
-      ])
-      && !(request.auth.uid in request.resource.data.memberIds)
-      && !(request.auth.uid in request.resource.data.memberRoles.keys())
-      && !(request.auth.uid in request.resource.data.memberStatus.keys())
-      && !(request.auth.uid in request.resource.data.lastRead.keys());
-}
-function isPrivateChatSelfRepair() {
-  return signedIn()
-    && resource.data.type == 'private'
-    && request.auth.uid in resource.data.memberIds
-    && request.auth.uid in request.resource.data.memberIds
-    && request.resource.data.type == 'private'
-    && request.resource.data.memberIds == resource.data.memberIds
-    && request.resource.data.diff(resource.data).changedKeys().hasOnly([
-      'name',
-      'type',
-      'memberIds',
-      'memberEmails',
-      'memberRoles',
-      'memberStatus',
-      'groupSettings',
-      'lastRead',
-      'isDissolved'
-    ]);
-}
-function isPrivateChatIdParticipant(chatId) {
-  return chatId.matches('.*' + request.auth.uid + '.*');
-}
+    function isOnlyMuteOrNormalStatusUpdate() {
+      return requestedMemberStatusValues().hasOnly([
+        {'status': 'normal'},
+        {'status': 'muted'}
+      ]);
+    }
+
+    function canUpdateMemberStatus() {
+      return isCurrentMemberInChat()
+          && (
+            isCurrentAdminOrOwner()
+            ||
+            (
+              isCurrentModeratorOrAbove()
+              && isOnlyMuteOrNormalStatusUpdate()
+            )
+          );
+    }
+
+    function isLeaveGroupUpdate() {
+      return isCurrentMemberInChat()
+          && changedKeys().hasOnly([
+            'memberIds',
+            'memberEmails',
+            'memberRoles',
+            'memberStatus',
+            'lastRead'
+          ])
+          && !(request.auth.uid in request.resource.data.memberIds)
+          && !(request.auth.uid in request.resource.data.memberRoles.keys())
+          && !(request.auth.uid in request.resource.data.memberStatus.keys())
+          && !(request.auth.uid in request.resource.data.lastRead.keys());
+    }
+
+    function isPrivateChatSelfRepair() {
+      return signedIn()
+          && resource.data.type == 'private'
+          && request.auth.uid in resource.data.memberIds
+          && request.auth.uid in request.resource.data.memberIds
+          && request.resource.data.type == 'private'
+          && request.resource.data.memberIds == resource.data.memberIds
+          && request.resource.data.diff(resource.data).changedKeys().hasOnly([
+            'name',
+            'type',
+            'memberIds',
+            'memberEmails',
+            'memberRoles',
+            'memberStatus',
+            'groupSettings',
+            'lastRead',
+            'isDissolved'
+          ]);
+    }
+
+    function isPrivateChatIdParticipant(chatId) {
+      return chatId.matches('.*' + request.auth.uid + '.*');
+    }
 
     match /users/{userId} {
       allow read: if signedIn();
@@ -240,30 +288,31 @@ function isPrivateChatIdParticipant(chatId) {
 
     match /chats/{chatId} {
       allow get: if signedIn()
-  && (
-    isPrivateChatIdParticipant(chatId)
-    || request.auth.uid in resource.data.memberIds
-  );
+          && (
+            isPrivateChatIdParticipant(chatId)
+            || request.auth.uid in resource.data.memberIds
+          );
 
-allow list: if signedIn()
-  && request.auth.uid in resource.data.memberIds;
+      allow list: if signedIn()
+          && request.auth.uid in resource.data.memberIds;
 
       allow create: if signedIn();
 
       allow update: if isCurrentAdminOrOwner()
-    || (isCurrentMemberInChat() && isOnlyLastReadUpdate())
-    || (canWrite(chatId) && isOnlyLastMessageUpdate())
-    || (canAddMembersByPermission() && isAddMembersUpdate())
-    || (canUpdateMemberStatus() && isOnlyMemberStatusUpdate())
-    || isLeaveGroupUpdate()
-    || isPrivateChatSelfRepair();
+          || (isCurrentMemberInChat() && isOnlyLastReadUpdate())
+          || (canWrite(chatId) && isOnlyLastMessageUpdate())
+          || (canAddMembersByPermission() && isAddMembersUpdate())
+          || (canUpdateMemberStatus() && isOnlyMemberStatusUpdate())
+          || isLeaveGroupUpdate()
+          || isPrivateChatSelfRepair();
 
       allow delete: if false;
 
       match /messages/{messageId} {
         allow read: if isChatMember(chatId);
 
-        allow create: if canWrite(chatId);
+        allow create: if canWrite(chatId)
+            && isValidNewMessage();
 
         allow update, delete: if false;
       }
