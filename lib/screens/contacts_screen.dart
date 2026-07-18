@@ -4,6 +4,7 @@ import 'package:flutter/services.dart' show HapticFeedback;
 import '../models/app_user.dart';
 import '../services/chat_service.dart';
 import 'chat_screen.dart';
+import 'private_chat_draft_screen.dart';
 
 enum ContactsSortMode { alphabet }
 
@@ -79,14 +80,20 @@ class _ContactsScreenState extends State<ContactsScreen> {
     final navigator = Navigator.of(context);
 
     try {
-      final chatId = await _chatService.getOrCreatePrivateChat(user);
+      final chatId = _chatService.getPrivateChatId(user);
+      final chatExists = await _chatService.privateChatExists(chatId);
 
       if (!mounted) return;
 
       navigator.push(
         MaterialPageRoute(
-          builder: (_) =>
-              ChatScreen(chatId: chatId, chatName: _displayName(user)),
+          builder: (_) {
+            if (chatExists) {
+              return ChatScreen(chatId: chatId, chatName: _displayName(user));
+            }
+
+            return PrivateChatDraftScreen(otherUser: user);
+          },
         ),
       );
     } catch (error) {

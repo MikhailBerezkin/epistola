@@ -14,6 +14,7 @@ import '../widgets/group/member_status_card.dart';
 import '../widgets/group/member_role_card.dart';
 import '../widgets/group/role_selection_sheet.dart';
 import '../widgets/group/moderation_actions_section.dart';
+import 'private_chat_draft_screen.dart';
 
 class GroupMemberScreen extends StatelessWidget {
   final String chatId;
@@ -218,8 +219,10 @@ class GroupMemberScreen extends StatelessWidget {
                     onPressed: () async {
                       HapticFeedback.selectionClick();
 
-                      final chatId = await ChatService().getOrCreatePrivateChat(
-                        user,
+                      final chatService = ChatService();
+                      final chatId = chatService.getPrivateChatId(user);
+                      final chatExists = await chatService.privateChatExists(
+                        chatId,
                       );
 
                       if (!context.mounted) return;
@@ -227,12 +230,18 @@ class GroupMemberScreen extends StatelessWidget {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (_) => ChatScreen(
-                            chatId: chatId,
-                            chatName: user.name.isNotEmpty
-                                ? user.name
-                                : user.email,
-                          ),
+                          builder: (_) {
+                            if (chatExists) {
+                              return ChatScreen(
+                                chatId: chatId,
+                                chatName: user.name.isNotEmpty
+                                    ? user.name
+                                    : user.email,
+                              );
+                            }
+
+                            return PrivateChatDraftScreen(otherUser: user);
+                          },
                         ),
                       );
                     },

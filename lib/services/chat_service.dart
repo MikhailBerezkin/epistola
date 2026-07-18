@@ -146,8 +146,22 @@ class ChatService {
     return search.findUserByEmailOrPhone(value);
   }
 
-  Future<String> getOrCreatePrivateChat(AppUser otherUser) {
-    return private.getOrCreatePrivateChat(otherUser);
+  String getPrivateChatId(AppUser otherUser) {
+    return private.getPrivateChatId(otherUser);
+  }
+
+  Future<bool> privateChatExists(String chatId) {
+    return private.privateChatExists(chatId);
+  }
+
+  Future<String> createPrivateChatWithFirstMessage({
+    required AppUser otherUser,
+    required String text,
+  }) {
+    return private.createPrivateChatWithFirstMessage(
+      otherUser: otherUser,
+      text: text,
+    );
   }
 
   Future<void> sendMessage({required String chatId, required String text}) {

@@ -17,42 +17,45 @@ service cloud.firestore {
       );
     }
 
-    function hasValidMessageFields() {
-      return request.resource.data.keys().hasAll([
-            'text',
-            'senderId',
-            'senderEmail',
-            'senderName',
-            'createdAt'
-          ])
-          && request.resource.data.keys().hasOnly([
-            'text',
-            'senderId',
-            'senderEmail',
-            'senderName',
-            'createdAt'
-          ]);
-    }
+    function hasValidMessageFields(message) {
+  return message.keys().hasAll([
+        'text',
+        'senderId',
+        'senderEmail',
+        'senderName',
+        'createdAt'
+      ])
+      && message.keys().hasOnly([
+        'text',
+        'senderId',
+        'senderEmail',
+        'senderName',
+        'createdAt'
+      ]);
+}
 
-    function isValidNewMessage() {
-      let message = request.resource.data;
-      let profile = currentUserDoc().data;
+function isValidMessageData(message) {
+  let profile = currentUserDoc().data;
 
-      return signedIn()
-          && hasValidMessageFields()
-          && message.text is string
-          && message.text == message.text.trim()
-          && message.text.size() > 0
-          && message.text.size() <= 4096
-          && message.senderId is string
-          && message.senderId == request.auth.uid
-          && message.senderEmail is string
-          && message.senderEmail == request.auth.token.email
-          && message.senderName is string
-          && message.senderName == profile.get('name', '')
-          && message.createdAt is timestamp
-          && message.createdAt == request.time;
-    }
+  return signedIn()
+      && hasValidMessageFields(message)
+      && message.text is string
+      && message.text == message.text.trim()
+      && message.text.size() > 0
+      && message.text.size() <= 4096
+      && message.senderId is string
+      && message.senderId == request.auth.uid
+      && message.senderEmail is string
+      && message.senderEmail == request.auth.token.email
+      && message.senderName is string
+      && message.senderName == profile.get('name', '')
+      && message.createdAt is timestamp
+      && message.createdAt == request.time;
+}
+
+function isValidNewMessage() {
+  return isValidMessageData(request.resource.data);
+}
     function hasValidPrivateChatFields() {
   return request.resource.data.keys().hasAll([
         'name',
@@ -66,7 +69,8 @@ service cloud.firestore {
         'isDissolved',
         'createdAt',
         'lastMessage',
-        'lastMessageAt'
+        'lastMessageAt',
+        'firstMessageId'
       ])
       && request.resource.data.keys().hasOnly([
         'name',
@@ -80,7 +84,8 @@ service cloud.firestore {
         'isDissolved',
         'createdAt',
         'lastMessage',
-        'lastMessageAt'
+        'lastMessageAt',
+        'firstMessageId'
       ]);
 }
 
@@ -88,6 +93,10 @@ function isValidPrivateChatCreate(chatId) {
   let chat = request.resource.data;
   let firstId = chat.memberIds[0];
   let secondId = chat.memberIds[1];
+  let firstMessageId = chat.firstMessageId;
+  let firstMessage = getAfter(
+    /databases/$(database)/documents/chats/$(chatId)/messages/$(firstMessageId)
+  ).data;
 
   return hasValidPrivateChatFields()
       && chat.name == 'private_chat'
@@ -145,12 +154,24 @@ function isValidPrivateChatCreate(chatId) {
       && chat.lastRead[request.auth.uid] == request.time
 
       && chat.isDissolved == false
+
       && chat.createdAt is timestamp
       && chat.createdAt == request.time
+
       && chat.lastMessage is string
-      && chat.lastMessage == ''
+      && chat.lastMessage == chat.lastMessage.trim()
+      && chat.lastMessage.size() > 0
+      && chat.lastMessage.size() <= 4096
+
       && chat.lastMessageAt is timestamp
-      && chat.lastMessageAt == request.time;
+      && chat.lastMessageAt == request.time
+
+      && chat.firstMessageId is string
+      && chat.firstMessageId.size() > 0
+
+      && isValidMessageData(firstMessage)
+      && firstMessage.text == chat.lastMessage
+      && firstMessage.createdAt == chat.lastMessageAt;
 }
 
 function isValidChatCreate(chatId) {
@@ -164,6 +185,24 @@ function isValidChatCreate(chatId) {
         )
         || chatType == 'group'
       );
+}
+function isFirstMessageForNewPrivateChat(chatId, messageId) {
+  let chatAfter = getAfter(
+    /databases/$(database)/documents/chats/$(chatId)
+  ).data;
+
+  return signedIn()
+      && !exists(
+        /databases/$(database)/documents/chats/$(chatId)
+      )
+      && chatAfter.type == 'private'
+      && chatAfter.firstMessageId == messageId
+      && chatAfter.memberIds is list
+      && chatAfter.memberIds.size() == 2
+      && request.auth.uid in chatAfter.memberIds
+      && chatAfter.lastMessage == request.resource.data.text
+      && chatAfter.lastMessageAt == request.time
+      && chatAfter.createdAt == request.time;
 }
 
     function isChatMember(chatId) {
@@ -423,8 +462,11 @@ function isValidChatCreate(chatId) {
       match /messages/{messageId} {
         allow read: if isChatMember(chatId);
 
-        allow create: if canWrite(chatId)
-            && isValidNewMessage();
+        allow create: if isValidNewMessage()
+    && (
+      isFirstMessageForNewPrivateChat(chatId, messageId)
+      || canWrite(chatId)
+    );
 
         allow update, delete: if false;
       }
