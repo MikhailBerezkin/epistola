@@ -154,6 +154,10 @@ class ChatService {
     return private.privateChatExists(chatId);
   }
 
+  Future<void> clearPrivateChatForCurrentUser(String chatId) {
+    return private.clearPrivateChatForCurrentUser(chatId);
+  }
+
   Future<String> createPrivateChatWithFirstMessage({
     required AppUser otherUser,
     required String text,
@@ -168,8 +172,8 @@ class ChatService {
     return messages.sendMessage(chatId: chatId, text: text);
   }
 
-  Stream<QuerySnapshot> getMessages(String chatId) {
-    return messages.getMessages(chatId);
+  Stream<QuerySnapshot> getMessages(String chatId, {Timestamp? after}) {
+    return messages.getMessages(chatId, after: after);
   }
 
   Future<void> markChatAsRead(String chatId) {

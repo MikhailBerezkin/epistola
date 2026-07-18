@@ -115,15 +115,45 @@ class _ChatScreenState extends State<ChatScreen> {
               builder: (context, snapshot) {
                 final data = snapshot.data?.data() as Map<String, dynamic>?;
 
+                if (snapshot.connectionState == ConnectionState.waiting &&
+                    data == null) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+
+                if (data == null) {
+                  return const Center(child: Text('Чат недоступен'));
+                }
+
                 final memberRoles =
-                    (data?['memberRoles'] as Map<String, dynamic>?) ?? {};
+                    (data['memberRoles'] as Map<String, dynamic>?) ?? {};
+
+                final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+
+                final chatType = data['type'] ?? 'group';
+
+                Timestamp? visibleAfter;
+
+                if (chatType == 'private' && currentUserId != null) {
+                  final clearedAtByUser =
+                      (data['clearedAtByUser'] as Map<String, dynamic>?) ?? {};
+
+                  final clearedAt = clearedAtByUser[currentUserId];
+
+                  if (clearedAt is Timestamp) {
+                    visibleAfter = clearedAt;
+                  }
+                }
 
                 return Stack(
                   children: [
                     MessagesList(
-                      key: ValueKey(widget.chatId),
+                      key: ValueKey(
+                        '${widget.chatId}_'
+                        '${visibleAfter?.toDate().millisecondsSinceEpoch ?? 0}',
+                      ),
                       chatId: widget.chatId,
                       memberRoles: memberRoles,
+                      visibleAfter: visibleAfter,
                     ),
                     BannedOverlay(chatId: widget.chatId),
                   ],

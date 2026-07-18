@@ -309,6 +309,50 @@ function isFirstMessageForNewPrivateChat(chatId, messageId) {
     function isOnlyLastReadUpdate() {
       return changedKeys().hasOnly(['lastRead']);
     }
+    function isClearPrivateChatForCurrentUserUpdate() {
+  let oldClearedAtByUser =
+      resource.data.get('clearedAtByUser', {});
+
+  let newClearedAtByUser =
+      request.resource.data.get('clearedAtByUser', {});
+
+  return signedIn()
+      && resource.data.type == 'private'
+      && request.resource.data.type == 'private'
+
+      && request.auth.uid in resource.data.memberIds
+      && request.resource.data.memberIds == resource.data.memberIds
+
+      && changedKeys().hasOnly([
+        'clearedAtByUser',
+        'lastRead'
+      ])
+
+      && oldClearedAtByUser is map
+      && newClearedAtByUser is map
+
+      && newClearedAtByUser.keys().hasAll([
+        request.auth.uid
+      ])
+
+      && newClearedAtByUser
+          .diff(oldClearedAtByUser)
+          .affectedKeys()
+          .hasOnly([request.auth.uid])
+
+      && newClearedAtByUser[request.auth.uid] is timestamp
+      && newClearedAtByUser[request.auth.uid] == request.time
+
+      && request.resource.data.lastRead is map
+
+      && request.resource.data.lastRead
+          .diff(resource.data.lastRead)
+          .affectedKeys()
+          .hasOnly([request.auth.uid])
+
+      && request.resource.data.lastRead[request.auth.uid] is timestamp
+      && request.resource.data.lastRead[request.auth.uid] == request.time;
+}
 
     function isOnlyLastMessageUpdate() {
       return changedKeys().hasOnly(['lastMessage', 'lastMessageAt']);
@@ -455,6 +499,7 @@ function isFirstMessageForNewPrivateChat(chatId, messageId) {
           || (canAddMembersByPermission() && isAddMembersUpdate())
           || (canUpdateMemberStatus() && isOnlyMemberStatusUpdate())
           || isLeaveGroupUpdate()
+          || isClearPrivateChatForCurrentUserUpdate()
           || isPrivateChatSelfRepair();
 
       allow delete: if false;

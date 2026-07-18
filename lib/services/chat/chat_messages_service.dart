@@ -102,13 +102,17 @@ class ChatMessagesService extends ChatBaseService {
     });
   }
 
-  Stream<QuerySnapshot> getMessages(String chatId) {
-    return firestore
+  Stream<QuerySnapshot> getMessages(String chatId, {Timestamp? after}) {
+    Query query = firestore
         .collection('chats')
         .doc(chatId)
-        .collection('messages')
-        .orderBy('createdAt')
-        .snapshots();
+        .collection('messages');
+
+    if (after != null) {
+      query = query.where('createdAt', isGreaterThan: after);
+    }
+
+    return query.orderBy('createdAt').snapshots();
   }
 
   Future<void> markChatAsRead(String chatId) async {

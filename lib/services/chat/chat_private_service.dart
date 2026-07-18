@@ -137,4 +137,39 @@ class ChatPrivateService extends ChatBaseService {
 
     return chatId;
   }
+
+  Future<void> clearPrivateChatForCurrentUser(String chatId) async {
+    final currentUser = auth.currentUser;
+
+    if (currentUser == null) {
+      throw StateError('Пользователь не авторизован');
+    }
+
+    final chatRef = firestore.collection('chats').doc(chatId);
+
+    await firestore.runTransaction((transaction) async {
+      final chatSnapshot = await transaction.get(chatRef);
+      final chatData = chatSnapshot.data();
+
+      if (!chatSnapshot.exists || chatData == null) {
+        throw StateError('Личный чат не найден');
+      }
+
+      final memberIds = List<String>.from(
+        chatData['memberIds'] ?? const <String>[],
+      );
+
+      final isValidPrivateChat =
+          chatData['type'] == 'private' && memberIds.contains(currentUser.uid);
+
+      if (!isValidPrivateChat) {
+        throw StateError('Удалять можно только свой личный чат');
+      }
+
+      transaction.update(chatRef, {
+        'clearedAtByUser.${currentUser.uid}': FieldValue.serverTimestamp(),
+        'lastRead.${currentUser.uid}': FieldValue.serverTimestamp(),
+      });
+    });
+  }
 }

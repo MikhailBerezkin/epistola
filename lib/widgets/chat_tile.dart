@@ -9,6 +9,7 @@ class ChatTile extends StatelessWidget {
   final String lastMessage;
   final dynamic lastMessageAt;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
 
   const ChatTile({
     super.key,
@@ -17,6 +18,7 @@ class ChatTile extends StatelessWidget {
     required this.lastMessage,
     required this.lastMessageAt,
     required this.onTap,
+    this.onLongPress,
   });
 
   String formatChatTime(dynamic value) {
@@ -49,6 +51,7 @@ class ChatTile extends StatelessWidget {
     return Card(
       child: ListTile(
         onTap: onTap,
+        onLongPress: onLongPress,
         leading: CircleAvatar(
           child: Text(
             firstLetter,

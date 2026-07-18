@@ -8,11 +8,13 @@ import 'message_bubble.dart';
 class MessagesList extends StatefulWidget {
   final String chatId;
   final Map<String, dynamic> memberRoles;
+  final Timestamp? visibleAfter;
 
   const MessagesList({
     super.key,
     required this.chatId,
     required this.memberRoles,
+    this.visibleAfter,
   });
 
   @override
@@ -64,7 +66,10 @@ class _MessagesListState extends State<MessagesList> {
     final currentUser = FirebaseAuth.instance.currentUser;
 
     return StreamBuilder<QuerySnapshot>(
-      stream: chatService.getMessages(widget.chatId),
+      stream: chatService.getMessages(
+        widget.chatId,
+        after: widget.visibleAfter,
+      ),
       builder: (context, snapshot) {
         if (snapshot.hasError) {
           return Center(child: Text('Ошибка: ${snapshot.error}'));
