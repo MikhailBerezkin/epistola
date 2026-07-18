@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'chat_base_service.dart';
+import '../../domain/value_objects/message_text.dart';
 
 class ChatMessagesService extends ChatBaseService {
   Future<void> sendMessage({
@@ -9,6 +10,10 @@ class ChatMessagesService extends ChatBaseService {
   }) async {
     final user = auth.currentUser;
     if (user == null) return;
+    final message = MessageText.tryParse(text);
+    if (message == null) return;
+
+    final normalizedText = message.value;
 
     final chatDoc = await firestore.collection('chats').doc(chatId).get();
     final chatData = chatDoc.data();
@@ -84,7 +89,7 @@ class ChatMessagesService extends ChatBaseService {
     final senderName = userDoc.data()?['name'] ?? user.email ?? 'Пользователь';
 
     await firestore.collection('chats').doc(chatId).collection('messages').add({
-      'text': text,
+      'text': normalizedText,
       'senderId': user.uid,
       'senderEmail': user.email,
       'senderName': senderName,
@@ -92,7 +97,7 @@ class ChatMessagesService extends ChatBaseService {
     });
 
     await firestore.collection('chats').doc(chatId).update({
-      'lastMessage': text,
+      'lastMessage': normalizedText,
       'lastMessageAt': FieldValue.serverTimestamp(),
     });
   }

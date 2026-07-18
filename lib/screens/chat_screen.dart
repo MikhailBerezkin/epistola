@@ -10,6 +10,7 @@ import '../widgets/chat/banned_overlay.dart';
 import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/notification_service.dart';
+import '../domain/value_objects/message_text.dart';
 
 class ChatScreen extends StatefulWidget {
   final String chatId;
@@ -70,14 +71,26 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> sendMessage() async {
-    final text = messageController.text.trim();
+    final message = MessageText.tryParse(messageController.text);
 
-    if (text.isEmpty) return;
+    if (message == null) {
+      final normalized = MessageText.normalize(messageController.text);
+
+      if (normalized.length > MessageText.maxLength && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Сообщение не может быть длиннее 4096 символов.'),
+          ),
+        );
+      }
+
+      return;
+    }
 
     HapticFeedback.selectionClick();
     messageController.clear();
 
-    await chatService.sendMessage(chatId: widget.chatId, text: text);
+    await chatService.sendMessage(chatId: widget.chatId, text: message.value);
   }
 
   @override
