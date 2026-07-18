@@ -110,8 +110,31 @@ class ChatMessagesService extends ChatBaseService {
     await batch.commit();
   }
 
-  Stream<QuerySnapshot> getMessages(String chatId, {Timestamp? after}) {
-    Query query = firestore
+  Stream<QuerySnapshot<Map<String, dynamic>>> watchLatestMessages(
+    String chatId, {
+    Timestamp? after,
+    int pageSize = 40,
+  }) {
+    return _messagesQuery(chatId, after: after).limit(pageSize).snapshots();
+  }
+
+  Future<QuerySnapshot<Map<String, dynamic>>> loadOlderMessages(
+    String chatId, {
+    required DocumentSnapshot<Map<String, dynamic>> before,
+    Timestamp? after,
+    int pageSize = 40,
+  }) {
+    return _messagesQuery(
+      chatId,
+      after: after,
+    ).startAfterDocument(before).limit(pageSize).get();
+  }
+
+  Query<Map<String, dynamic>> _messagesQuery(
+    String chatId, {
+    Timestamp? after,
+  }) {
+    Query<Map<String, dynamic>> query = firestore
         .collection('chats')
         .doc(chatId)
         .collection('messages');
@@ -120,7 +143,7 @@ class ChatMessagesService extends ChatBaseService {
       query = query.where('createdAt', isGreaterThan: after);
     }
 
-    return query.orderBy('createdAt').snapshots();
+    return query.orderBy('createdAt', descending: true);
   }
 
   Future<void> markChatAsRead(String chatId) async {

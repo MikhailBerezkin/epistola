@@ -172,8 +172,30 @@ class ChatService {
     return messages.sendMessage(chatId: chatId, text: text);
   }
 
-  Stream<QuerySnapshot> getMessages(String chatId, {Timestamp? after}) {
-    return messages.getMessages(chatId, after: after);
+  Stream<QuerySnapshot<Map<String, dynamic>>> watchLatestMessages(
+    String chatId, {
+    Timestamp? after,
+    int pageSize = 40,
+  }) {
+    return messages.watchLatestMessages(
+      chatId,
+      after: after,
+      pageSize: pageSize,
+    );
+  }
+
+  Future<QuerySnapshot<Map<String, dynamic>>> loadOlderMessages(
+    String chatId, {
+    required DocumentSnapshot<Map<String, dynamic>> before,
+    Timestamp? after,
+    int pageSize = 40,
+  }) {
+    return messages.loadOlderMessages(
+      chatId,
+      before: before,
+      after: after,
+      pageSize: pageSize,
+    );
   }
 
   Future<void> markChatAsRead(String chatId) {
