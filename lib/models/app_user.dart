@@ -6,7 +6,17 @@ class AppUser {
   final String name;
   final String phone;
   final String about;
-  final String avatarUrl;
+  final String avatarUrl; // временно, для совместимости
+
+  final String avatarThumbUrl;
+  final String avatarFullUrl;
+
+  final String avatarThumbStoragePath;
+  final String avatarFullStoragePath;
+  final String avatarStoragePath;
+  final String avatarProvider;
+  final int avatarVersion;
+  final DateTime? avatarUpdatedAt;
   final DateTime? createdAt;
 
   const AppUser({
@@ -16,11 +26,20 @@ class AppUser {
     required this.phone,
     required this.about,
     required this.avatarUrl,
+    required this.avatarThumbUrl,
+    required this.avatarFullUrl,
+    required this.avatarThumbStoragePath,
+    required this.avatarFullStoragePath,
+    required this.avatarStoragePath,
+    required this.avatarProvider,
+    required this.avatarVersion,
+    this.avatarUpdatedAt,
     this.createdAt,
   });
 
   factory AppUser.fromMap(Map<String, dynamic> data) {
     final createdAt = data['createdAt'];
+    final avatarUpdatedAt = data['avatarUpdatedAt'];
 
     return AppUser(
       uid: data['uid'] ?? '',
@@ -29,7 +48,19 @@ class AppUser {
       phone: data['phone'] ?? '',
       about: data['about'] ?? '',
       avatarUrl: data['avatarUrl'] ?? '',
+      avatarThumbUrl: data['avatarThumbUrl'] ?? data['avatarUrl'] ?? '',
+      avatarFullUrl: data['avatarFullUrl'] ?? data['avatarUrl'] ?? '',
+      avatarThumbStoragePath:
+          data['avatarThumbStoragePath'] ?? data['avatarStoragePath'] ?? '',
+      avatarFullStoragePath:
+          data['avatarFullStoragePath'] ?? data['avatarStoragePath'] ?? '',
       createdAt: createdAt is Timestamp ? createdAt.toDate() : null,
+      avatarStoragePath: data['avatarStoragePath'] ?? '',
+      avatarProvider: data['avatarProvider'] ?? 'firebase',
+      avatarVersion: data['avatarVersion'] ?? 0,
+      avatarUpdatedAt: avatarUpdatedAt is Timestamp
+          ? avatarUpdatedAt.toDate()
+          : null,
     );
   }
 
@@ -46,7 +77,15 @@ class AppUser {
       'phone': phone,
       'about': about,
       'avatarUrl': avatarUrl,
+      'avatarThumbUrl': avatarThumbUrl,
+      'avatarFullUrl': avatarFullUrl,
+      'avatarThumbStoragePath': avatarThumbStoragePath,
+      'avatarFullStoragePath': avatarFullStoragePath,
       'createdAt': createdAt,
+      'avatarStoragePath': avatarStoragePath,
+      'avatarProvider': avatarProvider,
+      'avatarVersion': avatarVersion,
+      'avatarUpdatedAt': avatarUpdatedAt,
     };
   }
 }

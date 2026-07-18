@@ -6,6 +6,7 @@ import '../services/chat_service.dart';
 class ChatTile extends StatelessWidget {
   final String chatId;
   final String chatName;
+  final String avatarUrl;
   final String lastMessage;
   final dynamic lastMessageAt;
   final VoidCallback onTap;
@@ -14,6 +15,7 @@ class ChatTile extends StatelessWidget {
     super.key,
     required this.chatId,
     required this.chatName,
+    required this.avatarUrl,
     required this.lastMessage,
     required this.lastMessageAt,
     required this.onTap,
@@ -50,10 +52,15 @@ class ChatTile extends StatelessWidget {
       child: ListTile(
         onTap: onTap,
         leading: CircleAvatar(
-          child: Text(
-            firstLetter,
-            style: const TextStyle(fontWeight: FontWeight.bold),
-          ),
+          backgroundImage: avatarUrl.isNotEmpty
+              ? NetworkImage(avatarUrl)
+              : null,
+          child: avatarUrl.isEmpty
+              ? Text(
+                  firstLetter,
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                )
+              : null,
         ),
         title: Row(
           children: [

@@ -152,6 +152,8 @@ class _ChatsPageState extends State<ChatsPage> {
 
                         return ChatTile(
                           chatId: chat.id,
+                          avatarUrl:
+                              data['avatarThumbUrl'] ?? data['avatarUrl'] ?? '',
                           chatName: chatName,
                           lastMessage: lastMessage,
                           lastMessageAt: data['lastMessageAt'],

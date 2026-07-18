@@ -6,6 +6,10 @@ import '../widgets/profile_header.dart';
 import '../widgets/profile_info_card.dart';
 import 'edit_profile_screen.dart';
 import 'settings_screen.dart';
+import 'package:image_picker/image_picker.dart';
+
+import '../domain/avatar/firebase_avatar_service.dart';
+import '../domain/models/avatar_upload_request.dart';
 
 class ProfilePage extends StatelessWidget {
   const ProfilePage({super.key});
@@ -34,6 +38,39 @@ class ProfilePage extends StatelessWidget {
     );
   }
 
+  Future<void> pickAndUploadAvatar({
+    required BuildContext context,
+    required String userId,
+  }) async {
+    final picker = ImagePicker();
+
+    final pickedFile = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 85,
+    );
+
+    if (pickedFile == null) return;
+
+    final bytes = await pickedFile.readAsBytes();
+
+    final request = AvatarUploadRequest(
+      bytes: bytes,
+      fileName: pickedFile.name,
+      mimeType: pickedFile.mimeType ?? 'image/jpeg',
+    );
+
+    await FirebaseAvatarService().uploadAvatar(
+      userId: userId,
+      request: request,
+    );
+
+    if (!context.mounted) return;
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Аватар обновлён')));
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
@@ -58,6 +95,7 @@ class ProfilePage extends StatelessWidget {
         final phone = data?['phone'] ?? '';
         final about = data?['about'] ?? '';
         final contactEmail = data?['contactEmail'] ?? '';
+        final avatarUrl = data?['avatarUrl'] ?? '';
 
         final hasPhone = phone.toString().isNotEmpty;
         final hasEmail = contactEmail.toString().isNotEmpty;
@@ -85,6 +123,48 @@ class ProfilePage extends StatelessWidget {
               ProfileHeader(
                 name: userName,
                 email: '',
+                avatarUrl: avatarUrl,
+                onAvatarTap: () {
+                  showModalBottomSheet<void>(
+                    context: context,
+                    showDragHandle: true,
+                    builder: (context) {
+                      return SafeArea(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const ListTile(
+                              title: Text(
+                                'Аватар',
+                                style: TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                            ListTile(
+                              leading: const Icon(Icons.photo_library_outlined),
+                              title: const Text('Выбрать из галереи'),
+                              onTap: () {
+                                Navigator.pop(context);
+                                pickAndUploadAvatar(
+                                  context: context,
+                                  userId: user.uid,
+                                );
+                              },
+                            ),
+                            if (avatarUrl.toString().isNotEmpty)
+                              ListTile(
+                                leading: const Icon(Icons.delete_outline),
+                                title: const Text('Удалить аватар'),
+                                onTap: () {
+                                  Navigator.pop(context);
+                                  // TODO: Delete avatar
+                                },
+                              ),
+                          ],
+                        ),
+                      );
+                    },
+                  );
+                },
                 onNameTap: () {
                   openEditProfile(
                     context: context,

@@ -4,12 +4,16 @@ class ProfileHeader extends StatelessWidget {
   final String name;
   final String email;
   final VoidCallback onNameTap;
+  final String avatarUrl;
+  final VoidCallback onAvatarTap;
 
   const ProfileHeader({
     super.key,
     required this.name,
     required this.email,
     required this.onNameTap,
+    required this.avatarUrl,
+    required this.onAvatarTap,
   });
 
   @override
@@ -17,11 +21,22 @@ class ProfileHeader extends StatelessWidget {
     return Column(
       children: [
         const SizedBox(height: 24),
-        CircleAvatar(
-          radius: 48,
-          child: Text(
-            name.isNotEmpty ? name[0].toUpperCase() : '?',
-            style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
+        GestureDetector(
+          onTap: onAvatarTap,
+          child: CircleAvatar(
+            radius: 120,
+            backgroundImage: avatarUrl.isNotEmpty
+                ? NetworkImage(avatarUrl)
+                : null,
+            child: avatarUrl.isEmpty
+                ? Text(
+                    name.isNotEmpty ? name[0].toUpperCase() : '?',
+                    style: const TextStyle(
+                      fontSize: 32,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  )
+                : null,
           ),
         ),
         const SizedBox(height: 16),

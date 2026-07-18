@@ -98,6 +98,7 @@ class _ChatSearchScreenState extends State<ChatSearchScreen> {
 
               return ChatTile(
                 chatId: chat.id,
+                avatarUrl: data['avatarThumbUrl'] ?? data['avatarUrl'] ?? '',
                 chatName: chatName,
                 lastMessage: lastMessage,
                 lastMessageAt: data['lastMessageAt'],
