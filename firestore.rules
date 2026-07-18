@@ -53,6 +53,118 @@ service cloud.firestore {
           && message.createdAt is timestamp
           && message.createdAt == request.time;
     }
+    function hasValidPrivateChatFields() {
+  return request.resource.data.keys().hasAll([
+        'name',
+        'type',
+        'memberIds',
+        'memberEmails',
+        'memberRoles',
+        'memberStatus',
+        'groupSettings',
+        'lastRead',
+        'isDissolved',
+        'createdAt',
+        'lastMessage',
+        'lastMessageAt'
+      ])
+      && request.resource.data.keys().hasOnly([
+        'name',
+        'type',
+        'memberIds',
+        'memberEmails',
+        'memberRoles',
+        'memberStatus',
+        'groupSettings',
+        'lastRead',
+        'isDissolved',
+        'createdAt',
+        'lastMessage',
+        'lastMessageAt'
+      ]);
+}
+
+function isValidPrivateChatCreate(chatId) {
+  let chat = request.resource.data;
+  let firstId = chat.memberIds[0];
+  let secondId = chat.memberIds[1];
+
+  return hasValidPrivateChatFields()
+      && chat.name == 'private_chat'
+      && chat.type == 'private'
+
+      && chat.memberIds is list
+      && chat.memberIds.size() == 2
+      && chat.memberIds.toSet().size() == 2
+      && request.auth.uid in chat.memberIds
+
+      && (
+        chatId == firstId + '_' + secondId
+        || chatId == secondId + '_' + firstId
+      )
+
+      && exists(
+        /databases/$(database)/documents/users/$(firstId)
+      )
+      && exists(
+        /databases/$(database)/documents/users/$(secondId)
+      )
+
+      && chat.memberEmails is list
+      && chat.memberEmails.size() > 0
+      && chat.memberEmails.size() <= 2
+      && request.auth.token.email in chat.memberEmails
+
+      && chat.memberRoles is map
+      && chat.memberRoles.keys().hasAll(chat.memberIds)
+      && chat.memberRoles.keys().hasOnly(chat.memberIds)
+      && chat.memberRoles[firstId] == 'member'
+      && chat.memberRoles[secondId] == 'member'
+
+      && chat.memberStatus is map
+      && chat.memberStatus.keys().hasAll(chat.memberIds)
+      && chat.memberStatus.keys().hasOnly(chat.memberIds)
+      && chat.memberStatus[firstId] is map
+      && chat.memberStatus[secondId] is map
+      && chat.memberStatus[firstId].keys().hasAll(['status'])
+      && chat.memberStatus[firstId].keys().hasOnly(['status'])
+      && chat.memberStatus[secondId].keys().hasAll(['status'])
+      && chat.memberStatus[secondId].keys().hasOnly(['status'])
+      && chat.memberStatus[firstId].status == 'normal'
+      && chat.memberStatus[secondId].status == 'normal'
+
+      && chat.groupSettings is map
+      && chat.groupSettings.keys().hasAll(['messagePermission'])
+      && chat.groupSettings.keys().hasOnly(['messagePermission'])
+      && chat.groupSettings.messagePermission == 'all'
+
+      && chat.lastRead is map
+      && chat.lastRead.keys().hasAll([request.auth.uid])
+      && chat.lastRead.keys().hasOnly([request.auth.uid])
+      && chat.lastRead[request.auth.uid] is timestamp
+      && chat.lastRead[request.auth.uid] == request.time
+
+      && chat.isDissolved == false
+      && chat.createdAt is timestamp
+      && chat.createdAt == request.time
+      && chat.lastMessage is string
+      && chat.lastMessage == ''
+      && chat.lastMessageAt is timestamp
+      && chat.lastMessageAt == request.time;
+}
+
+function isValidChatCreate(chatId) {
+  let chatType = request.resource.data.get('type', '');
+
+  return signedIn()
+      && (
+        (
+          chatType == 'private'
+          && isValidPrivateChatCreate(chatId)
+        )
+        || chatType == 'group'
+      );
+}
 
     function isChatMember(chatId) {
       return signedIn()
@@ -296,7 +408,7 @@ service cloud.firestore {
       allow list: if signedIn()
           && request.auth.uid in resource.data.memberIds;
 
-      allow create: if signedIn();
+      allow create: if isValidChatCreate(chatId);
 
       allow update: if isCurrentAdminOrOwner()
           || (isCurrentMemberInChat() && isOnlyLastReadUpdate())
