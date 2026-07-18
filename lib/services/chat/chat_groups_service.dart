@@ -108,6 +108,7 @@ class ChatGroupsService extends ChatBaseService {
       'memberRoles.$newAdminId': 'admin',
       'lastMessage': 'Права администратора переданы',
       'lastMessageAt': FieldValue.serverTimestamp(),
+      'lastMessageId': FieldValue.delete(),
     };
 
     if (demoteCurrentAdmin) {
@@ -153,6 +154,7 @@ class ChatGroupsService extends ChatBaseService {
       'dissolvedAt': FieldValue.serverTimestamp(),
       'lastMessage': 'Группа распущена',
       'lastMessageAt': FieldValue.serverTimestamp(),
+      'lastMessageId': FieldValue.delete(),
 
       // Убираем группу из списка чатов у всех участников.
       // История сообщений физически остаётся в Firestore.

@@ -103,6 +103,7 @@ class ChatPrivateService extends ChatBaseService {
         transaction.update(chatRef, {
           'lastMessage': message.value,
           'lastMessageAt': FieldValue.serverTimestamp(),
+          'lastMessageId': messageRef.id,
         });
 
         return;
@@ -129,6 +130,7 @@ class ChatPrivateService extends ChatBaseService {
         'createdAt': FieldValue.serverTimestamp(),
         'lastMessage': message.value,
         'lastMessageAt': FieldValue.serverTimestamp(),
+        'lastMessageId': messageRef.id,
         'firstMessageId': messageRef.id,
       });
 

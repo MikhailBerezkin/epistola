@@ -15,7 +15,8 @@ class ChatMessagesService extends ChatBaseService {
 
     final normalizedText = message.value;
 
-    final chatDoc = await firestore.collection('chats').doc(chatId).get();
+    final chatRef = firestore.collection('chats').doc(chatId);
+    final chatDoc = await chatRef.get();
     final chatData = chatDoc.data();
 
     if (chatData == null) {
@@ -86,20 +87,27 @@ class ChatMessagesService extends ChatBaseService {
 
     final userDoc = await firestore.collection('users').doc(user.uid).get();
 
-    final senderName = userDoc.data()?['name'] ?? user.email ?? 'Пользователь';
+    final senderName = (userDoc.data()?['name'] as String?) ?? '';
+    final messageRef = chatRef.collection('messages').doc();
 
-    await firestore.collection('chats').doc(chatId).collection('messages').add({
+    final messageData = <String, dynamic>{
       'text': normalizedText,
       'senderId': user.uid,
       'senderEmail': user.email,
       'senderName': senderName,
       'createdAt': FieldValue.serverTimestamp(),
-    });
+    };
 
-    await firestore.collection('chats').doc(chatId).update({
+    final batch = firestore.batch();
+
+    batch.set(messageRef, messageData);
+    batch.update(chatRef, {
       'lastMessage': normalizedText,
       'lastMessageAt': FieldValue.serverTimestamp(),
+      'lastMessageId': messageRef.id,
     });
+
+    await batch.commit();
   }
 
   Stream<QuerySnapshot> getMessages(String chatId, {Timestamp? after}) {

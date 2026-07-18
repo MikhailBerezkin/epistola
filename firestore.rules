@@ -70,6 +70,7 @@ function isValidNewMessage() {
         'createdAt',
         'lastMessage',
         'lastMessageAt',
+        'lastMessageId',
         'firstMessageId'
       ])
       && request.resource.data.keys().hasOnly([
@@ -85,6 +86,7 @@ function isValidNewMessage() {
         'createdAt',
         'lastMessage',
         'lastMessageAt',
+        'lastMessageId',
         'firstMessageId'
       ]);
 }
@@ -166,8 +168,12 @@ function isValidPrivateChatCreate(chatId) {
       && chat.lastMessageAt is timestamp
       && chat.lastMessageAt == request.time
 
+      && chat.lastMessageId is string
+      && chat.lastMessageId.size() > 0
+
       && chat.firstMessageId is string
       && chat.firstMessageId.size() > 0
+      && chat.lastMessageId == chat.firstMessageId
 
       && isValidMessageData(firstMessage)
       && firstMessage.text == chat.lastMessage
@@ -197,12 +203,23 @@ function isFirstMessageForNewPrivateChat(chatId, messageId) {
       )
       && chatAfter.type == 'private'
       && chatAfter.firstMessageId == messageId
+      && chatAfter.lastMessageId == messageId
       && chatAfter.memberIds is list
       && chatAfter.memberIds.size() == 2
       && request.auth.uid in chatAfter.memberIds
       && chatAfter.lastMessage == request.resource.data.text
       && chatAfter.lastMessageAt == request.time
       && chatAfter.createdAt == request.time;
+}
+
+function isMessageLinkedToExistingChatUpdate(chatId, messageId) {
+  let chatAfter = getAfter(
+    /databases/$(database)/documents/chats/$(chatId)
+  ).data;
+
+  return chatAfter.lastMessageId == messageId
+      && chatAfter.lastMessage == request.resource.data.text
+      && chatAfter.lastMessageAt == request.time;
 }
 
     function isChatMember(chatId) {
@@ -354,8 +371,96 @@ function isFirstMessageForNewPrivateChat(chatId, messageId) {
       && request.resource.data.lastRead[request.auth.uid] == request.time;
 }
 
-    function isOnlyLastMessageUpdate() {
-      return changedKeys().hasOnly(['lastMessage', 'lastMessageAt']);
+    function isAtomicLastMessageUpdate(chatId) {
+      let messageId = request.resource.data.lastMessageId;
+      let messagePath =
+          /databases/$(database)/documents/chats/$(chatId)/messages/$(messageId);
+      let messageAfter = getAfter(messagePath).data;
+
+      return changedKeys().hasOnly([
+            'lastMessage',
+            'lastMessageAt',
+            'lastMessageId'
+          ])
+          && request.resource.data.lastMessage is string
+          && request.resource.data.lastMessage
+              == request.resource.data.lastMessage.trim()
+          && request.resource.data.lastMessage.size() > 0
+          && request.resource.data.lastMessage.size() <= 4096
+          && request.resource.data.lastMessageAt is timestamp
+          && request.resource.data.lastMessageAt == request.time
+          && messageId is string
+          && messageId.size() > 0
+          && !exists(messagePath)
+          && existsAfter(messagePath)
+          && messageAfter.senderId == request.auth.uid
+          && messageAfter.text == request.resource.data.lastMessage
+          && messageAfter.createdAt == request.resource.data.lastMessageAt;
+    }
+
+    function changesLastMessageMetadata() {
+      return changedKeys().hasAny([
+        'lastMessage',
+        'lastMessageAt',
+        'lastMessageId'
+      ]);
+    }
+
+    function isAdminRightsTransferLastMessageUpdate() {
+      return isCurrentAdminOrOwner()
+          && changedKeys().hasAll([
+            'memberRoles',
+            'lastMessage',
+            'lastMessageAt'
+          ])
+          && changedKeys().hasOnly([
+            'memberRoles',
+            'lastMessage',
+            'lastMessageAt',
+            'lastMessageId'
+          ])
+          && request.resource.data.memberRoles is map
+          && request.resource.data.lastMessage
+              == 'Права администратора переданы'
+          && request.resource.data.lastMessageAt is timestamp
+          && request.resource.data.lastMessageAt == request.time
+          && !request.resource.data.keys().hasAny(['lastMessageId']);
+    }
+
+    function isDissolveGroupLastMessageUpdate() {
+      return isCurrentAdminOrOwner()
+          && resource.data.type == 'group'
+          && changedKeys().hasAll([
+            'isDissolved',
+            'dissolvedBy',
+            'dissolvedAt',
+            'lastMessage',
+            'lastMessageAt',
+            'memberIds',
+            'memberEmails'
+          ])
+          && changedKeys().hasOnly([
+            'isDissolved',
+            'dissolvedBy',
+            'dissolvedAt',
+            'lastMessage',
+            'lastMessageAt',
+            'lastMessageId',
+            'memberIds',
+            'memberEmails'
+          ])
+          && request.resource.data.isDissolved == true
+          && request.resource.data.dissolvedBy == request.auth.uid
+          && request.resource.data.dissolvedAt is timestamp
+          && request.resource.data.dissolvedAt == request.time
+          && request.resource.data.lastMessage == 'Группа распущена'
+          && request.resource.data.lastMessageAt is timestamp
+          && request.resource.data.lastMessageAt == request.time
+          && request.resource.data.memberIds is list
+          && request.resource.data.memberIds.size() == 0
+          && request.resource.data.memberEmails is list
+          && request.resource.data.memberEmails.size() == 0
+          && !request.resource.data.keys().hasAny(['lastMessageId']);
     }
 
     function isAddMembersUpdate() {
@@ -493,9 +598,14 @@ function isFirstMessageForNewPrivateChat(chatId, messageId) {
 
       allow create: if isValidChatCreate(chatId);
 
-      allow update: if isCurrentAdminOrOwner()
+      allow update: if (
+            isCurrentAdminOrOwner()
+            && !changesLastMessageMetadata()
+          )
           || (isCurrentMemberInChat() && isOnlyLastReadUpdate())
-          || (canWrite(chatId) && isOnlyLastMessageUpdate())
+          || (canWrite(chatId) && isAtomicLastMessageUpdate(chatId))
+          || isAdminRightsTransferLastMessageUpdate()
+          || isDissolveGroupLastMessageUpdate()
           || (canAddMembersByPermission() && isAddMembersUpdate())
           || (canUpdateMemberStatus() && isOnlyMemberStatusUpdate())
           || isLeaveGroupUpdate()
@@ -510,7 +620,10 @@ function isFirstMessageForNewPrivateChat(chatId, messageId) {
         allow create: if isValidNewMessage()
     && (
       isFirstMessageForNewPrivateChat(chatId, messageId)
-      || canWrite(chatId)
+      || (
+        canWrite(chatId)
+        && isMessageLinkedToExistingChatUpdate(chatId, messageId)
+      )
     );
 
         allow update, delete: if false;
