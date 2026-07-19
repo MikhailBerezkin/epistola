@@ -6,10 +6,11 @@
 
 - Репозиторий: `MikhailBerezkin/epistola`
 - Рабочая ветка: `fix/v0.6.2.1-security-foundation`
-- Текущий HEAD перед обновлением документации: `0e42c4e`
-- Последний стабильный тег: `v0.6.2-media-foundation`
+- Текущий HEAD перед обновлением документации: `eee5d3b`
+- Готовящийся стабильный тег: `v0.6.2.1`
+- Последний опубликованный стабильный тег: `v0.6.2-media-foundation`
 - База ветки: `main`, commit `4fa8693` (`feat(media): create media storage foundation`)
-- Ветка опережает `main` на 6 коммитов.
+- Следующая ветка после релиза: `feat/v0.6.3-push-notification-foundation`
 - Firebase project: `epistola-434b7`
 - Firestore region: `eur3`
 - Android package: `com.epistola.app`
@@ -18,12 +19,12 @@
 Последние важные коммиты:
 
 ```text
+eee5d3b perf: reduce message page size
+6a0fc82 feat: paginate chat messages
+eabb9c6 feat: send chat messages atomically
 0e42c4e feat: clear private chat for current user
 196f9a0 feat: create private chat on first message
 e802d6d security: validate private chat creation
-d221d99 security: validate new chat messages
-bc9cb23 feat: add message text constraints
-1a5072f test: replace obsolete counter smoke test
 ```
 
 ## 2. Проверенное состояние сборки
@@ -155,9 +156,32 @@ Rules:
 - валидируют структуру и ID private chat;
 - требуют существования обоих `users/{uid}`;
 - требуют атомарного первого сообщения через `getAfter()`;
+- требуют атомарной обычной отправки message + chat metadata;
+- связывают `lastMessageId`, `lastMessage`, `lastMessageAt` и созданный message document;
 - разрешают менять только свой ключ `clearedAtByUser` и `lastRead`;
 - запрещают клиентское удаление chat/message documents;
 - сохраняют проверки ролей, mute/ban, добавления участников, выхода и защиты последнего администратора.
+
+### 3.5 Атомарная отправка и pagination
+
+Обычная отправка использует `WriteBatch`:
+
+```text
+message document
++ chat.lastMessage
++ chat.lastMessageAt
++ chat.lastMessageId
+```
+
+История сообщений:
+
+- последняя страница — realtime;
+- размер страницы — 20 документов;
+- старые страницы — `startAfterDocument`;
+- документы объединяются по ID;
+- позиция прокрутки сохраняется;
+- загруженная история живёт в памяти экрана до выхода из чата;
+- private clear продолжает применять `createdAt > clearedAt`.
 
 Rules опубликованы:
 
@@ -229,9 +253,9 @@ chat.memberIds → otherUserId → users/{otherUserId}
 
 ### Высокий приоритет
 
-1. **Обычная отправка сообщения не атомарна.** `ChatMessagesService.sendMessage()` создаёт сообщение и затем отдельно обновляет `lastMessage/lastMessageAt`. Следующий рекомендуемый технический этап — batch/transaction плюс усиление Rules.
-2. **Пагинация сообщений.** Сейчас загружается вся доступная история либо вся история после `clearedAt`.
-3. **Rules emulator tests.** Firestore Rules задеплоены и проверены вручную, но требуют автоматизированных тестов и рефакторинга форматирования.
+1. **Push Notification Foundation.** Подключить FCM на Android, хранение устройств пользователя, foreground/background handling и Cloud Function на создание сообщения.
+2. **Rules emulator tests.** Firestore Rules задеплоены и проверены вручную, но требуют автоматизированных тестов.
+3. **Оптимизация Firestore reads.** Убрать отдельный listener вибрации и пересмотреть подсчёт unread без загрузки всех непрочитанных message documents.
 
 ### Средний приоритет
 
@@ -262,12 +286,14 @@ chat.memberIds → otherUserId → users/{otherUserId}
 
 ## 8. Рекомендуемый порядок продолжения
 
-1. Сделать обычную отправку message + chat metadata атомарной.
-2. Добавить тесты.
-3. Повторить smoke test private/group chats.
-4. Обновить README.md и ARCHITECTURE.md.
-5. Решить выпуск `v0.6.2.1 Security Foundation`, merge в `main` и тег.
-6. После стабильной точки начать чистую `v0.6.3 Avatar Foundation`.
+1. Обновить README.md, ARCHITECTURE.md и PROJECT_CONTEXT.md.
+2. Выполнить финальные analyze/test/build проверки.
+3. Merge в `main` и создать тег `v0.6.2.1`.
+4. Создать ветку `feat/v0.6.3-push-notification-foundation`.
+5. Подключить FCM на физическом Android-телефоне и проверить тестовое уведомление из Firebase Console.
+6. Добавить регистрацию устройств и Cloud Function для новых сообщений.
+7. После Push Foundation реализовать удаление сообщений у себя/у всех.
+8. Затем перейти к чистой Avatar Foundation.
 
 ## 9. Команды Windows
 
