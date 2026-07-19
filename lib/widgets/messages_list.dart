@@ -24,7 +24,7 @@ class MessagesList extends StatefulWidget {
 }
 
 class _MessagesListState extends State<MessagesList> {
-  static const int _pageSize = 40;
+  static const int _pageSize = 20;
   static const double _loadMoreThreshold = 240;
 
   final chatService = ChatService();
