@@ -146,16 +146,56 @@ class ChatService {
     return search.findUserByEmailOrPhone(value);
   }
 
-  Future<String> getOrCreatePrivateChat(AppUser otherUser) {
-    return private.getOrCreatePrivateChat(otherUser);
+  String getPrivateChatId(AppUser otherUser) {
+    return private.getPrivateChatId(otherUser);
+  }
+
+  Future<bool> privateChatExists(String chatId) {
+    return private.privateChatExists(chatId);
+  }
+
+  Future<void> clearPrivateChatForCurrentUser(String chatId) {
+    return private.clearPrivateChatForCurrentUser(chatId);
+  }
+
+  Future<String> createPrivateChatWithFirstMessage({
+    required AppUser otherUser,
+    required String text,
+  }) {
+    return private.createPrivateChatWithFirstMessage(
+      otherUser: otherUser,
+      text: text,
+    );
   }
 
   Future<void> sendMessage({required String chatId, required String text}) {
     return messages.sendMessage(chatId: chatId, text: text);
   }
 
-  Stream<QuerySnapshot> getMessages(String chatId) {
-    return messages.getMessages(chatId);
+  Stream<QuerySnapshot<Map<String, dynamic>>> watchLatestMessages(
+    String chatId, {
+    Timestamp? after,
+    int pageSize = 40,
+  }) {
+    return messages.watchLatestMessages(
+      chatId,
+      after: after,
+      pageSize: pageSize,
+    );
+  }
+
+  Future<QuerySnapshot<Map<String, dynamic>>> loadOlderMessages(
+    String chatId, {
+    required DocumentSnapshot<Map<String, dynamic>> before,
+    Timestamp? after,
+    int pageSize = 40,
+  }) {
+    return messages.loadOlderMessages(
+      chatId,
+      before: before,
+      after: after,
+      pageSize: pageSize,
+    );
   }
 
   Future<void> markChatAsRead(String chatId) {

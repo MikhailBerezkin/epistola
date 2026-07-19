@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../models/app_user.dart';
 import '../services/chat_service.dart';
 import 'chat_screen.dart';
+import 'private_chat_draft_screen.dart';
 
 class UserSearchScreen extends StatefulWidget {
   const UserSearchScreen({super.key});
@@ -77,15 +78,21 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
     setState(() => _isOpeningChat = true);
 
     try {
-      final chatId = await _chatService.getOrCreatePrivateChat(user);
+      final chatId = _chatService.getPrivateChatId(user);
+      final chatExists = await _chatService.privateChatExists(chatId);
 
       if (!mounted) return;
 
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (_) =>
-              ChatScreen(chatId: chatId, chatName: _displayName(user)),
+          builder: (_) {
+            if (chatExists) {
+              return ChatScreen(chatId: chatId, chatName: _displayName(user));
+            }
+
+            return PrivateChatDraftScreen(otherUser: user);
+          },
         ),
       );
     } catch (_) {

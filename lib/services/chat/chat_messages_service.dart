@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'chat_base_service.dart';
+import '../../domain/value_objects/message_text.dart';
 
 class ChatMessagesService extends ChatBaseService {
   Future<void> sendMessage({
@@ -9,8 +10,13 @@ class ChatMessagesService extends ChatBaseService {
   }) async {
     final user = auth.currentUser;
     if (user == null) return;
+    final message = MessageText.tryParse(text);
+    if (message == null) return;
 
-    final chatDoc = await firestore.collection('chats').doc(chatId).get();
+    final normalizedText = message.value;
+
+    final chatRef = firestore.collection('chats').doc(chatId);
+    final chatDoc = await chatRef.get();
     final chatData = chatDoc.data();
 
     if (chatData == null) {
@@ -81,29 +87,63 @@ class ChatMessagesService extends ChatBaseService {
 
     final userDoc = await firestore.collection('users').doc(user.uid).get();
 
-    final senderName = userDoc.data()?['name'] ?? user.email ?? 'Пользователь';
+    final senderName = (userDoc.data()?['name'] as String?) ?? '';
+    final messageRef = chatRef.collection('messages').doc();
 
-    await firestore.collection('chats').doc(chatId).collection('messages').add({
-      'text': text,
+    final messageData = <String, dynamic>{
+      'text': normalizedText,
       'senderId': user.uid,
       'senderEmail': user.email,
       'senderName': senderName,
       'createdAt': FieldValue.serverTimestamp(),
+    };
+
+    final batch = firestore.batch();
+
+    batch.set(messageRef, messageData);
+    batch.update(chatRef, {
+      'lastMessage': normalizedText,
+      'lastMessageAt': FieldValue.serverTimestamp(),
+      'lastMessageId': messageRef.id,
     });
 
-    await firestore.collection('chats').doc(chatId).update({
-      'lastMessage': text,
-      'lastMessageAt': FieldValue.serverTimestamp(),
-    });
+    await batch.commit();
   }
 
-  Stream<QuerySnapshot> getMessages(String chatId) {
-    return firestore
+  Stream<QuerySnapshot<Map<String, dynamic>>> watchLatestMessages(
+    String chatId, {
+    Timestamp? after,
+    int pageSize = 40,
+  }) {
+    return _messagesQuery(chatId, after: after).limit(pageSize).snapshots();
+  }
+
+  Future<QuerySnapshot<Map<String, dynamic>>> loadOlderMessages(
+    String chatId, {
+    required DocumentSnapshot<Map<String, dynamic>> before,
+    Timestamp? after,
+    int pageSize = 40,
+  }) {
+    return _messagesQuery(
+      chatId,
+      after: after,
+    ).startAfterDocument(before).limit(pageSize).get();
+  }
+
+  Query<Map<String, dynamic>> _messagesQuery(
+    String chatId, {
+    Timestamp? after,
+  }) {
+    Query<Map<String, dynamic>> query = firestore
         .collection('chats')
         .doc(chatId)
-        .collection('messages')
-        .orderBy('createdAt')
-        .snapshots();
+        .collection('messages');
+
+    if (after != null) {
+      query = query.where('createdAt', isGreaterThan: after);
+    }
+
+    return query.orderBy('createdAt', descending: true);
   }
 
   Future<void> markChatAsRead(String chatId) async {

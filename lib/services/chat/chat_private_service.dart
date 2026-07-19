@@ -1,35 +1,124 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../../domain/value_objects/message_text.dart';
 import '../../models/app_user.dart';
 import 'chat_base_service.dart';
 
 class ChatPrivateService extends ChatBaseService {
-  Future<String> getOrCreatePrivateChat(AppUser otherUser) async {
+  String getPrivateChatId(AppUser otherUser) {
     final currentUser = auth.currentUser;
+
     if (currentUser == null) {
-      throw Exception('Пользователь не авторизован');
+      throw StateError('Пользователь не авторизован');
+    }
+
+    if (otherUser.uid.isEmpty || otherUser.uid == currentUser.uid) {
+      throw ArgumentError('Некорректный участник личного чата');
     }
 
     final ids = [currentUser.uid, otherUser.uid]..sort();
-    final chatId = ids.join('_');
 
+    return ids.join('_');
+  }
+
+  Future<bool> privateChatExists(String chatId) async {
+    final currentUser = auth.currentUser;
+    if (currentUser == null) return false;
+
+    final snapshot = await firestore.collection('chats').doc(chatId).get();
+    final data = snapshot.data();
+
+    if (!snapshot.exists || data == null) {
+      return false;
+    }
+
+    final memberIds = List<String>.from(data['memberIds'] ?? const <String>[]);
+
+    return data['type'] == 'private' && memberIds.contains(currentUser.uid);
+  }
+
+  Future<String> createPrivateChatWithFirstMessage({
+    required AppUser otherUser,
+    required String text,
+  }) async {
+    final currentUser = auth.currentUser;
+
+    if (currentUser == null) {
+      throw StateError('Пользователь не авторизован');
+    }
+
+    final message = MessageText.tryParse(text);
+
+    if (message == null) {
+      throw ArgumentError('Некорректный текст сообщения');
+    }
+
+    final senderEmail = currentUser.email;
+
+    if (senderEmail == null || senderEmail.isEmpty) {
+      throw StateError('У пользователя отсутствует email');
+    }
+
+    final chatId = getPrivateChatId(otherUser);
     final chatRef = firestore.collection('chats').doc(chatId);
+    final messageRef = chatRef.collection('messages').doc();
 
-    final currentUserEmail = currentUser.email;
-    final memberEmails = <String>[
-      if (currentUserEmail != null && currentUserEmail.isNotEmpty)
-        currentUserEmail,
-      if (otherUser.email.isNotEmpty) otherUser.email,
-    ];
+    final userSnapshot = await firestore
+        .collection('users')
+        .doc(currentUser.uid)
+        .get();
 
-    final chatSnapshot = await chatRef.get();
+    final senderName = (userSnapshot.data()?['name'] as String?) ?? '';
 
-    if (!chatSnapshot.exists) {
-      await chatRef.set({
+    final messageData = <String, dynamic>{
+      'text': message.value,
+      'senderId': currentUser.uid,
+      'senderEmail': senderEmail,
+      'senderName': senderName,
+      'createdAt': FieldValue.serverTimestamp(),
+    };
+
+    await firestore.runTransaction((transaction) async {
+      final chatSnapshot = await transaction.get(chatRef);
+      final chatData = chatSnapshot.data();
+
+      // Чат мог появиться между открытием черновика
+      // и отправкой первого сообщения.
+      if (chatSnapshot.exists && chatData != null) {
+        final memberIds = List<String>.from(
+          chatData['memberIds'] ?? const <String>[],
+        );
+
+        final isExpectedPrivateChat =
+            chatData['type'] == 'private' &&
+            memberIds.contains(currentUser.uid) &&
+            memberIds.contains(otherUser.uid);
+
+        if (!isExpectedPrivateChat) {
+          throw StateError('Документ личного чата имеет неверную структуру');
+        }
+
+        transaction.set(messageRef, messageData);
+
+        transaction.update(chatRef, {
+          'lastMessage': message.value,
+          'lastMessageAt': FieldValue.serverTimestamp(),
+          'lastMessageId': messageRef.id,
+        });
+
+        return;
+      }
+
+      final memberEmails = <String>{
+        senderEmail,
+        if (otherUser.email.isNotEmpty) otherUser.email,
+      };
+
+      transaction.set(chatRef, {
         'name': 'private_chat',
         'type': 'private',
         'memberIds': [currentUser.uid, otherUser.uid],
-        'memberEmails': memberEmails,
+        'memberEmails': memberEmails.toList(),
         'memberRoles': {currentUser.uid: 'member', otherUser.uid: 'member'},
         'memberStatus': {
           currentUser.uid: {'status': 'normal'},
@@ -39,25 +128,50 @@ class ChatPrivateService extends ChatBaseService {
         'lastRead': {currentUser.uid: FieldValue.serverTimestamp()},
         'isDissolved': false,
         'createdAt': FieldValue.serverTimestamp(),
-        'lastMessage': '',
+        'lastMessage': message.value,
         'lastMessageAt': FieldValue.serverTimestamp(),
+        'lastMessageId': messageRef.id,
+        'firstMessageId': messageRef.id,
       });
 
-      return chatId;
-    }
-
-    await chatRef.update({
-      'type': 'private',
-      'memberIds': FieldValue.arrayUnion([currentUser.uid, otherUser.uid]),
-      'memberEmails': FieldValue.arrayUnion(memberEmails),
-      'memberRoles.${currentUser.uid}': 'member',
-      'memberRoles.${otherUser.uid}': 'member',
-      'memberStatus.${currentUser.uid}.status': 'normal',
-      'memberStatus.${otherUser.uid}.status': 'normal',
-      'lastRead.${currentUser.uid}': FieldValue.serverTimestamp(),
-      'isDissolved': false,
+      transaction.set(messageRef, messageData);
     });
 
     return chatId;
+  }
+
+  Future<void> clearPrivateChatForCurrentUser(String chatId) async {
+    final currentUser = auth.currentUser;
+
+    if (currentUser == null) {
+      throw StateError('Пользователь не авторизован');
+    }
+
+    final chatRef = firestore.collection('chats').doc(chatId);
+
+    await firestore.runTransaction((transaction) async {
+      final chatSnapshot = await transaction.get(chatRef);
+      final chatData = chatSnapshot.data();
+
+      if (!chatSnapshot.exists || chatData == null) {
+        throw StateError('Личный чат не найден');
+      }
+
+      final memberIds = List<String>.from(
+        chatData['memberIds'] ?? const <String>[],
+      );
+
+      final isValidPrivateChat =
+          chatData['type'] == 'private' && memberIds.contains(currentUser.uid);
+
+      if (!isValidPrivateChat) {
+        throw StateError('Удалять можно только свой личный чат');
+      }
+
+      transaction.update(chatRef, {
+        'clearedAtByUser.${currentUser.uid}': FieldValue.serverTimestamp(),
+        'lastRead.${currentUser.uid}': FieldValue.serverTimestamp(),
+      });
+    });
   }
 }

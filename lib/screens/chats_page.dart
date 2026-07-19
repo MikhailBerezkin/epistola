@@ -18,6 +18,51 @@ class ChatsPage extends StatefulWidget {
 
 class _ChatsPageState extends State<ChatsPage> {
   ChatFilter _selectedFilter = ChatFilter.private;
+  Future<void> _confirmClearPrivateChat({
+    required ChatService chatService,
+    required String chatId,
+    required String chatName,
+  }) async {
+    HapticFeedback.mediumImpact();
+
+    final shouldClear = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Удалить чат?'),
+          content: Text('История с «$chatName» будет скрыта только для вас.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Отмена'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Удалить'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldClear != true || !mounted) return;
+
+    try {
+      await chatService.clearPrivateChatForCurrentUser(chatId);
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Чат скрыт только для вас')));
+    } catch (_) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Не удалось удалить чат')));
+    }
+  }
 
   Future<String> _getDisplayChatName(
     ChatService chatService,
@@ -122,7 +167,39 @@ class _ChatsPageState extends State<ChatsPage> {
                   final type = data['type'] ?? 'group';
 
                   if (_selectedFilter == ChatFilter.private) {
-                    return type == 'private';
+                    if (type != 'private') {
+                      return false;
+                    }
+
+                    final currentUserId =
+                        FirebaseAuth.instance.currentUser?.uid;
+
+                    if (currentUserId == null) {
+                      return false;
+                    }
+
+                    final clearedAtByUser =
+                        (data['clearedAtByUser'] as Map<String, dynamic>?) ??
+                        {};
+
+                    final clearedAt = clearedAtByUser[currentUserId];
+                    final lastMessageAt = data['lastMessageAt'];
+
+                    if (clearedAt is Timestamp) {
+                      if (lastMessageAt is! Timestamp) {
+                        return false;
+                      }
+
+                      final hasNewMessage = lastMessageAt.toDate().isAfter(
+                        clearedAt.toDate(),
+                      );
+
+                      if (!hasNewMessage) {
+                        return false;
+                      }
+                    }
+
+                    return true;
                   }
 
                   return type == 'group';
@@ -168,6 +245,15 @@ class _ChatsPageState extends State<ChatsPage> {
                               ),
                             );
                           },
+                          onLongPress: _selectedFilter == ChatFilter.private
+                              ? () {
+                                  _confirmClearPrivateChat(
+                                    chatService: chatService,
+                                    chatId: chat.id,
+                                    chatName: chatName,
+                                  );
+                                }
+                              : null,
                         );
                       },
                     );

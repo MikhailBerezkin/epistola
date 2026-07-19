@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import '../domain/value_objects/message_text.dart';
 
 class MessageInput extends StatelessWidget {
   final TextEditingController controller;
@@ -107,6 +109,13 @@ class MessageInput extends StatelessWidget {
             Expanded(
               child: TextField(
                 controller: controller,
+                minLines: 1,
+                maxLines: 5,
+                keyboardType: TextInputType.multiline,
+                textCapitalization: TextCapitalization.sentences,
+                inputFormatters: [
+                  LengthLimitingTextInputFormatter(MessageText.maxLength),
+                ],
                 decoration: InputDecoration(
                   hintText: 'Сообщение',
                   border: OutlineInputBorder(

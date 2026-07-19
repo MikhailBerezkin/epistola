@@ -11,6 +11,217 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/chats/$(chatId));
     }
 
+    function currentUserDoc() {
+      return get(
+        /databases/$(database)/documents/users/$(request.auth.uid)
+      );
+    }
+
+    function hasValidMessageFields(message) {
+  return message.keys().hasAll([
+        'text',
+        'senderId',
+        'senderEmail',
+        'senderName',
+        'createdAt'
+      ])
+      && message.keys().hasOnly([
+        'text',
+        'senderId',
+        'senderEmail',
+        'senderName',
+        'createdAt'
+      ]);
+}
+
+function isValidMessageData(message) {
+  let profile = currentUserDoc().data;
+
+  return signedIn()
+      && hasValidMessageFields(message)
+      && message.text is string
+      && message.text == message.text.trim()
+      && message.text.size() > 0
+      && message.text.size() <= 4096
+      && message.senderId is string
+      && message.senderId == request.auth.uid
+      && message.senderEmail is string
+      && message.senderEmail == request.auth.token.email
+      && message.senderName is string
+      && message.senderName == profile.get('name', '')
+      && message.createdAt is timestamp
+      && message.createdAt == request.time;
+}
+
+function isValidNewMessage() {
+  return isValidMessageData(request.resource.data);
+}
+    function hasValidPrivateChatFields() {
+  return request.resource.data.keys().hasAll([
+        'name',
+        'type',
+        'memberIds',
+        'memberEmails',
+        'memberRoles',
+        'memberStatus',
+        'groupSettings',
+        'lastRead',
+        'isDissolved',
+        'createdAt',
+        'lastMessage',
+        'lastMessageAt',
+        'lastMessageId',
+        'firstMessageId'
+      ])
+      && request.resource.data.keys().hasOnly([
+        'name',
+        'type',
+        'memberIds',
+        'memberEmails',
+        'memberRoles',
+        'memberStatus',
+        'groupSettings',
+        'lastRead',
+        'isDissolved',
+        'createdAt',
+        'lastMessage',
+        'lastMessageAt',
+        'lastMessageId',
+        'firstMessageId'
+      ]);
+}
+
+function isValidPrivateChatCreate(chatId) {
+  let chat = request.resource.data;
+  let firstId = chat.memberIds[0];
+  let secondId = chat.memberIds[1];
+  let firstMessageId = chat.firstMessageId;
+  let firstMessage = getAfter(
+    /databases/$(database)/documents/chats/$(chatId)/messages/$(firstMessageId)
+  ).data;
+
+  return hasValidPrivateChatFields()
+      && chat.name == 'private_chat'
+      && chat.type == 'private'
+
+      && chat.memberIds is list
+      && chat.memberIds.size() == 2
+      && chat.memberIds.toSet().size() == 2
+      && request.auth.uid in chat.memberIds
+
+      && (
+        chatId == firstId + '_' + secondId
+        || chatId == secondId + '_' + firstId
+      )
+
+      && exists(
+        /databases/$(database)/documents/users/$(firstId)
+      )
+      && exists(
+        /databases/$(database)/documents/users/$(secondId)
+      )
+
+      && chat.memberEmails is list
+      && chat.memberEmails.size() > 0
+      && chat.memberEmails.size() <= 2
+      && request.auth.token.email in chat.memberEmails
+
+      && chat.memberRoles is map
+      && chat.memberRoles.keys().hasAll(chat.memberIds)
+      && chat.memberRoles.keys().hasOnly(chat.memberIds)
+      && chat.memberRoles[firstId] == 'member'
+      && chat.memberRoles[secondId] == 'member'
+
+      && chat.memberStatus is map
+      && chat.memberStatus.keys().hasAll(chat.memberIds)
+      && chat.memberStatus.keys().hasOnly(chat.memberIds)
+      && chat.memberStatus[firstId] is map
+      && chat.memberStatus[secondId] is map
+      && chat.memberStatus[firstId].keys().hasAll(['status'])
+      && chat.memberStatus[firstId].keys().hasOnly(['status'])
+      && chat.memberStatus[secondId].keys().hasAll(['status'])
+      && chat.memberStatus[secondId].keys().hasOnly(['status'])
+      && chat.memberStatus[firstId].status == 'normal'
+      && chat.memberStatus[secondId].status == 'normal'
+
+      && chat.groupSettings is map
+      && chat.groupSettings.keys().hasAll(['messagePermission'])
+      && chat.groupSettings.keys().hasOnly(['messagePermission'])
+      && chat.groupSettings.messagePermission == 'all'
+
+      && chat.lastRead is map
+      && chat.lastRead.keys().hasAll([request.auth.uid])
+      && chat.lastRead.keys().hasOnly([request.auth.uid])
+      && chat.lastRead[request.auth.uid] is timestamp
+      && chat.lastRead[request.auth.uid] == request.time
+
+      && chat.isDissolved == false
+
+      && chat.createdAt is timestamp
+      && chat.createdAt == request.time
+
+      && chat.lastMessage is string
+      && chat.lastMessage == chat.lastMessage.trim()
+      && chat.lastMessage.size() > 0
+      && chat.lastMessage.size() <= 4096
+
+      && chat.lastMessageAt is timestamp
+      && chat.lastMessageAt == request.time
+
+      && chat.lastMessageId is string
+      && chat.lastMessageId.size() > 0
+
+      && chat.firstMessageId is string
+      && chat.firstMessageId.size() > 0
+      && chat.lastMessageId == chat.firstMessageId
+
+      && isValidMessageData(firstMessage)
+      && firstMessage.text == chat.lastMessage
+      && firstMessage.createdAt == chat.lastMessageAt;
+}
+
+function isValidChatCreate(chatId) {
+  let chatType = request.resource.data.get('type', '');
+
+  return signedIn()
+      && (
+        (
+          chatType == 'private'
+          && isValidPrivateChatCreate(chatId)
+        )
+        || chatType == 'group'
+      );
+}
+function isFirstMessageForNewPrivateChat(chatId, messageId) {
+  let chatAfter = getAfter(
+    /databases/$(database)/documents/chats/$(chatId)
+  ).data;
+
+  return signedIn()
+      && !exists(
+        /databases/$(database)/documents/chats/$(chatId)
+      )
+      && chatAfter.type == 'private'
+      && chatAfter.firstMessageId == messageId
+      && chatAfter.lastMessageId == messageId
+      && chatAfter.memberIds is list
+      && chatAfter.memberIds.size() == 2
+      && request.auth.uid in chatAfter.memberIds
+      && chatAfter.lastMessage == request.resource.data.text
+      && chatAfter.lastMessageAt == request.time
+      && chatAfter.createdAt == request.time;
+}
+
+function isMessageLinkedToExistingChatUpdate(chatId, messageId) {
+  let chatAfter = getAfter(
+    /databases/$(database)/documents/chats/$(chatId)
+  ).data;
+
+  return chatAfter.lastMessageId == messageId
+      && chatAfter.lastMessage == request.resource.data.text
+      && chatAfter.lastMessageAt == request.time;
+}
+
     function isChatMember(chatId) {
       return signedIn()
           && request.auth.uid in chatDoc(chatId).data.memberIds;
@@ -23,69 +234,70 @@ service cloud.firestore {
     function getStatus(chatId) {
       return chatDoc(chatId).data.memberStatus[request.auth.uid].status;
     }
+
     function getStatusData(chatId) {
-  return chatDoc(chatId).data.memberStatus[request.auth.uid];
-}
+      return chatDoc(chatId).data.memberStatus[request.auth.uid];
+    }
 
-function isStatusActive(chatId) {
-  return getStatusData(chatId).permanent == true
-      || (
-        getStatusData(chatId).expiresAt is timestamp
-        && getStatusData(chatId).expiresAt > request.time
-      );
-}
+    function isStatusActive(chatId) {
+      return getStatusData(chatId).permanent == true
+          || (
+            getStatusData(chatId).expiresAt is timestamp
+            && getStatusData(chatId).expiresAt > request.time
+          );
+    }
 
-function isActivelyMutedOrBanned(chatId) {
-  return (
-        getStatus(chatId) == "muted"
-        || getStatus(chatId) == "banned"
-      )
-      && isStatusActive(chatId);
-}
+    function isActivelyMutedOrBanned(chatId) {
+      return (
+            getStatus(chatId) == 'muted'
+            || getStatus(chatId) == 'banned'
+          )
+          && isStatusActive(chatId);
+    }
 
     function getMessagePermission(chatId) {
       return chatDoc(chatId).data.groupSettings.messagePermission;
     }
 
     function isAdminOrOwner(chatId) {
-      return getRole(chatId) == "admin"
-          || getRole(chatId) == "owner";
+      return getRole(chatId) == 'admin'
+          || getRole(chatId) == 'owner';
     }
 
     function isModeratorOrAbove(chatId) {
-      return getRole(chatId) == "moderator"
-          || getRole(chatId) == "admin"
-          || getRole(chatId) == "owner";
+      return getRole(chatId) == 'moderator'
+          || getRole(chatId) == 'admin'
+          || getRole(chatId) == 'owner';
     }
+
     function isPrivateChat(chatId) {
-  return get(/databases/$(database)/documents/chats/$(chatId))
-      .data.type == "private";
-}
+      return chatDoc(chatId).data.type == 'private';
+    }
 
     function canWrite(chatId) {
-  return isChatMember(chatId)
-      && (
-        isPrivateChat(chatId)
-        ||
-        (
-          getRole(chatId) != "guest"
-&& !isActivelyMutedOrBanned(chatId)
-&& (
-  getMessagePermission(chatId) == "all"
-  ||
-  (
-    getMessagePermission(chatId) == "moderators"
-    && isModeratorOrAbove(chatId)
-  )
-  ||
-  (
-    getMessagePermission(chatId) == "admins"
-    && isAdminOrOwner(chatId)
-  )
-)
-        )
-      );
-}
+      return isChatMember(chatId)
+          && (
+            isPrivateChat(chatId)
+            ||
+            (
+              getRole(chatId) != 'guest'
+              && !isActivelyMutedOrBanned(chatId)
+              && (
+                getMessagePermission(chatId) == 'all'
+                ||
+                (
+                  getMessagePermission(chatId) == 'moderators'
+                  && isModeratorOrAbove(chatId)
+                )
+                ||
+                (
+                  getMessagePermission(chatId) == 'admins'
+                  && isAdminOrOwner(chatId)
+                )
+              )
+            )
+          );
+    }
 
     function currentRoleInChat() {
       return resource.data.memberRoles[request.auth.uid];
@@ -97,14 +309,14 @@ function isActivelyMutedOrBanned(chatId) {
     }
 
     function isCurrentAdminOrOwner() {
-      return currentRoleInChat() == "admin"
-          || currentRoleInChat() == "owner";
+      return currentRoleInChat() == 'admin'
+          || currentRoleInChat() == 'owner';
     }
 
     function isCurrentModeratorOrAbove() {
-      return currentRoleInChat() == "moderator"
-          || currentRoleInChat() == "admin"
-          || currentRoleInChat() == "owner";
+      return currentRoleInChat() == 'moderator'
+          || currentRoleInChat() == 'admin'
+          || currentRoleInChat() == 'owner';
     }
 
     function changedKeys() {
@@ -112,119 +324,255 @@ function isActivelyMutedOrBanned(chatId) {
     }
 
     function isOnlyLastReadUpdate() {
-      return changedKeys().hasOnly(["lastRead"]);
+      return changedKeys().hasOnly(['lastRead']);
+    }
+    function isClearPrivateChatForCurrentUserUpdate() {
+  let oldClearedAtByUser =
+      resource.data.get('clearedAtByUser', {});
+
+  let newClearedAtByUser =
+      request.resource.data.get('clearedAtByUser', {});
+
+  return signedIn()
+      && resource.data.type == 'private'
+      && request.resource.data.type == 'private'
+
+      && request.auth.uid in resource.data.memberIds
+      && request.resource.data.memberIds == resource.data.memberIds
+
+      && changedKeys().hasOnly([
+        'clearedAtByUser',
+        'lastRead'
+      ])
+
+      && oldClearedAtByUser is map
+      && newClearedAtByUser is map
+
+      && newClearedAtByUser.keys().hasAll([
+        request.auth.uid
+      ])
+
+      && newClearedAtByUser
+          .diff(oldClearedAtByUser)
+          .affectedKeys()
+          .hasOnly([request.auth.uid])
+
+      && newClearedAtByUser[request.auth.uid] is timestamp
+      && newClearedAtByUser[request.auth.uid] == request.time
+
+      && request.resource.data.lastRead is map
+
+      && request.resource.data.lastRead
+          .diff(resource.data.lastRead)
+          .affectedKeys()
+          .hasOnly([request.auth.uid])
+
+      && request.resource.data.lastRead[request.auth.uid] is timestamp
+      && request.resource.data.lastRead[request.auth.uid] == request.time;
+}
+
+    function isAtomicLastMessageUpdate(chatId) {
+      let messageId = request.resource.data.lastMessageId;
+      let messagePath =
+          /databases/$(database)/documents/chats/$(chatId)/messages/$(messageId);
+      let messageAfter = getAfter(messagePath).data;
+
+      return changedKeys().hasOnly([
+            'lastMessage',
+            'lastMessageAt',
+            'lastMessageId'
+          ])
+          && request.resource.data.lastMessage is string
+          && request.resource.data.lastMessage
+              == request.resource.data.lastMessage.trim()
+          && request.resource.data.lastMessage.size() > 0
+          && request.resource.data.lastMessage.size() <= 4096
+          && request.resource.data.lastMessageAt is timestamp
+          && request.resource.data.lastMessageAt == request.time
+          && messageId is string
+          && messageId.size() > 0
+          && !exists(messagePath)
+          && existsAfter(messagePath)
+          && messageAfter.senderId == request.auth.uid
+          && messageAfter.text == request.resource.data.lastMessage
+          && messageAfter.createdAt == request.resource.data.lastMessageAt;
     }
 
-    function isOnlyLastMessageUpdate() {
-      return changedKeys().hasOnly(["lastMessage", "lastMessageAt"]);
+    function changesLastMessageMetadata() {
+      return changedKeys().hasAny([
+        'lastMessage',
+        'lastMessageAt',
+        'lastMessageId'
+      ]);
+    }
+
+    function isAdminRightsTransferLastMessageUpdate() {
+      return isCurrentAdminOrOwner()
+          && changedKeys().hasAll([
+            'memberRoles',
+            'lastMessage',
+            'lastMessageAt'
+          ])
+          && changedKeys().hasOnly([
+            'memberRoles',
+            'lastMessage',
+            'lastMessageAt',
+            'lastMessageId'
+          ])
+          && request.resource.data.memberRoles is map
+          && request.resource.data.lastMessage
+              == 'Права администратора переданы'
+          && request.resource.data.lastMessageAt is timestamp
+          && request.resource.data.lastMessageAt == request.time
+          && !request.resource.data.keys().hasAny(['lastMessageId']);
+    }
+
+    function isDissolveGroupLastMessageUpdate() {
+      return isCurrentAdminOrOwner()
+          && resource.data.type == 'group'
+          && changedKeys().hasAll([
+            'isDissolved',
+            'dissolvedBy',
+            'dissolvedAt',
+            'lastMessage',
+            'lastMessageAt',
+            'memberIds',
+            'memberEmails'
+          ])
+          && changedKeys().hasOnly([
+            'isDissolved',
+            'dissolvedBy',
+            'dissolvedAt',
+            'lastMessage',
+            'lastMessageAt',
+            'lastMessageId',
+            'memberIds',
+            'memberEmails'
+          ])
+          && request.resource.data.isDissolved == true
+          && request.resource.data.dissolvedBy == request.auth.uid
+          && request.resource.data.dissolvedAt is timestamp
+          && request.resource.data.dissolvedAt == request.time
+          && request.resource.data.lastMessage == 'Группа распущена'
+          && request.resource.data.lastMessageAt is timestamp
+          && request.resource.data.lastMessageAt == request.time
+          && request.resource.data.memberIds is list
+          && request.resource.data.memberIds.size() == 0
+          && request.resource.data.memberEmails is list
+          && request.resource.data.memberEmails.size() == 0
+          && !request.resource.data.keys().hasAny(['lastMessageId']);
     }
 
     function isAddMembersUpdate() {
       return changedKeys().hasOnly([
-        "memberIds",
-        "memberEmails",
-        "memberRoles",
-        "memberStatus"
+        'memberIds',
+        'memberEmails',
+        'memberRoles',
+        'memberStatus'
       ]);
     }
 
-function getMessagePermissionFromResource() {
-  return resource.data.groupSettings.messagePermission;
-}
+    function getMessagePermissionFromResource() {
+      return resource.data.groupSettings.messagePermission;
+    }
 
-function currentStatusInChat() {
-  return resource.data.memberStatus[request.auth.uid].status;
-}
+    function currentStatusInChat() {
+      return resource.data.memberStatus[request.auth.uid].status;
+    }
 
-function canAddMembersByPermission() {
-  return isCurrentMemberInChat()
-      && currentRoleInChat() != "guest"
-      && currentStatusInChat() != "muted"
-      && currentStatusInChat() != "banned"
-      && (
-        (
-          getMessagePermissionFromResource() == "all"
+    function canAddMembersByPermission() {
+      return isCurrentMemberInChat()
+          && currentRoleInChat() != 'guest'
+          && currentStatusInChat() != 'muted'
+          && currentStatusInChat() != 'banned'
           && (
-            currentRoleInChat() == "member"
-            || currentRoleInChat() == "moderator"
-            || currentRoleInChat() == "admin"
-            || currentRoleInChat() == "owner"
-          )
-        )
-        ||
-        (
-          getMessagePermissionFromResource() == "moderators"
-          && isCurrentModeratorOrAbove()
-        )
-        ||
-        (
-          getMessagePermissionFromResource() == "admins"
-          && isCurrentAdminOrOwner()
-        )
-      );
-}
-function isOnlyMemberStatusUpdate() {
-  return changedKeys().hasOnly(["memberStatus"]);
-}
+            (
+              getMessagePermissionFromResource() == 'all'
+              && (
+                currentRoleInChat() == 'member'
+                || currentRoleInChat() == 'moderator'
+                || currentRoleInChat() == 'admin'
+                || currentRoleInChat() == 'owner'
+              )
+            )
+            ||
+            (
+              getMessagePermissionFromResource() == 'moderators'
+              && isCurrentModeratorOrAbove()
+            )
+            ||
+            (
+              getMessagePermissionFromResource() == 'admins'
+              && isCurrentAdminOrOwner()
+            )
+          );
+    }
 
-function requestedMemberStatusValues() {
-  return request.resource.data.memberStatus.values();
-}
+    function isOnlyMemberStatusUpdate() {
+      return changedKeys().hasOnly(['memberStatus']);
+    }
 
-function isOnlyMuteOrNormalStatusUpdate() {
-  return requestedMemberStatusValues().hasOnly([
-    {"status": "normal"},
-    {"status": "muted"}
-  ]);
-}
+    function requestedMemberStatusValues() {
+      return request.resource.data.memberStatus.values();
+    }
 
-function canUpdateMemberStatus() {
-  return isCurrentMemberInChat()
-      && (
-        isCurrentAdminOrOwner()
-        ||
-        (
-          isCurrentModeratorOrAbove()
-          && isOnlyMuteOrNormalStatusUpdate()
-        )
-      );
-}
-function isLeaveGroupUpdate() {
-  return isCurrentMemberInChat()
-      && changedKeys().hasOnly([
-        "memberIds",
-        "memberEmails",
-        "memberRoles",
-        "memberStatus",
-        "lastRead"
-      ])
-      && !(request.auth.uid in request.resource.data.memberIds)
-      && !(request.auth.uid in request.resource.data.memberRoles.keys())
-      && !(request.auth.uid in request.resource.data.memberStatus.keys())
-      && !(request.auth.uid in request.resource.data.lastRead.keys());
-}
-function isPrivateChatSelfRepair() {
-  return signedIn()
-    && resource.data.type == 'private'
-    && request.auth.uid in resource.data.memberIds
-    && request.auth.uid in request.resource.data.memberIds
-    && request.resource.data.type == 'private'
-    && request.resource.data.memberIds == resource.data.memberIds
-    && request.resource.data.diff(resource.data).changedKeys().hasOnly([
-      'name',
-      'type',
-      'memberIds',
-      'memberEmails',
-      'memberRoles',
-      'memberStatus',
-      'groupSettings',
-      'lastRead',
-      'isDissolved'
-    ]);
-}
-function isPrivateChatIdParticipant(chatId) {
-  return chatId.matches('.*' + request.auth.uid + '.*');
-}
+    function isOnlyMuteOrNormalStatusUpdate() {
+      return requestedMemberStatusValues().hasOnly([
+        {'status': 'normal'},
+        {'status': 'muted'}
+      ]);
+    }
+
+    function canUpdateMemberStatus() {
+      return isCurrentMemberInChat()
+          && (
+            isCurrentAdminOrOwner()
+            ||
+            (
+              isCurrentModeratorOrAbove()
+              && isOnlyMuteOrNormalStatusUpdate()
+            )
+          );
+    }
+
+    function isLeaveGroupUpdate() {
+      return isCurrentMemberInChat()
+          && changedKeys().hasOnly([
+            'memberIds',
+            'memberEmails',
+            'memberRoles',
+            'memberStatus',
+            'lastRead'
+          ])
+          && !(request.auth.uid in request.resource.data.memberIds)
+          && !(request.auth.uid in request.resource.data.memberRoles.keys())
+          && !(request.auth.uid in request.resource.data.memberStatus.keys())
+          && !(request.auth.uid in request.resource.data.lastRead.keys());
+    }
+
+    function isPrivateChatSelfRepair() {
+      return signedIn()
+          && resource.data.type == 'private'
+          && request.auth.uid in resource.data.memberIds
+          && request.auth.uid in request.resource.data.memberIds
+          && request.resource.data.type == 'private'
+          && request.resource.data.memberIds == resource.data.memberIds
+          && request.resource.data.diff(resource.data).changedKeys().hasOnly([
+            'name',
+            'type',
+            'memberIds',
+            'memberEmails',
+            'memberRoles',
+            'memberStatus',
+            'groupSettings',
+            'lastRead',
+            'isDissolved'
+          ]);
+    }
+
+    function isPrivateChatIdParticipant(chatId) {
+      return chatId.matches('.*' + request.auth.uid + '.*');
+    }
 
     match /users/{userId} {
       allow read: if signedIn();
@@ -240,30 +588,43 @@ function isPrivateChatIdParticipant(chatId) {
 
     match /chats/{chatId} {
       allow get: if signedIn()
-  && (
-    isPrivateChatIdParticipant(chatId)
-    || request.auth.uid in resource.data.memberIds
-  );
+          && (
+            isPrivateChatIdParticipant(chatId)
+            || request.auth.uid in resource.data.memberIds
+          );
 
-allow list: if signedIn()
-  && request.auth.uid in resource.data.memberIds;
+      allow list: if signedIn()
+          && request.auth.uid in resource.data.memberIds;
 
-      allow create: if signedIn();
+      allow create: if isValidChatCreate(chatId);
 
-      allow update: if isCurrentAdminOrOwner()
-    || (isCurrentMemberInChat() && isOnlyLastReadUpdate())
-    || (canWrite(chatId) && isOnlyLastMessageUpdate())
-    || (canAddMembersByPermission() && isAddMembersUpdate())
-    || (canUpdateMemberStatus() && isOnlyMemberStatusUpdate())
-    || isLeaveGroupUpdate()
-    || isPrivateChatSelfRepair();
+      allow update: if (
+            isCurrentAdminOrOwner()
+            && !changesLastMessageMetadata()
+          )
+          || (isCurrentMemberInChat() && isOnlyLastReadUpdate())
+          || (canWrite(chatId) && isAtomicLastMessageUpdate(chatId))
+          || isAdminRightsTransferLastMessageUpdate()
+          || isDissolveGroupLastMessageUpdate()
+          || (canAddMembersByPermission() && isAddMembersUpdate())
+          || (canUpdateMemberStatus() && isOnlyMemberStatusUpdate())
+          || isLeaveGroupUpdate()
+          || isClearPrivateChatForCurrentUserUpdate()
+          || isPrivateChatSelfRepair();
 
       allow delete: if false;
 
       match /messages/{messageId} {
         allow read: if isChatMember(chatId);
 
-        allow create: if canWrite(chatId);
+        allow create: if isValidNewMessage()
+    && (
+      isFirstMessageForNewPrivateChat(chatId, messageId)
+      || (
+        canWrite(chatId)
+        && isMessageLinkedToExistingChatUpdate(chatId, messageId)
+      )
+    );
 
         allow update, delete: if false;
       }
