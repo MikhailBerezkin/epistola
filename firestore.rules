@@ -584,6 +584,32 @@ function isMessageLinkedToExistingChatUpdate(chatId, messageId) {
           && request.auth.uid == userId;
 
       allow delete: if false;
+      match /devices/{deviceId} {
+  allow get, list: if signedIn()
+      && request.auth.uid == userId;
+
+  allow create, update: if signedIn()
+      && request.auth.uid == userId
+      && request.resource.data.keys().hasAll([
+        'token',
+        'platform',
+        'updatedAt'
+      ])
+      && request.resource.data.keys().hasOnly([
+        'token',
+        'platform',
+        'updatedAt'
+      ])
+      && request.resource.data.token is string
+      && request.resource.data.token.size() > 0
+      && request.resource.data.token.size() <= 4096
+      && request.resource.data.platform is string
+      && request.resource.data.updatedAt is timestamp
+      && request.resource.data.updatedAt == request.time;
+
+  allow delete: if signedIn()
+      && request.auth.uid == userId;
+}
     }
 
     match /chats/{chatId} {
