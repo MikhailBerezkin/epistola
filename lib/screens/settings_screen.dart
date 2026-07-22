@@ -4,6 +4,7 @@ import 'package:flutter/services.dart' show HapticFeedback;
 
 import '../services/app_settings.dart';
 import 'welcome_screen.dart';
+import '../services/push_token_service.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -32,6 +33,7 @@ class SettingsScreen extends StatelessWidget {
     );
 
     if (shouldLogout != true) return;
+    await PushTokenService.unregisterCurrentDevice();
 
     await FirebaseAuth.instance.signOut();
 
