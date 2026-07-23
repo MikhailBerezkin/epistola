@@ -8,6 +8,7 @@ class ChatTile extends StatelessWidget {
   final String chatName;
   final String lastMessage;
   final dynamic lastMessageAt;
+  final bool showLastMessagePreview;
   final VoidCallback onTap;
   final VoidCallback? onLongPress;
 
@@ -17,6 +18,7 @@ class ChatTile extends StatelessWidget {
     required this.chatName,
     required this.lastMessage,
     required this.lastMessageAt,
+    this.showLastMessagePreview = true,
     required this.onTap,
     this.onLongPress,
   });
@@ -46,7 +48,9 @@ class ChatTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final firstLetter = chatName.isNotEmpty ? chatName[0].toUpperCase() : '?';
-    final timeText = formatChatTime(lastMessageAt);
+    final timeText = showLastMessagePreview
+        ? formatChatTime(lastMessageAt)
+        : '';
 
     return Card(
       child: ListTile(
@@ -80,11 +84,13 @@ class ChatTile extends StatelessWidget {
         subtitle: Row(
           children: [
             Expanded(
-              child: Text(
-                lastMessage.isEmpty ? 'Сообщений пока нет' : lastMessage,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
+              child: showLastMessagePreview
+                  ? Text(
+                      lastMessage.isEmpty ? 'Сообщений пока нет' : lastMessage,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    )
+                  : const SizedBox.shrink(),
             ),
             FutureBuilder<int>(
               future: ChatService().getUnreadCount(chatId),

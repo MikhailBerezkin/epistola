@@ -18,6 +18,7 @@ class ChatsPage extends StatefulWidget {
 
 class _ChatsPageState extends State<ChatsPage> {
   ChatFilter _selectedFilter = ChatFilter.private;
+
   Future<void> _confirmClearPrivateChat({
     required ChatService chatService,
     required String chatId,
@@ -33,11 +34,15 @@ class _ChatsPageState extends State<ChatsPage> {
           content: Text('История с «$chatName» будет скрыта только для вас.'),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
+              onPressed: () {
+                Navigator.pop(dialogContext, false);
+              },
               child: const Text('Отмена'),
             ),
             FilledButton(
-              onPressed: () => Navigator.pop(dialogContext, true),
+              onPressed: () {
+                Navigator.pop(dialogContext, true);
+              },
               child: const Text('Удалить'),
             ),
           ],
@@ -71,7 +76,7 @@ class _ChatsPageState extends State<ChatsPage> {
     final type = data['type'] ?? 'group';
 
     if (type != 'private') {
-      return data['name'] ?? 'Без названия';
+      return data['name'] is String ? data['name'] as String : 'Без названия';
     }
 
     final currentUserId = FirebaseAuth.instance.currentUser?.uid;
@@ -114,9 +119,9 @@ class _ChatsPageState extends State<ChatsPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
+          const Row(
             children: [
-              const Expanded(
+              Expanded(
                 child: Text(
                   'Чаты',
                   style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
@@ -164,6 +169,7 @@ class _ChatsPageState extends State<ChatsPage> {
 
                 final filteredChats = chats.where((chat) {
                   final data = chat.data() as Map<String, dynamic>;
+
                   final type = data['type'] ?? 'group';
 
                   if (_selectedFilter == ChatFilter.private) {
@@ -183,6 +189,7 @@ class _ChatsPageState extends State<ChatsPage> {
                         {};
 
                     final clearedAt = clearedAtByUser[currentUserId];
+
                     final lastMessageAt = data['lastMessageAt'];
 
                     if (clearedAt is Timestamp) {
@@ -217,43 +224,113 @@ class _ChatsPageState extends State<ChatsPage> {
                   itemCount: filteredChats.length,
                   itemBuilder: (context, index) {
                     final chat = filteredChats[index];
+
                     final data = chat.data() as Map<String, dynamic>;
 
-                    final lastMessage = data['lastMessage'] ?? '';
+                    final currentUserId =
+                        FirebaseAuth.instance.currentUser?.uid;
+
+                    final lastMessage = data['lastMessage'] is String
+                        ? data['lastMessage'] as String
+                        : '';
+
+                    final lastMessageId = data['lastMessageId'] is String
+                        ? data['lastMessageId'] as String
+                        : '';
+
+                    final lastMessageHiddenFor =
+                        (data['lastMessageHiddenFor']
+                            as Map<String, dynamic>?) ??
+                        {};
+
+                    final isLastMessageHiddenForCurrentUser =
+                        currentUserId != null &&
+                        lastMessageId.isNotEmpty &&
+                        lastMessageHiddenFor[currentUserId] == lastMessageId;
+
+                    final isLastMessageDeletedForEveryone =
+                        lastMessageId.isNotEmpty &&
+                        data['lastMessageDeletedForEveryoneId'] ==
+                            lastMessageId;
+
+                    final showLastMessagePreview =
+                        !isLastMessageHiddenForCurrentUser &&
+                        !isLastMessageDeletedForEveryone;
+
+                    final clearedAtByUser =
+                        (data['clearedAtByUser'] as Map<String, dynamic>?) ??
+                        {};
+
+                    final clearedAt = currentUserId == null
+                        ? null
+                        : clearedAtByUser[currentUserId];
 
                     return FutureBuilder<String>(
                       future: _getDisplayChatName(chatService, data),
                       builder: (context, nameSnapshot) {
                         final chatName =
-                            nameSnapshot.data ?? data['name'] ?? 'Чат';
+                            nameSnapshot.data ??
+                            (data['name'] is String
+                                ? data['name'] as String
+                                : 'Чат');
 
-                        return ChatTile(
-                          chatId: chat.id,
-                          chatName: chatName,
-                          lastMessage: lastMessage,
-                          lastMessageAt: data['lastMessageAt'],
-                          onTap: () {
-                            HapticFeedback.lightImpact();
-
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => ChatScreen(
+                        return FutureBuilder<
+                          ({String text, Timestamp createdAt})?
+                        >(
+                          future: showLastMessagePreview
+                              ? null
+                              : chatService.findLatestVisibleMessagePreview(
                                   chatId: chat.id,
-                                  chatName: chatName,
+                                  after: clearedAt is Timestamp
+                                      ? clearedAt
+                                      : null,
                                 ),
-                              ),
+                          builder: (context, previewSnapshot) {
+                            final fallbackPreview = previewSnapshot.data;
+
+                            final effectiveLastMessage = showLastMessagePreview
+                                ? lastMessage
+                                : fallbackPreview?.text ?? '';
+
+                            final effectiveLastMessageAt =
+                                showLastMessagePreview
+                                ? data['lastMessageAt']
+                                : fallbackPreview?.createdAt;
+
+                            final hasEffectivePreview =
+                                showLastMessagePreview ||
+                                fallbackPreview != null;
+
+                            return ChatTile(
+                              chatId: chat.id,
+                              chatName: chatName,
+                              lastMessage: effectiveLastMessage,
+                              lastMessageAt: effectiveLastMessageAt,
+                              showLastMessagePreview: hasEffectivePreview,
+                              onTap: () {
+                                HapticFeedback.lightImpact();
+
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => ChatScreen(
+                                      chatId: chat.id,
+                                      chatName: chatName,
+                                    ),
+                                  ),
+                                );
+                              },
+                              onLongPress: _selectedFilter == ChatFilter.private
+                                  ? () {
+                                      _confirmClearPrivateChat(
+                                        chatService: chatService,
+                                        chatId: chat.id,
+                                        chatName: chatName,
+                                      );
+                                    }
+                                  : null,
                             );
                           },
-                          onLongPress: _selectedFilter == ChatFilter.private
-                              ? () {
-                                  _confirmClearPrivateChat(
-                                    chatService: chatService,
-                                    chatId: chat.id,
-                                    chatName: chatName,
-                                  );
-                                }
-                              : null,
                         );
                       },
                     );

@@ -5,7 +5,10 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../services/chat_service.dart';
-import 'message_bubble.dart';
+import '../models/message_presentation.dart';
+import 'message_item.dart';
+
+enum _MessageDeleteAction { forCurrentUser, forEveryone }
 
 class MessagesList extends StatefulWidget {
   final String chatId;
@@ -242,6 +245,108 @@ class _MessagesListState extends State<MessagesList> {
     return position.maxScrollExtent - position.pixels < 180;
   }
 
+  Future<void> _showMessageActions({
+    required MessagePresentation message,
+    required bool isMe,
+  }) async {
+    if (!message.isVisible) return;
+
+    final action = await showModalBottomSheet<_MessageDeleteAction>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Wrap(
+            children: [
+              ListTile(
+                leading: const Icon(Icons.delete_outline),
+                title: const Text('Удалить у себя'),
+                onTap: () {
+                  Navigator.of(
+                    sheetContext,
+                  ).pop(_MessageDeleteAction.forCurrentUser);
+                },
+              ),
+              if (isMe)
+                ListTile(
+                  leading: Icon(
+                    Icons.delete_forever_outlined,
+                    color: Theme.of(sheetContext).colorScheme.error,
+                  ),
+                  title: Text(
+                    'Удалить у всех',
+                    style: TextStyle(
+                      color: Theme.of(sheetContext).colorScheme.error,
+                    ),
+                  ),
+                  onTap: () {
+                    Navigator.of(
+                      sheetContext,
+                    ).pop(_MessageDeleteAction.forEveryone);
+                  },
+                ),
+            ],
+          ),
+        );
+      },
+    );
+
+    if (!mounted || action == null) return;
+
+    if (action == _MessageDeleteAction.forEveryone) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) {
+          return AlertDialog(
+            title: const Text('Удалить у всех?'),
+            content: const Text('Сообщение исчезнет у всех участников чата.'),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(dialogContext).pop(false);
+                },
+                child: const Text('Отмена'),
+              ),
+              TextButton(
+                style: TextButton.styleFrom(
+                  foregroundColor: Theme.of(dialogContext).colorScheme.error,
+                ),
+                onPressed: () {
+                  Navigator.of(dialogContext).pop(true);
+                },
+                child: const Text('Удалить'),
+              ),
+            ],
+          );
+        },
+      );
+
+      if (!mounted || confirmed != true) return;
+    }
+
+    try {
+      switch (action) {
+        case _MessageDeleteAction.forCurrentUser:
+          await chatService.deleteMessageForCurrentUser(
+            chatId: widget.chatId,
+            messageId: message.id,
+          );
+
+        case _MessageDeleteAction.forEveryone:
+          await chatService.deleteMessageForEveryone(
+            chatId: widget.chatId,
+            messageId: message.id,
+          );
+      }
+    } catch (_) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Не удалось удалить сообщение.')),
+      );
+    }
+  }
+
   String formatMessageTime(dynamic createdAt) {
     if (createdAt == null || createdAt is! Timestamp) return '';
 
@@ -305,21 +410,55 @@ class _MessagesListState extends State<MessagesList> {
             final message = messages[index];
             final data = message.data();
 
-            final text = data['text'] ?? '';
-            final senderId = data['senderId'];
-            final senderName =
-                data['senderName'] ?? data['senderEmail'] ?? 'Пользователь';
+            final text = data['text'] is String ? data['text'] as String : '';
+            final senderId = data['senderId'] is String
+                ? data['senderId'] as String
+                : '';
+            final senderName = data['senderName'] is String
+                ? data['senderName'] as String
+                : data['senderEmail'] is String
+                ? data['senderEmail'] as String
+                : 'Пользователь';
+
             final createdAt = data['createdAt'];
             final timeText = formatMessageTime(createdAt);
             final isMe = senderId == currentUser?.uid;
             final senderRole = widget.memberRoles[senderId] ?? 'member';
 
-            return MessageBubble(
+            final hiddenFor = data['hiddenFor'];
+            final isHiddenForCurrentUser =
+                currentUser != null &&
+                hiddenFor is Map<String, dynamic> &&
+                hiddenFor[currentUser.uid] is Timestamp;
+
+            final visibility = data['deletedForEveryone'] == true
+                ? MessageVisibilityState.deletedForEveryone
+                : isHiddenForCurrentUser
+                ? MessageVisibilityState.hiddenForCurrentUser
+                : MessageVisibilityState.visible;
+
+            final presentation = MessagePresentation(
+              id: message.id,
               text: text,
+              senderId: senderId,
               senderName: senderName,
+              createdAt: createdAt is Timestamp ? createdAt.toDate() : null,
+              visibility: visibility,
+            );
+
+            return MessageItem(
+              key: ValueKey(message.id),
+              message: presentation,
               senderRole: senderRole,
               timeText: timeText,
               isMe: isMe,
+              onLongPress: presentation.isVisible
+                  ? () {
+                      unawaited(
+                        _showMessageActions(message: presentation, isMe: isMe),
+                      );
+                    }
+                  : null,
             );
           },
         ),
