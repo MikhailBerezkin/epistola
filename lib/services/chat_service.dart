@@ -172,6 +172,34 @@ class ChatService {
     return messages.sendMessage(chatId: chatId, text: text);
   }
 
+  Future<void> deleteMessageForCurrentUser({
+    required String chatId,
+    required String messageId,
+  }) {
+    return messages.deleteMessageForCurrentUser(
+      chatId: chatId,
+      messageId: messageId,
+    );
+  }
+
+  Future<void> deleteMessageForEveryone({
+    required String chatId,
+    required String messageId,
+  }) {
+    return messages.deleteMessageForEveryone(
+      chatId: chatId,
+      messageId: messageId,
+    );
+  }
+
+  Future<({String text, Timestamp createdAt})?>
+  findLatestVisibleMessagePreview({required String chatId, Timestamp? after}) {
+    return messages.findLatestVisibleMessagePreview(
+      chatId: chatId,
+      after: after,
+    );
+  }
+
   Stream<QuerySnapshot<Map<String, dynamic>>> watchLatestMessages(
     String chatId, {
     Timestamp? after,

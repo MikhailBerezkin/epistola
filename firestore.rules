@@ -370,6 +370,172 @@ function isMessageLinkedToExistingChatUpdate(chatId, messageId) {
       && request.resource.data.lastRead[request.auth.uid] is timestamp
       && request.resource.data.lastRead[request.auth.uid] == request.time;
 }
+function isHideMessageForCurrentUserUpdate(chatId, messageId) {
+  let oldHiddenFor = resource.data.get('hiddenFor', {});
+  let newHiddenFor = request.resource.data.get('hiddenFor', {});
+
+  let chatBefore = chatDoc(chatId).data;
+  let chatAfter = getAfter(
+    /databases/$(database)/documents/chats/$(chatId)
+  ).data;
+
+  let lastMessageHiddenFor =
+      chatAfter.get('lastMessageHiddenFor', {});
+
+  return isChatMember(chatId)
+      && resource.data.get('deletedForEveryone', false) != true
+
+      && request.resource.data
+          .diff(resource.data)
+          .affectedKeys()
+          .hasOnly(['hiddenFor'])
+
+      && oldHiddenFor is map
+      && newHiddenFor is map
+
+      && newHiddenFor.keys().hasAll([
+        request.auth.uid
+      ])
+
+      && newHiddenFor
+          .diff(oldHiddenFor)
+          .affectedKeys()
+          .hasOnly([request.auth.uid])
+
+      && newHiddenFor[request.auth.uid] is timestamp
+      && newHiddenFor[request.auth.uid] == request.time
+
+      && (
+        chatBefore.get('lastMessageId', '') != messageId
+        || (
+          lastMessageHiddenFor is map
+          && lastMessageHiddenFor[request.auth.uid] == messageId
+        )
+      );
+}
+
+function isHideLastMessageForCurrentUserUpdate(chatId) {
+  let oldHiddenFor =
+      resource.data.get('lastMessageHiddenFor', {});
+
+  let newHiddenFor =
+      request.resource.data.get('lastMessageHiddenFor', {});
+
+  let messageId = resource.data.get('lastMessageId', '');
+
+  let messageAfter = getAfter(
+    /databases/$(database)/documents/chats/$(chatId)/messages/$(messageId)
+  ).data;
+
+  let messageHiddenFor =
+      messageAfter.get('hiddenFor', {});
+
+  return isCurrentMemberInChat()
+      && messageId is string
+      && messageId.size() > 0
+
+      && changedKeys().hasOnly([
+        'lastMessageHiddenFor'
+      ])
+
+      && oldHiddenFor is map
+      && newHiddenFor is map
+
+      && newHiddenFor.keys().hasAll([
+        request.auth.uid
+      ])
+
+      && newHiddenFor
+          .diff(oldHiddenFor)
+          .affectedKeys()
+          .hasOnly([request.auth.uid])
+
+      && newHiddenFor[request.auth.uid] == messageId
+
+      && messageHiddenFor is map
+      && messageHiddenFor[request.auth.uid] is timestamp
+      && messageHiddenFor[request.auth.uid] == request.time;
+}
+
+function isDeleteMessageForEveryoneUpdate(chatId, messageId) {
+  let chatBefore = chatDoc(chatId).data;
+  let chatAfter = getAfter(
+    /databases/$(database)/documents/chats/$(chatId)
+  ).data;
+
+  return isChatMember(chatId)
+      && resource.data.senderId == request.auth.uid
+      && resource.data.get('deletedForEveryone', false) != true
+
+      && request.resource.data
+          .diff(resource.data)
+          .affectedKeys()
+          .hasAll([
+            'text',
+            'deletedForEveryone',
+            'deletedBy',
+            'deletedAt'
+          ])
+
+      && request.resource.data
+          .diff(resource.data)
+          .affectedKeys()
+          .hasOnly([
+            'text',
+            'deletedForEveryone',
+            'deletedBy',
+            'deletedAt'
+          ])
+
+      && request.resource.data.text == ''
+      && request.resource.data.deletedForEveryone == true
+      && request.resource.data.deletedBy == request.auth.uid
+      && request.resource.data.deletedAt is timestamp
+      && request.resource.data.deletedAt == request.time
+
+      && (
+        chatBefore.get('lastMessageId', '') != messageId
+        || (
+          chatAfter.lastMessage == ''
+          && chatAfter.lastMessageDeletedForEveryoneId == messageId
+        )
+      );
+}
+
+function isDeleteLastMessageForEveryoneUpdate(chatId) {
+  let messageId = resource.data.get('lastMessageId', '');
+
+  let messagePath =
+      /databases/$(database)/documents/chats/$(chatId)/messages/$(messageId);
+
+  let messageBefore = get(messagePath).data;
+  let messageAfter = getAfter(messagePath).data;
+
+  return isCurrentMemberInChat()
+      && messageId is string
+      && messageId.size() > 0
+
+      && changedKeys().hasAll([
+        'lastMessage',
+        'lastMessageDeletedForEveryoneId'
+      ])
+
+      && changedKeys().hasOnly([
+        'lastMessage',
+        'lastMessageDeletedForEveryoneId'
+      ])
+
+      && request.resource.data.lastMessage == ''
+      && request.resource.data.lastMessageDeletedForEveryoneId == messageId
+
+      && messageBefore.get('deletedForEveryone', false) != true
+
+      && messageAfter.text == ''
+      && messageAfter.senderId == request.auth.uid
+      && messageAfter.deletedForEveryone == true
+      && messageAfter.deletedBy == request.auth.uid
+      && messageAfter.deletedAt is timestamp;
+}
 
     function isAtomicLastMessageUpdate(chatId) {
       let messageId = request.resource.data.lastMessageId;
@@ -636,7 +802,9 @@ function isMessageLinkedToExistingChatUpdate(chatId, messageId) {
           || (canUpdateMemberStatus() && isOnlyMemberStatusUpdate())
           || isLeaveGroupUpdate()
           || isClearPrivateChatForCurrentUserUpdate()
-          || isPrivateChatSelfRepair();
+          || isPrivateChatSelfRepair()
+          || isHideLastMessageForCurrentUserUpdate(chatId)
+          || isDeleteLastMessageForEveryoneUpdate(chatId);
 
       allow delete: if false;
 
@@ -652,7 +820,11 @@ function isMessageLinkedToExistingChatUpdate(chatId, messageId) {
       )
     );
 
-        allow update, delete: if false;
+        allow update: if
+    isHideMessageForCurrentUserUpdate(chatId, messageId)
+    || isDeleteMessageForEveryoneUpdate(chatId, messageId);
+
+allow delete: if false;
       }
     }
 

@@ -110,12 +110,136 @@ class ChatMessagesService extends ChatBaseService {
     await batch.commit();
   }
 
+  Future<({String text, Timestamp createdAt})?>
+  findLatestVisibleMessagePreview({
+    required String chatId,
+    Timestamp? after,
+    int pageSize = 20,
+  }) async {
+    final user = auth.currentUser;
+    if (user == null) return null;
+
+    DocumentSnapshot<Map<String, dynamic>>? cursor;
+
+    while (true) {
+      Query<Map<String, dynamic>> query = _messagesQuery(chatId, after: after);
+
+      if (cursor != null) {
+        query = query.startAfterDocument(cursor);
+      }
+
+      final snapshot = await query.limit(pageSize).get();
+
+      for (final document in snapshot.docs) {
+        final data = document.data();
+
+        if (data['deletedForEveryone'] == true) {
+          continue;
+        }
+
+        final hiddenFor = data['hiddenFor'];
+
+        final isHiddenForCurrentUser =
+            hiddenFor is Map && hiddenFor[user.uid] is Timestamp;
+
+        if (isHiddenForCurrentUser) {
+          continue;
+        }
+
+        final text = data['text'];
+        final createdAt = data['createdAt'];
+
+        if (text is String && text.isNotEmpty && createdAt is Timestamp) {
+          return (text: text, createdAt: createdAt);
+        }
+      }
+
+      if (snapshot.docs.length < pageSize) {
+        return null;
+      }
+
+      cursor = snapshot.docs.last;
+    }
+  }
+
   Stream<QuerySnapshot<Map<String, dynamic>>> watchLatestMessages(
     String chatId, {
     Timestamp? after,
     int pageSize = 40,
   }) {
     return _messagesQuery(chatId, after: after).limit(pageSize).snapshots();
+  }
+
+  Future<void> deleteMessageForCurrentUser({
+    required String chatId,
+    required String messageId,
+  }) async {
+    final user = auth.currentUser;
+    if (user == null) return;
+
+    final chatRef = firestore.collection('chats').doc(chatId);
+    final messageRef = chatRef.collection('messages').doc(messageId);
+
+    await firestore.runTransaction<void>((transaction) async {
+      final chatSnapshot = await transaction.get(chatRef);
+      final messageSnapshot = await transaction.get(messageRef);
+
+      final chatData = chatSnapshot.data();
+      final messageData = messageSnapshot.data();
+
+      if (chatData == null || messageData == null) return;
+      if (messageData['deletedForEveryone'] == true) return;
+
+      transaction.update(messageRef, {
+        'hiddenFor.${user.uid}': FieldValue.serverTimestamp(),
+      });
+
+      if (chatData['lastMessageId'] == messageId) {
+        transaction.update(chatRef, {
+          'lastMessageHiddenFor.${user.uid}': messageId,
+        });
+      }
+    });
+  }
+
+  Future<void> deleteMessageForEveryone({
+    required String chatId,
+    required String messageId,
+  }) async {
+    final user = auth.currentUser;
+    if (user == null) return;
+
+    final chatRef = firestore.collection('chats').doc(chatId);
+    final messageRef = chatRef.collection('messages').doc(messageId);
+
+    await firestore.runTransaction<void>((transaction) async {
+      final chatSnapshot = await transaction.get(chatRef);
+      final messageSnapshot = await transaction.get(messageRef);
+
+      final chatData = chatSnapshot.data();
+      final messageData = messageSnapshot.data();
+
+      if (chatData == null || messageData == null) return;
+      if (messageData['deletedForEveryone'] == true) return;
+
+      if (messageData['senderId'] != user.uid) {
+        throw StateError('Удалить сообщение у всех может только отправитель.');
+      }
+
+      transaction.update(messageRef, {
+        'text': '',
+        'deletedForEveryone': true,
+        'deletedBy': user.uid,
+        'deletedAt': FieldValue.serverTimestamp(),
+      });
+
+      if (chatData['lastMessageId'] == messageId) {
+        transaction.update(chatRef, {
+          'lastMessage': '',
+          'lastMessageDeletedForEveryoneId': messageId,
+        });
+      }
+    });
   }
 
   Future<QuerySnapshot<Map<String, dynamic>>> loadOlderMessages(
