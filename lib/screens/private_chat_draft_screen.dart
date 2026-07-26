@@ -4,6 +4,7 @@ import 'package:flutter/services.dart' show HapticFeedback;
 import '../domain/value_objects/message_text.dart';
 import '../models/app_user.dart';
 import '../services/chat_service.dart';
+import '../widgets/chat_app_bar_title.dart';
 import '../widgets/message_input.dart';
 import 'chat_screen.dart';
 
@@ -85,19 +86,9 @@ class _PrivateChatDraftScreenState extends State<PrivateChatDraftScreen> {
     return Scaffold(
       appBar: AppBar(
         titleSpacing: 0,
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(displayName),
-            Text(
-              'личный чат',
-              style: TextStyle(
-                color: Theme.of(context).colorScheme.outline,
-                fontSize: 13,
-                fontWeight: FontWeight.normal,
-              ),
-            ),
-          ],
+        title: ChatAppBarTitle(
+          chatName: displayName,
+          peerUser: widget.otherUser,
         ),
       ),
       body: Column(
