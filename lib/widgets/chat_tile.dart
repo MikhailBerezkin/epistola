@@ -1,26 +1,34 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+import '../models/app_user.dart';
 import '../services/chat_service.dart';
+import 'avatar/user_avatar_view.dart';
 
 class ChatTile extends StatelessWidget {
   final String chatId;
   final String chatName;
+  final bool isPrivateChat;
+  final AppUser? peerUser;
   final String lastMessage;
   final dynamic lastMessageAt;
   final bool showLastMessagePreview;
   final VoidCallback onTap;
   final VoidCallback? onLongPress;
+  final Future<int>? unreadCountFuture;
 
   const ChatTile({
     super.key,
     required this.chatId,
     required this.chatName,
+    this.isPrivateChat = false,
+    this.peerUser,
     required this.lastMessage,
     required this.lastMessageAt,
     this.showLastMessagePreview = true,
     required this.onTap,
     this.onLongPress,
+    this.unreadCountFuture,
   });
 
   String formatChatTime(dynamic value) {
@@ -56,12 +64,18 @@ class ChatTile extends StatelessWidget {
       child: ListTile(
         onTap: onTap,
         onLongPress: onLongPress,
-        leading: CircleAvatar(
-          child: Text(
-            firstLetter,
-            style: const TextStyle(fontWeight: FontWeight.bold),
-          ),
-        ),
+        leading: isPrivateChat && peerUser != null
+            ? UserAvatarView(
+                user: peerUser!,
+                radius: 20,
+                imageVariant: UserAvatarImageVariant.thumbnail,
+              )
+            : CircleAvatar(
+                child: Text(
+                  firstLetter,
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
         title: Row(
           children: [
             Expanded(
@@ -93,7 +107,7 @@ class ChatTile extends StatelessWidget {
                   : const SizedBox.shrink(),
             ),
             FutureBuilder<int>(
-              future: ChatService().getUnreadCount(chatId),
+              future: unreadCountFuture ?? ChatService().getUnreadCount(chatId),
               builder: (context, snapshot) {
                 final unreadCount = snapshot.data ?? 0;
 

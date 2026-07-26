@@ -3,6 +3,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show HapticFeedback;
 
+import '../models/app_user.dart';
+import '../services/chat/chat_peer_resolver.dart';
+import '../services/chat/chat_peer_user_cache.dart';
 import '../services/chat_service.dart';
 import '../widgets/chat_tile.dart';
 import 'chat_screen.dart';
@@ -18,6 +21,47 @@ class ChatsPage extends StatefulWidget {
 
 class _ChatsPageState extends State<ChatsPage> {
   ChatFilter _selectedFilter = ChatFilter.private;
+  late final ChatService _chatService;
+  late final ChatPeerUserCache _peerUserCache;
+
+  @override
+  void initState() {
+    super.initState();
+    _chatService = ChatService();
+    _peerUserCache = ChatPeerUserCache(_chatService.getUsersByIds);
+  }
+
+  void _loadMissingPeerUsers(Set<String> userIds) {
+    _peerUserCache
+        .loadMissing(userIds)
+        .then((didLoad) {
+          if (didLoad && mounted) {
+            setState(() {});
+          }
+        })
+        .catchError((Object _) {
+          // The chat list keeps its name-based fallback. A later stream
+          // rebuild can retry a transient user-profile read failure.
+        });
+  }
+
+  String _getDisplayChatName(Map<String, dynamic> data, AppUser? peerUser) {
+    final storedName = data['name'] is String
+        ? data['name'] as String
+        : data['type'] == 'private'
+        ? 'Личный чат'
+        : 'Без названия';
+
+    if (data['type'] != 'private' || peerUser == null) {
+      return storedName;
+    }
+
+    if (peerUser.name.isNotEmpty) {
+      return peerUser.name;
+    }
+
+    return peerUser.email.isNotEmpty ? peerUser.email : storedName;
+  }
 
   Future<void> _confirmClearPrivateChat({
     required ChatService chatService,
@@ -69,51 +113,8 @@ class _ChatsPageState extends State<ChatsPage> {
     }
   }
 
-  Future<String> _getDisplayChatName(
-    ChatService chatService,
-    Map<String, dynamic> data,
-  ) async {
-    final type = data['type'] ?? 'group';
-
-    if (type != 'private') {
-      return data['name'] is String ? data['name'] as String : 'Без названия';
-    }
-
-    final currentUserId = FirebaseAuth.instance.currentUser?.uid;
-    final memberIds = List<String>.from(data['memberIds'] ?? []);
-
-    if (currentUserId == null || memberIds.isEmpty) {
-      return 'Личный чат';
-    }
-
-    final otherUserId = memberIds.firstWhere(
-      (uid) => uid != currentUserId,
-      orElse: () => '',
-    );
-
-    if (otherUserId.isEmpty) {
-      return 'Личный чат';
-    }
-
-    final users = await chatService.getUsersByIds([otherUserId]);
-
-    if (users.isEmpty) {
-      return 'Личный чат';
-    }
-
-    final otherUser = users.first;
-
-    if (otherUser.name.isNotEmpty) {
-      return otherUser.name;
-    }
-
-    return otherUser.email;
-  }
-
   @override
   Widget build(BuildContext context) {
-    final chatService = ChatService();
-
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -155,7 +156,7 @@ class _ChatsPageState extends State<ChatsPage> {
           const SizedBox(height: 16),
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
-              stream: chatService.getUserChats(),
+              stream: _chatService.getUserChats(),
               builder: (context, snapshot) {
                 if (snapshot.hasError) {
                   return Center(child: Text('Ошибка: ${snapshot.error}'));
@@ -166,6 +167,8 @@ class _ChatsPageState extends State<ChatsPage> {
                 }
 
                 final chats = snapshot.data?.docs ?? [];
+                final currentUserId =
+                    FirebaseAuth.instance.currentUser?.uid ?? '';
 
                 final filteredChats = chats.where((chat) {
                   final data = chat.data() as Map<String, dynamic>;
@@ -177,10 +180,7 @@ class _ChatsPageState extends State<ChatsPage> {
                       return false;
                     }
 
-                    final currentUserId =
-                        FirebaseAuth.instance.currentUser?.uid;
-
-                    if (currentUserId == null) {
+                    if (currentUserId.isEmpty) {
                       return false;
                     }
 
@@ -220,15 +220,21 @@ class _ChatsPageState extends State<ChatsPage> {
                   return Center(child: Text(message));
                 }
 
+                final peerUserIds = ChatPeerResolver.collectOtherUserIds(
+                  chats: filteredChats.map(
+                    (chat) => chat.data() as Map<String, dynamic>,
+                  ),
+                  currentUserId: currentUserId,
+                );
+
+                _loadMissingPeerUsers(peerUserIds);
+
                 return ListView.builder(
                   itemCount: filteredChats.length,
                   itemBuilder: (context, index) {
                     final chat = filteredChats[index];
 
                     final data = chat.data() as Map<String, dynamic>;
-
-                    final currentUserId =
-                        FirebaseAuth.instance.currentUser?.uid;
 
                     final lastMessage = data['lastMessage'] is String
                         ? data['lastMessage'] as String
@@ -244,7 +250,7 @@ class _ChatsPageState extends State<ChatsPage> {
                         {};
 
                     final isLastMessageHiddenForCurrentUser =
-                        currentUserId != null &&
+                        currentUserId.isNotEmpty &&
                         lastMessageId.isNotEmpty &&
                         lastMessageHiddenFor[currentUserId] == lastMessageId;
 
@@ -261,76 +267,69 @@ class _ChatsPageState extends State<ChatsPage> {
                         (data['clearedAtByUser'] as Map<String, dynamic>?) ??
                         {};
 
-                    final clearedAt = currentUserId == null
+                    final clearedAt = currentUserId.isEmpty
                         ? null
                         : clearedAtByUser[currentUserId];
 
-                    return FutureBuilder<String>(
-                      future: _getDisplayChatName(chatService, data),
-                      builder: (context, nameSnapshot) {
-                        final chatName =
-                            nameSnapshot.data ??
-                            (data['name'] is String
-                                ? data['name'] as String
-                                : 'Чат');
+                    final peerUser = ChatPeerResolver.resolveOtherUser(
+                      chatData: data,
+                      currentUserId: currentUserId,
+                      usersById: _peerUserCache.usersById,
+                    );
 
-                        return FutureBuilder<
-                          ({String text, Timestamp createdAt})?
-                        >(
-                          future: showLastMessagePreview
-                              ? null
-                              : chatService.findLatestVisibleMessagePreview(
-                                  chatId: chat.id,
-                                  after: clearedAt is Timestamp
-                                      ? clearedAt
-                                      : null,
-                                ),
-                          builder: (context, previewSnapshot) {
-                            final fallbackPreview = previewSnapshot.data;
+                    final chatName = _getDisplayChatName(data, peerUser);
 
-                            final effectiveLastMessage = showLastMessagePreview
-                                ? lastMessage
-                                : fallbackPreview?.text ?? '';
-
-                            final effectiveLastMessageAt =
-                                showLastMessagePreview
-                                ? data['lastMessageAt']
-                                : fallbackPreview?.createdAt;
-
-                            final hasEffectivePreview =
-                                showLastMessagePreview ||
-                                fallbackPreview != null;
-
-                            return ChatTile(
+                    return FutureBuilder<({String text, Timestamp createdAt})?>(
+                      future: showLastMessagePreview
+                          ? null
+                          : _chatService.findLatestVisibleMessagePreview(
                               chatId: chat.id,
-                              chatName: chatName,
-                              lastMessage: effectiveLastMessage,
-                              lastMessageAt: effectiveLastMessageAt,
-                              showLastMessagePreview: hasEffectivePreview,
-                              onTap: () {
-                                HapticFeedback.lightImpact();
+                              after: clearedAt is Timestamp ? clearedAt : null,
+                            ),
+                      builder: (context, previewSnapshot) {
+                        final fallbackPreview = previewSnapshot.data;
 
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => ChatScreen(
-                                      chatId: chat.id,
-                                      chatName: chatName,
-                                    ),
-                                  ),
-                                );
-                              },
-                              onLongPress: _selectedFilter == ChatFilter.private
-                                  ? () {
-                                      _confirmClearPrivateChat(
-                                        chatService: chatService,
-                                        chatId: chat.id,
-                                        chatName: chatName,
-                                      );
-                                    }
-                                  : null,
+                        final effectiveLastMessage = showLastMessagePreview
+                            ? lastMessage
+                            : fallbackPreview?.text ?? '';
+
+                        final effectiveLastMessageAt = showLastMessagePreview
+                            ? data['lastMessageAt']
+                            : fallbackPreview?.createdAt;
+
+                        final hasEffectivePreview =
+                            showLastMessagePreview || fallbackPreview != null;
+
+                        return ChatTile(
+                          chatId: chat.id,
+                          chatName: chatName,
+                          isPrivateChat: data['type'] == 'private',
+                          peerUser: peerUser,
+                          lastMessage: effectiveLastMessage,
+                          lastMessageAt: effectiveLastMessageAt,
+                          showLastMessagePreview: hasEffectivePreview,
+                          onTap: () {
+                            HapticFeedback.lightImpact();
+
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => ChatScreen(
+                                  chatId: chat.id,
+                                  chatName: chatName,
+                                ),
+                              ),
                             );
                           },
+                          onLongPress: _selectedFilter == ChatFilter.private
+                              ? () {
+                                  _confirmClearPrivateChat(
+                                    chatService: _chatService,
+                                    chatId: chat.id,
+                                    chatName: chatName,
+                                  );
+                                }
+                              : null,
                         );
                       },
                     );
