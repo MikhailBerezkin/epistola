@@ -6,6 +6,7 @@ import '../widgets/profile_header.dart';
 import '../widgets/profile_info_card.dart';
 import 'edit_profile_screen.dart';
 import 'settings_screen.dart';
+import '../models/app_user.dart';
 
 class ProfilePage extends StatelessWidget {
   const ProfilePage({super.key});
@@ -52,12 +53,30 @@ class ProfilePage extends StatelessWidget {
           return const Center(child: CircularProgressIndicator());
         }
 
-        final data = snapshot.data?.data() as Map<String, dynamic>?;
+        final document = snapshot.data;
+        final data = document?.data() as Map<String, dynamic>?;
 
-        final userName = data?['name'] ?? 'Пользователь';
-        final phone = data?['phone'] ?? '';
-        final about = data?['about'] ?? '';
-        final contactEmail = data?['contactEmail'] ?? '';
+        final profileUser = document == null
+            ? AppUser(
+                uid: user.uid,
+                email: user.email ?? '',
+                name: '',
+                phone: '',
+                about: '',
+              )
+            : AppUser.fromFirestore(document);
+
+        final userName = profileUser.name.isEmpty
+            ? 'Пользователь'
+            : profileUser.name;
+
+        final phone = profileUser.phone;
+        final about = profileUser.about;
+
+        final contactEmailValue = data?['contactEmail'];
+        final contactEmail = contactEmailValue is String
+            ? contactEmailValue.trim()
+            : '';
 
         final hasPhone = phone.toString().isNotEmpty;
         final hasEmail = contactEmail.toString().isNotEmpty;
@@ -83,6 +102,7 @@ class ProfilePage extends StatelessWidget {
           child: ListView(
             children: [
               ProfileHeader(
+                avatarUser: profileUser,
                 name: userName,
                 email: '',
                 onNameTap: () {

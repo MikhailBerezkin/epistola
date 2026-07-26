@@ -1,12 +1,17 @@
 import 'package:flutter/material.dart';
 
+import '../models/app_user.dart';
+import 'avatar/user_avatar_view.dart';
+
 class ProfileHeader extends StatelessWidget {
+  final AppUser avatarUser;
   final String name;
   final String email;
   final VoidCallback onNameTap;
 
   const ProfileHeader({
     super.key,
+    required this.avatarUser,
     required this.name,
     required this.email,
     required this.onNameTap,
@@ -17,12 +22,10 @@ class ProfileHeader extends StatelessWidget {
     return Column(
       children: [
         const SizedBox(height: 24),
-        CircleAvatar(
+        UserAvatarView(
+          user: avatarUser,
           radius: 48,
-          child: Text(
-            name.isNotEmpty ? name[0].toUpperCase() : '?',
-            style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
-          ),
+          imageVariant: UserAvatarImageVariant.full,
         ),
         const SizedBox(height: 16),
         InkWell(
@@ -47,11 +50,13 @@ class ProfileHeader extends StatelessWidget {
             ),
           ),
         ),
-        const SizedBox(height: 8),
-        Text(
-          email,
-          style: TextStyle(color: Theme.of(context).colorScheme.outline),
-        ),
+        if (email.trim().isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text(
+            email,
+            style: TextStyle(color: Theme.of(context).colorScheme.outline),
+          ),
+        ],
       ],
     );
   }
