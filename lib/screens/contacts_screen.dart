@@ -89,7 +89,11 @@ class _ContactsScreenState extends State<ContactsScreen> {
         MaterialPageRoute(
           builder: (_) {
             if (chatExists) {
-              return ChatScreen(chatId: chatId, chatName: _displayName(user));
+              return ChatScreen(
+                chatId: chatId,
+                chatName: _displayName(user),
+                peerUser: user,
+              );
             }
 
             return PrivateChatDraftScreen(otherUser: user);
