@@ -155,23 +155,39 @@ void main() {
   });
 
   test('prepares a recovered Android lost image', () async {
+    final events = <String>[];
     final pickerGateway = _FakePickerGateway(
       recoveredImages: [AvatarPickedImage(path: recoveredSource.path)],
+      events: events,
     );
     final cropGateway = _FakeCropGateway(
       result: AvatarCroppedImage(path: croppedFile.path),
+      events: events,
     );
     final service = _createService(
       pickerGateway: pickerGateway,
       cropGateway: cropGateway,
-      processor: AvatarImageProcessor(compressor: _FakeCompressor()),
+      processor: AvatarImageProcessor(
+        compressor: _FakeCompressor(events: events),
+      ),
+      deleteCroppedImage: (path) async {
+        events.add('delete:$path');
+        await File(path).delete();
+      },
     );
 
     final result = await service.prepareRecoveredLostImage();
     preparedResults.add(result!);
 
     expect(pickerGateway.recoveryCallCount, 1);
+    expect(pickerGateway.pickedSources, isEmpty);
     expect(cropGateway.sourcePaths, [recoveredSource.path]);
+    expect(events, [
+      'recover',
+      'crop:${recoveredSource.path}',
+      'process:${croppedFile.path}',
+      'delete:${croppedFile.path}',
+    ]);
     expect(await recoveredSource.exists(), isTrue);
     expect(await croppedFile.exists(), isFalse);
   });

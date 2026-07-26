@@ -140,7 +140,10 @@ class _ProfileAvatarEditorState extends State<ProfileAvatarEditor> {
 
   @override
   Widget build(BuildContext context) {
-    final localAvatar = _localAvatar;
+    final localAvatar = _newestAvatar(
+      _localAvatar,
+      widget.controller.latestAvatar,
+    );
     final avatarUser = localAvatar == null
         ? widget.user
         : AppUser(
@@ -149,6 +152,7 @@ class _ProfileAvatarEditorState extends State<ProfileAvatarEditor> {
             name: widget.user.name,
             phone: widget.user.phone,
             about: widget.user.about,
+            avatarUrl: widget.user.avatarUrl,
             avatar: localAvatar,
             createdAt: widget.user.createdAt,
           );
@@ -162,6 +166,20 @@ class _ProfileAvatarEditorState extends State<ProfileAvatarEditor> {
       isAvatarLoading: widget.controller.isLoading,
       avatarImageLoader: widget.avatarImageLoader,
     );
+  }
+
+  UserAvatar? _newestAvatar(UserAvatar? first, UserAvatar? second) {
+    final streamedAvatar = widget.user.effectiveAvatar;
+    var newest = streamedAvatar;
+
+    for (final avatar in [first, second]) {
+      if (avatar != null &&
+          (newest == null || avatar.version > newest.version)) {
+        newest = avatar;
+      }
+    }
+
+    return identical(newest, streamedAvatar) ? null : newest;
   }
 }
 

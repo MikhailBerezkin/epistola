@@ -3,19 +3,17 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../models/app_user.dart';
-import '../services/avatar/atomic_avatar_replacement_service.dart';
-import '../services/avatar/avatar_image_preparation_service.dart';
+import '../services/avatar/avatar_image_dependencies.dart';
 import '../services/avatar/avatar_replacement_controller.dart';
-import '../services/avatar/avatar_storage_upload_service.dart';
-import '../services/avatar/firebase_avatar_storage_gateway.dart';
-import '../services/avatar/firebase_user_avatar_metadata_gateway.dart';
 import '../widgets/profile_avatar_editor.dart';
 import '../widgets/profile_info_card.dart';
 import 'edit_profile_screen.dart';
 import 'settings_screen.dart';
 
 class ProfilePage extends StatefulWidget {
-  const ProfilePage({super.key});
+  const ProfilePage({super.key, this.avatarController});
+
+  final AvatarReplacementController? avatarController;
 
   @override
   State<ProfilePage> createState() => _ProfilePageState();
@@ -23,24 +21,21 @@ class ProfilePage extends StatefulWidget {
 
 class _ProfilePageState extends State<ProfilePage> {
   late final AvatarReplacementController _avatarController;
+  late final bool _ownsAvatarController;
 
   @override
   void initState() {
     super.initState();
-    _avatarController = AvatarReplacementController(
-      preparation: AvatarImagePreparationService(),
-      replacement: AtomicAvatarReplacementService(
-        storage: AvatarStorageUploadService(
-          provider: FirebaseAvatarStorageGateway(),
-        ),
-        metadata: FirebaseUserAvatarMetadataGateway(),
-      ),
-    );
+    _ownsAvatarController = widget.avatarController == null;
+    _avatarController =
+        widget.avatarController ?? createAvatarReplacementController();
   }
 
   @override
   void dispose() {
-    _avatarController.dispose();
+    if (_ownsAvatarController) {
+      _avatarController.dispose();
+    }
     super.dispose();
   }
 

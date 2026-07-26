@@ -148,6 +148,30 @@ void main() {
     expect(find.byType(SnackBar), findsNothing);
   });
 
+  testWidgets('successful recovery updates the loaded AppUser locally', (
+    tester,
+  ) async {
+    final recoveredAvatar = _avatar(version: 3);
+    final prepared = await tester.runAsync(() => _createPrepared(sourceFile));
+    final controller = AvatarReplacementController.withInvokers(
+      prepare: (_) async => null,
+      prepareRecovered: () async => prepared!,
+      replace: ({required uid, required images}) async => recoveredAvatar,
+    );
+    await _pumpEditor(tester, user: user, controller: controller);
+
+    final result = await controller.recoverLostImage(uid: user.uid);
+    await tester.pump();
+
+    expect(result.status, AvatarReplacementStatus.success);
+    final avatarView = tester.widget<UserAvatarView>(
+      find.byType(UserAvatarView),
+    );
+    expect(avatarView.user, isA<AppUser>());
+    expect(avatarView.user.effectiveAvatar, same(recoveredAvatar));
+    expect(find.byType(SnackBar), findsNothing);
+  });
+
   testWidgets('failure keeps the old avatar and shows a clear message', (
     tester,
   ) async {
