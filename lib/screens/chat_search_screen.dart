@@ -5,6 +5,11 @@ import 'package:flutter/services.dart' show HapticFeedback;
 import '../services/chat_service.dart';
 import '../widgets/chat_tile.dart';
 import 'chat_screen.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+
+import '../models/app_user.dart';
+import '../services/chat/chat_peer_resolver.dart';
+import '../services/chat/chat_peer_user_cache.dart';
 
 class ChatSearchScreen extends StatefulWidget {
   const ChatSearchScreen({super.key});
@@ -17,7 +22,16 @@ class _ChatSearchScreenState extends State<ChatSearchScreen> {
   final searchController = TextEditingController();
   final chatService = ChatService();
 
+  late final ChatPeerUserCache _peerUserCache;
+
   String searchQuery = '';
+  bool _isOpeningChat = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _peerUserCache = ChatPeerUserCache(chatService.getUsersByIds);
+  }
 
   bool matchesSearch(Map<String, dynamic> data) {
     if (searchQuery.isEmpty) return true;
@@ -27,6 +41,69 @@ class _ChatSearchScreenState extends State<ChatSearchScreen> {
     final query = searchQuery.toLowerCase();
 
     return chatName.contains(query) || lastMessage.contains(query);
+  }
+
+  Future<void> _openChat({
+    required String chatId,
+    required Map<String, dynamic> data,
+    required String chatName,
+  }) async {
+    if (_isOpeningChat) return;
+
+    HapticFeedback.lightImpact();
+
+    setState(() {
+      _isOpeningChat = true;
+    });
+
+    AppUser? peerUser;
+    var resolvedChatName = chatName;
+
+    if (data['type'] == 'private') {
+      final currentUserId = FirebaseAuth.instance.currentUser?.uid ?? '';
+
+      final peerUserId = ChatPeerResolver.otherUserId(
+        chatData: data,
+        currentUserId: currentUserId,
+      );
+
+      if (peerUserId != null) {
+        try {
+          await _peerUserCache.loadMissing([peerUserId]);
+          peerUser = _peerUserCache.usersById[peerUserId];
+        } catch (_) {
+          // Чат всё равно откроется без загруженной фотографии.
+        }
+      }
+
+      final peerName = peerUser?.name.trim() ?? '';
+      final peerEmail = peerUser?.email.trim() ?? '';
+
+      if (peerName.isNotEmpty) {
+        resolvedChatName = peerName;
+      } else if (peerEmail.isNotEmpty) {
+        resolvedChatName = peerEmail;
+      } else {
+        resolvedChatName = 'Личный чат';
+      }
+    }
+
+    if (!mounted) return;
+
+    setState(() {
+      _isOpeningChat = false;
+    });
+
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChatScreen(
+          chatId: chatId,
+          chatName: resolvedChatName,
+          peerUser: data['type'] == 'private' ? peerUser : null,
+        ),
+      ),
+    );
   }
 
   @override
@@ -102,15 +179,7 @@ class _ChatSearchScreenState extends State<ChatSearchScreen> {
                 lastMessage: lastMessage,
                 lastMessageAt: data['lastMessageAt'],
                 onTap: () {
-                  HapticFeedback.lightImpact();
-
-                  Navigator.pushReplacement(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) =>
-                          ChatScreen(chatId: chat.id, chatName: chatName),
-                    ),
-                  );
+                  _openChat(chatId: chat.id, data: data, chatName: chatName);
                 },
               );
             },
