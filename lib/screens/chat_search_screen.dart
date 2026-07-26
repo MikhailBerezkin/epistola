@@ -33,6 +33,43 @@ class _ChatSearchScreenState extends State<ChatSearchScreen> {
     _peerUserCache = ChatPeerUserCache(chatService.getUsersByIds);
   }
 
+  void _loadMissingPeerUsers(Set<String> userIds) {
+    _peerUserCache
+        .loadMissing(userIds)
+        .then((didLoad) {
+          if (didLoad && mounted) {
+            setState(() {});
+          }
+        })
+        .catchError((Object _) {
+          // При временной ошибке остаётся текстовый fallback.
+        });
+  }
+
+  String _getDisplayChatName(Map<String, dynamic> data, AppUser? peerUser) {
+    final storedName = data['name'] is String
+        ? (data['name'] as String).trim()
+        : '';
+
+    if (data['type'] != 'private') {
+      return storedName.isNotEmpty ? storedName : 'Без названия';
+    }
+
+    final peerName = peerUser?.name.trim() ?? '';
+
+    if (peerName.isNotEmpty) {
+      return peerName;
+    }
+
+    final peerEmail = peerUser?.email.trim() ?? '';
+
+    if (peerEmail.isNotEmpty) {
+      return peerEmail;
+    }
+
+    return 'Личный чат';
+  }
+
   bool matchesSearch(Map<String, dynamic> data) {
     if (searchQuery.isEmpty) return true;
 
@@ -150,6 +187,7 @@ class _ChatSearchScreenState extends State<ChatSearchScreen> {
           }
 
           final chats = snapshot.data?.docs ?? [];
+          final currentUserId = FirebaseAuth.instance.currentUser?.uid ?? '';
           final filteredChats = chats.where((chat) {
             final data = chat.data() as Map<String, dynamic>;
             return matchesSearch(data);
@@ -162,6 +200,14 @@ class _ChatSearchScreenState extends State<ChatSearchScreen> {
           if (filteredChats.isEmpty) {
             return const Center(child: Text('Ничего не найдено'));
           }
+          final peerUserIds = ChatPeerResolver.collectOtherUserIds(
+            chats: filteredChats.map(
+              (chat) => chat.data() as Map<String, dynamic>,
+            ),
+            currentUserId: currentUserId,
+          );
+
+          _loadMissingPeerUsers(peerUserIds);
 
           return ListView.builder(
             padding: const EdgeInsets.all(16),
@@ -170,12 +216,22 @@ class _ChatSearchScreenState extends State<ChatSearchScreen> {
               final chat = filteredChats[index];
               final data = chat.data() as Map<String, dynamic>;
 
-              final chatName = data['name'] ?? 'Без названия';
+              final isPrivateChat = data['type'] == 'private';
+
+              final peerUser = ChatPeerResolver.resolveOtherUser(
+                chatData: data,
+                currentUserId: currentUserId,
+                usersById: _peerUserCache.usersById,
+              );
+
+              final chatName = _getDisplayChatName(data, peerUser);
               final lastMessage = data['lastMessage'] ?? '';
 
               return ChatTile(
                 chatId: chat.id,
                 chatName: chatName,
+                isPrivateChat: isPrivateChat,
+                peerUser: peerUser,
                 lastMessage: lastMessage,
                 lastMessageAt: data['lastMessageAt'],
                 onTap: () {
