@@ -16,10 +16,10 @@ ARCHITECTURE/
 
 | Параметр | Значение |
 |----------|----------|
-| Версия документа | 2.3 |
-| Версия проекта | `v0.6.4` |
+| Версия документа | 2.4 |
+| Версия проекта | `v0.6.5` |
 | Последний стабильный релиз | `v0.6.4` |
-| Статус | ✅ Актуален после Message Deletion Foundation |
+| Статус | ✅ Актуален для Avatar Image Pipeline на ветке `feat/v0.6.5-avatar-foundation`; физические Android-проверки ещё требуются |
 | Последнее обновление | Июль 2026 |
 
 ---
@@ -75,9 +75,9 @@ ARCHITECTURE/
 - ✅ Cloud Firestore
 - ✅ Firestore Security Rules
 - ✅ Google Cloud Billing (Blaze Plan)
-- ✅ Firebase Storage (готов к использованию)
+- ✅ Firebase Storage (используется версионным avatar pipeline)
 
-Подключение Blaze завершено успешно. Проект готов к внедрению хранения пользовательских аватаров, изображений групп, файлов и других медиа.
+Подключение Blaze завершено успешно. Пользовательские аватары уже хранятся в Firebase Storage; изображения групп, файлы и другие медиа остаются будущими этапами.
 
 ---
 
@@ -157,30 +157,38 @@ Epistola — современный корпоративный мессендж�
 - ✅ Cloud Firestore;
 - ✅ Firestore Security Rules;
 - ✅ Google Cloud Billing (Blaze Plan);
-- ✅ Firebase Storage (готов к использованию).
+- ✅ Firebase Storage;
+- пользовательский avatar pipeline из галереи и камеры;
+- Android `image_picker` lost data recovery;
+- квадратный crop и подготовка JPEG-вариантов `128x128` / `512x512`;
+- версионная загрузка пользовательских аватаров в Storage;
+- атомарная замена avatar metadata в Firestore;
+- path-first загрузка, кэширование и отображение аватара в профиле;
+- отображение аватара собеседника в списке личных чатов.
 
-Текущий завершённый этап — **v0.6.4 Message Deletion Foundation**.
+Текущий реализованный этап — **v0.6.5 Avatar Image Pipeline**. Документация и автоматические проверки входят в завершение этапа; проверки на физическом Android-устройстве ещё не зафиксированы.
 
-Реализовано безопасное логическое удаление отдельных сообщений:
+Pipeline поддерживает:
 
-- удаление сообщения «у себя»;
-- удаление собственного сообщения «у всех»;
-- защита удаления у всех только для отправителя;
-- сохранение документов сообщений в Firestore;
-- состояния `visible`, `hiddenForCurrentUser` и `deletedForEveryone`;
-- модель представления `MessagePresentation`;
-- отдельный визуальный слой `MessageItem`;
-- плавное исчезновение удалённых сообщений;
-- сохранение корректной работы пагинации;
-- поиск предыдущего видимого сообщения для карточки чата;
-- персональный расчёт превью для каждого пользователя;
-- отсутствие повторного push при логическом удалении;
-- поддержка личных и групповых чатов;
-- обновлённые и развёрнутые Firestore Security Rules.
+- выбор изображения из галереи и камеры;
+- отмену picker и crop без изменения активного аватара;
+- восстановление потерянного Android picker result;
+- квадратный crop `1:1`;
+- JPEG thumbnail `128x128` и full `512x512`;
+- исправление ориентации и удаление EXIF;
+- повторные попытки сжатия full до целевого размера `300 KB`;
+- жёсткие пределы `128 KB` для thumbnail и `512 KB` для full;
+- загрузку только подготовленных вариантов, без оригинала;
+- безопасную очистку временных файлов;
+- версионные Storage paths и защиту конфликтов версий;
+- rollback новой Storage-версии при ошибке Firestore;
+- path-first authenticated loading и кэширование;
+- legacy `avatarUrl` как fallback;
+- отображение в профиле и списке личных чатов.
 
-Связанные недостатки, обнаруженные позднее, исправляются отдельными коммитами без повторного открытия этапа.
+Известное незавершённое: `ChatAppBarTitle` в уже открытом личном чате пока отображает старый однобуквенный `CircleAvatar` вместо `UserAvatarView`. Это следующий отдельный шаг. Групповые чаты в рамках этого шага менять нельзя.
 
-Следующий крупный этап — **Avatar Foundation**: загрузка, сжатие, версия, хранение, локальное кэширование и отображение пользовательских аватаров на основе существующей Media Foundation. Визуальный слой аватаров должен оставаться заменяемым и не смешиваться с бизнес-логикой профилей и чатов.
+Подробное устройство, ownership файлов, security model и оставшиеся реальные проверки зафиксированы в разделе «Avatar Image Pipeline v0.6.5».
 
 ---
 
@@ -646,6 +654,225 @@ Firestore при этом должен хранить не сами файлы, 
 - createdAt;
 - storageProvider.
 
+## Avatar Image Pipeline v0.6.5
+
+### Общий поток
+
+Пользовательский avatar pipeline построен как последовательность изолированных слоёв:
+
+```text
+ProfileAvatarEditor
+        ↓
+AvatarReplacementController
+        ↓
+AvatarImagePreparationService
+        ↓
+picker gateway/service
+        ↓
+crop gateway/service
+        ↓
+AvatarImageProcessor + compressor gateway
+        ↓
+PreparedAvatarImages
+        ↓
+AtomicAvatarReplacementService
+        ↓
+AvatarStorageUploadService + storage gateway
+        ↓
+UserAvatarMetadataGateway
+        ↓
+best-effort удаление предыдущей Storage-версии
+```
+
+`AvatarImagePreparationService` оркестрирует picker → crop → processor и возвращает только два принадлежащих pipeline подготовленных файла. `AtomicAvatarReplacementService` принимает этот результат, управляет Storage upload и только затем заменяет Firestore metadata.
+
+Оригинал, полученный от `image_picker`, не передаётся в Storage. Загружаются только:
+
+```text
+JPEG thumbnail  128x128
+JPEG full       512x512
+```
+
+### Назначение gateway, service и controller
+
+Gateway-классы изолируют плагины и Firebase SDK:
+
+- `ImagePickerAvatarImagePickerGateway` адаптирует `image_picker`, источники gallery/camera и `retrieveLostData()`;
+- `ImageCropperAvatarImageCropGateway` адаптирует `image_cropper` и фиксирует квадратный crop `1:1`;
+- `FlutterImageCompressAvatarImageCompressorGateway` адаптирует `flutter_image_compress`;
+- `FirebaseAvatarStorageGateway` выполняет upload/delete через Firebase Storage;
+- `FirebaseUserAvatarMetadataGateway` выполняет транзакционную замену metadata в `users/{uid}`;
+- `FirebaseAvatarImageSource` читает байты по Storage path через аутентифицированный Firebase Storage SDK.
+
+Service-классы содержат правила сценария:
+
+- `AvatarImagePickerService` предоставляет gallery/camera и выбирает первый восстановленный image result;
+- `AvatarImageCropService` проверяет вход и запускает квадратный crop;
+- `AvatarImageProcessor` создаёт варианты, применяет политику сжатия и владеет своей временной директорией;
+- `AvatarImagePreparationService` связывает picker, crop и processor и отвечает за промежуточный crop-файл;
+- `AvatarStorageUploadService` проверяет жёсткие пределы, строит версионные пути, загружает оба варианта и удаляет неполную новую версию при ошибке upload;
+- `AtomicAvatarReplacementService` задаёт порядок удалённых операций и всегда инициирует финальный best-effort cleanup локальных outputs; фактическое удаление не гарантируется при системных или файловых сбоях.
+
+`AvatarReplacementController` — application/controller слой для UI. Он:
+
+- сериализует одну ручную замену;
+- возвращает состояния `success`, `cancelled`, `failure`, `alreadyRunning`;
+- различает ошибки preparation и replacement;
+- хранит последний успешно записанный `UserAvatar` для немедленного обновления UI;
+- запускает recovered image через тот же preparation/replacement pipeline;
+- ждёт завершения ручной операции перед lost data recovery.
+
+Виджеты аватара не выполняют Firestore-запросы. `ProfilePage` получает профиль из Firestore и передаёт `AppUser` вниз; `ChatsPage` разрешает и пакетно загружает профили собеседников через chat/service слой. `UserAvatarView` и `AvatarView` работают только с готовой моделью, `AvatarImageLoader` и fallback URL.
+
+### Crop, ориентация и сжатие
+
+Crop ограничен прямоугольной квадратной областью `1:1`; промежуточный JPEG создаётся с максимальной стороной `1024` и quality `100`.
+
+`AvatarImageProcessor` создаёт:
+
+- thumbnail `128x128`, JPEG quality `75`, hard limit `128 KB`;
+- full `512x512`, JPEG quality attempts `82, 76, 70, 64, 58, 52, 46, 40, 34`.
+
+Для каждого output передаются `autoCorrectionAngle: true`, `keepExif: false` и `rotate: 0`. Таким образом ориентация исправляется компрессором, а EXIF не переносится в итоговые файлы.
+
+Для full целевой размер равен `300 * 1024` bytes. Пока результат больше цели и остаются quality attempts, предыдущий файл удаляется и выполняется повторное сжатие. Последний результат между `300 KB` и `512 KB` допускается; результат больше `512 KB` отклоняется. Перед Storage upload размеры обоих вариантов проверяются повторно.
+
+Отмена source sheet, системного picker или crop возвращает `cancelled` и не считается ошибкой. При ошибке подготовки UI показывает причину на уровне выбора, crop или обработки. При ошибке удалённой замены пользователь получает сообщение, что новый аватар не сохранён; прежний аватар остаётся активным.
+
+### Ownership временных файлов и cleanup
+
+Ownership задаётся явно:
+
+- source path от `image_picker` принадлежит платформе/plugin и не удаляется pipeline;
+- crop output принадлежит `AvatarImagePreparationService`, только если его path отличается от source path;
+- временная директория `epistola_avatar_*`, thumbnail, full и отклонённые попытки принадлежат `AvatarImageProcessor`;
+- `PreparedAvatarImages` передаёт вызывающему коду только право использования и идемпотентный `cleanup()`.
+
+Crop output удаляется best-effort после processor независимо от успеха. Отклонённые full attempts удаляются перед следующей попыткой. При ошибке processor очищает созданную им директорию, не заменяя исходную ошибку ошибкой cleanup.
+
+После подготовки `AvatarReplacementController` и `AtomicAvatarReplacementService` оба могут вызвать `PreparedAvatarImages.cleanup()`: операция идемпотентна, параллельные вызовы объединяются, а после transient failure допускается повторная попытка. Ошибка локального cleanup не должна маскировать результат удалённой операции.
+
+### Версионные Storage paths и metadata
+
+Новая версия получает положительный монотонный номер на основе `microsecondsSinceEpoch`:
+
+```text
+user_avatars/{uid}/v{version}/thumb.jpg
+user_avatars/{uid}/v{version}/full.jpg
+```
+
+Firestore document `users/{uid}` хранит:
+
+```text
+avatarProvider
+avatarThumbStoragePath
+avatarFullStoragePath
+avatarThumbSizeBytes
+avatarFullSizeBytes
+avatarVersion
+avatarUpdatedAt
+```
+
+Thumbnail и full обязаны иметь одного владельца, provider и version. Download URL не является источником истины и новым pipeline не записывается.
+
+### Атомарная замена и rollback
+
+Порядок замены фиксирован:
+
+```text
+1. upload новой версии thumbnail и full
+2. транзакционная запись новых metadata в Firestore
+3. best-effort удаление thumbnail и full предыдущей версии
+```
+
+До шага 2 старые metadata остаются источником истины. Если upload одного из вариантов не удался, `AvatarStorageUploadService` best-effort удаляет оба пути неполной новой версии.
+
+Если Firestore transaction завершилась ошибкой, `AtomicAvatarReplacementService` выполняет rollback: best-effort удаляет только что загруженную новую версию и повторно выбрасывает исходную ошибку. Старая версия остаётся активной. После успешной записи metadata ошибка удаления старых файлов не отменяет новую версию и не заменяет успешный результат.
+
+### Version conflict protection
+
+`FirebaseUserAvatarMetadataGateway` читает активную версию и обновляет документ в Firestore transaction. `requireNewerAvatarVersion()` отклоняет candidate, если `candidateVersion <= activeVersion`.
+
+Та же граница продублирована в Firestore Rules: изменение avatar-controlled fields разрешено только владельцу, только полным набором metadata и только при строго возрастающем `avatarVersion`. При конфликте rollback не удаляет путь версии, которая уже стала активной: `activeVersion` передаётся в защитный delete guard.
+
+Это защищает от позднего завершения конкурирующей операции и от перезаписи более нового аватара старым.
+
+### Path-first загрузка и AvatarImageCache
+
+`UserAvatarView` выбирает thumbnail или full Storage path из `AppUser.effectiveAvatar`. `AvatarView` передаёт `path`, `version` и hard byte limit в общий `AvatarImageLoader`.
+
+Текущая реализация `AvatarImageCache`:
+
+- читает объект через `FirebaseStorage.ref(path).getData(maxSizeBytes)`, поэтому применяются Firebase Authentication и Storage Rules;
+- использует ключ `path@version`;
+- хранит LRU-кэш максимум из 64 записей в памяти процесса;
+- при cache hit обновляет позицию записи;
+- дедуплицирует параллельные чтения одинакового `path@version` через карту `_inFlight`;
+- повторно проверяет максимальный размер полученных байтов;
+- удаляет failed future из `_inFlight`, поэтому следующий rebuild может повторить чтение.
+
+Path-first кэш пока не является постоянным disk cache и очищается при завершении процесса. Legacy URL загружается через `CachedNetworkImage`, у которого остаётся собственное memory/disk caching.
+
+Если path-first metadata отсутствует или path-first чтение не дало пригодного изображения, `AvatarView` пробует совместимый URL. `AppUser` поддерживает прежние `avatarThumbUrl` / `avatarFullUrl` metadata и поле `avatarUrl`; последнее используется как конечный legacy fallback. Если URL также отсутствует или не загрузился, показывается стабильный fallback с инициалами.
+
+### Storage и Firestore security model
+
+Storage Rules для `user_avatars/{userId}/{version}`:
+
+- разрешают `get` только аутентифицированным пользователям и только для версии вида `v[1-9][0-9]*`;
+- не разрешают list через avatar match;
+- разрешают create/update/delete только владельцу `request.auth.uid == userId`;
+- принимают только `image/jpeg`;
+- ограничивают thumbnail до `128 KB`, full до `512 KB`;
+- не дают avatar match для произвольных имён файлов.
+
+Firestore Rules для `users/{uid}`:
+
+- разрешают чтение только после входа;
+- разрешают create/update профиля только его владельцу, delete запрещён;
+- проверяют provider `firebase`, точные owner-bound versioned paths, размеры, положительную версию и timestamp;
+- разрешают avatar update только через avatar metadata keys и требуют строго возрастающую версию;
+- не позволяют новым user documents записывать непустой legacy `avatarUrl` или поля `avatarThumbUrl` / `avatarFullUrl`.
+
+Клиентские проверки нужны для понятной ошибки и раннего отказа, но не заменяют Firebase Security Rules.
+
+### Android lost data recovery lifecycle
+
+`HomeScreen` создаёт один `AvatarReplacementController` для пользовательской сессии и оборачивает основной UI в `AvatarLostDataRecoveryHost`.
+
+Host планирует recovery после первого frame в `initState`; при замене `uid`, controller или coordinator повторно планирует вызов, но `AvatarLostDataRecoveryCoordinator` разрешает только одну фактическую попытку за запуск приложения. Guard построен как `!kIsWeb && defaultTargetPlatform == TargetPlatform.android`, поэтому `retrieveLostData()` не вызывается на Web и не-Android платформах.
+
+Coordinator помечает попытку до первого `await`, что защищает от параллельных lifecycle notifications. Gateway вызывает `image_picker.retrieveLostData()`, принимает только image result и передаёт первый файл в обычные crop, processor, upload и atomic replacement. Пустой result трактуется как cancel/no-op. Ошибка recovery показывает SnackBar и сохраняет старый аватар.
+
+### Текущее отображение и ограничения
+
+Реализовано:
+
+- full-вариант в профиле;
+- thumbnail собеседника в списке личных чатов;
+- path-first изображение, legacy URL и fallback с инициалами;
+- локальное немедленное отображение новой версии до прихода Firestore stream.
+
+Не завершено:
+
+- в заголовке уже открытого личного чата `ChatAppBarTitle` пока использует старый однобуквенный `CircleAvatar`, а не `UserAvatarView`;
+- это следующий отдельный шаг;
+- групповые чаты в этом шаге менять нельзя;
+- path-first cache пока только in-memory;
+- отображение аватаров в поиске, контактах и карточках участников не входит в текущую реализацию.
+
+Оставшиеся проверки на физическом Android-устройстве:
+
+- gallery и camera, включая permission denial и отмену;
+- crop `1:1`, отмену crop и реальные большие изображения;
+- правильную ориентацию фото с EXIF rotation и отсутствие EXIF в outputs;
+- фактические размеры thumbnail/full и повторные quality attempts;
+- upload/read с развёрнутыми Storage и Firestore Rules под разными пользователями;
+- атомарную замену при сетевой ошибке и сохранение старого аватара;
+- lost data recovery после уничтожения Activity/процесса Android;
+- обновление профиля и списка личных чатов после смены версии;
+- fallback при недоступном Storage object и при legacy `avatarUrl`.
+
 ## Основные конфигурационные файлы
 
 ```text
@@ -929,15 +1156,15 @@ Epistola построена по принципу многоуровневой �
 
                      Application Services
 
-                          ChatService
+                 ChatService / Avatar services
 
                                 │
 
-     ┌───────────────┬───────────────┬───────────────┐
+     ┌───────────────┬───────────────┬──────────────────┐
 
      ▼               ▼               ▼
 
- Messages       Groups & Roles     Search
+ Messages       Groups & Roles     Avatar pipeline
 
      │               │               │
 
@@ -955,7 +1182,7 @@ Epistola построена по принципу многоуровневой �
 
                          Firebase Storage
 
-                          (будущий этап)
+                    (user avatar objects)
 ```
 
 Архитектура специально проектируется таким образом, чтобы пользовательский интерфейс не зависел напрямую от структуры Firebase.
@@ -981,10 +1208,13 @@ lib/
 ├── screens/
 ├── services/
 │
-│   └── chat/
+│   ├── avatar/
+│   ├── chat/
+│   └── media/
 │
 ├── theme/
 ├── widgets/
+│   └── avatar/
 │
 ├── firebase_options.dart
 └── main.dart
@@ -1411,8 +1641,24 @@ about
 
 avatarUrl
 
+avatarProvider
+
+avatarThumbStoragePath
+
+avatarFullStoragePath
+
+avatarThumbSizeBytes
+
+avatarFullSizeBytes
+
+avatarVersion
+
+avatarUpdatedAt
+
 createdAt
 ```
+
+`avatarUrl` — legacy-поле совместимости. Новая запись аватара path-first и использует остальные поля; URL не является источником истины.
 
 В дальнейшем будут добавлены:
 
@@ -1582,7 +1828,7 @@ admins
 
 ## Назначение
 
-Media Foundation является следующим крупным этапом развития Epistola.
+Media Foundation является основой медиа-подсистемы Epistola. Её Storage abstraction и `MediaAsset` уже используются пользовательским avatar pipeline.
 
 Главная цель — создать единую архитектуру хранения любых вложений сообщений.
 
@@ -1660,7 +1906,7 @@ createdAt
 
 ## Firebase Storage
 
-Все файлы должны храниться исключительно в Firebase Storage.
+Пользовательские аватары сейчас хранятся в Firebase Storage. Политика хранения тяжёлых вложений будет определена отдельно и может использовать другой provider.
 
 Cloud Firestore хранит только:
 
@@ -1913,28 +2159,51 @@ Dashboard может содержать:
 
 Media Foundation
 
-Статус:## Последние изменения
+Статус:
+
+✅ Завершён
+
+---
+
+## Этап 7
+
+Push Notification Foundation и Message Deletion Foundation
+
+Статус:
+
+✅ Завершён
+
+---
+
+## Этап 8
+
+Avatar Image Pipeline
+
+Статус:
+
+🟡 Код, документация и автоматические проверки готовы; требуется проверка на физическом Android-устройстве
 
 ### Июль 2026
 
 - Проект успешно переведён на Google Cloud Billing (Blaze Plan).
 - Подключён Firebase Storage.
 - Завершена настройка платёжной инфраструктуры Google Cloud.
-- Подтверждена готовность проекта к разработке медиа-функций.
-
-🔄 В разработке
+- Реализованы Push Notification Foundation и Message Deletion Foundation.
+- Реализован пользовательский Avatar Image Pipeline.
 
 ---
 
 ## Следующие этапы
 
-После завершения Media Foundation планируется реализация:
+Ближайший отдельный шаг:
 
-- пользовательских аватаров;
+- заменить старый однобуквенный fallback в `ChatAppBarTitle` открытого личного чата на `UserAvatarView`;
+- не изменять групповые чаты в рамках этого шага.
+
+Дальнейшие этапы:
+
 - групповых аватаров;
-- Firebase Storage;
 - голосовых сообщений;
-- Push Notifications;
 - статусов доставки;
 - пересылки сообщений;
 - закреплённых сообщений;
