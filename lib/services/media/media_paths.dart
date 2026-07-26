@@ -1,4 +1,17 @@
 class MediaPaths {
+  static String userAvatarThumbnail({
+    required String userId,
+    required int version,
+  }) {
+    return 'user_avatars/$userId/v$version/thumb.jpg';
+  }
+
+  static String userAvatarFull({required String userId, required int version}) {
+    return 'user_avatars/$userId/v$version/full.jpg';
+  }
+
+  // Временная совместимость со старой Media Foundation.
+  // Удалим после перехода MediaStorageService на версионные пути.
   static String userAvatar(String userId) {
     return 'user_avatars/$userId/avatar.jpg';
   }
