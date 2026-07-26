@@ -54,7 +54,11 @@ class _PrivateChatDraftScreenState extends State<PrivateChatDraftScreen> {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (_) => ChatScreen(chatId: chatId, chatName: displayName),
+          builder: (_) => ChatScreen(
+            chatId: chatId,
+            chatName: displayName,
+            peerUser: widget.otherUser,
+          ),
         ),
       );
     } catch (error) {
