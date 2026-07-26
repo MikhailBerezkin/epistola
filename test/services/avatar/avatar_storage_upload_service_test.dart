@@ -5,8 +5,8 @@ import 'package:epistola/domain/models/user_avatar.dart';
 import 'package:epistola/services/avatar/avatar_image_compressor_gateway.dart';
 import 'package:epistola/services/avatar/avatar_image_pipeline_config.dart';
 import 'package:epistola/services/avatar/avatar_image_processor.dart';
+import 'package:epistola/services/avatar/avatar_storage_gateway.dart';
 import 'package:epistola/services/avatar/avatar_storage_upload_service.dart';
-import 'package:epistola/services/media/media_storage_provider.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -81,7 +81,7 @@ void main() {
     expect(avatar.isComplete, isTrue);
   });
 
-  test('returns URLs, byte sizes, dimensions, and version', () async {
+  test('returns path-first metadata without bearer download URLs', () async {
     final images = await prepareImages(thumbnailBytes: 3210, fullBytes: 234567);
     final provider = _FakeMediaStorageProvider();
     final service = AvatarStorageUploadService(provider: provider);
@@ -92,14 +92,8 @@ void main() {
       images: images,
     );
 
-    expect(
-      avatar.thumbnailUrl,
-      'https://storage.example/user_avatars/user-1/v9/thumb.jpg',
-    );
-    expect(
-      avatar.fullUrl,
-      'https://storage.example/user_avatars/user-1/v9/full.jpg',
-    );
+    expect(avatar.thumbnailUrl, isNull);
+    expect(avatar.fullUrl, isNull);
     expect(avatar.thumbnailStoragePath, 'user_avatars/user-1/v9/thumb.jpg');
     expect(avatar.fullStoragePath, 'user_avatars/user-1/v9/full.jpg');
     expect(avatar.thumbnail.sizeBytes, 3210);
@@ -169,6 +163,35 @@ void main() {
               (error) => error.maximumBytes,
               'maximumBytes',
               AvatarImagePipelineConfig.hardFullSizeBytes,
+            ),
+      ),
+    );
+
+    expect(provider.uploads, isEmpty);
+    expect(provider.deletedPaths, isEmpty);
+  });
+
+  test('rejects a thumbnail over 128 KB before a network call', () async {
+    final images = await prepareImages();
+    await File(images.thumbnailPath).writeAsBytes(
+      List.filled(AvatarImagePipelineConfig.hardThumbnailSizeBytes + 1, 0),
+    );
+    final provider = _FakeMediaStorageProvider();
+    final service = AvatarStorageUploadService(provider: provider);
+
+    await expectLater(
+      service.upload(uid: 'user-1', version: 2, images: images),
+      throwsA(
+        isA<AvatarImageHardLimitExceededException>()
+            .having(
+              (error) => error.actualBytes,
+              'actualBytes',
+              AvatarImagePipelineConfig.hardThumbnailSizeBytes + 1,
+            )
+            .having(
+              (error) => error.maximumBytes,
+              'maximumBytes',
+              AvatarImagePipelineConfig.hardThumbnailSizeBytes,
             ),
       ),
     );
@@ -416,7 +439,7 @@ void main() {
   test('public upload boundary has no Firebase or Firestore types', () {
     const publicBoundaryPaths = [
       'lib/services/avatar/avatar_storage_upload_service.dart',
-      'lib/services/media/media_storage_provider.dart',
+      'lib/services/avatar/avatar_storage_gateway.dart',
     ];
 
     for (final path in publicBoundaryPaths) {
@@ -522,7 +545,7 @@ final class _FakeCompressor implements AvatarImageCompressorGateway {
   }
 }
 
-final class _FakeMediaStorageProvider implements MediaStorageProvider {
+final class _FakeMediaStorageProvider implements AvatarStorageGateway {
   _FakeMediaStorageProvider({
     this.uploadErrors = const {},
     this.deleteErrors = const {},
@@ -541,10 +564,10 @@ final class _FakeMediaStorageProvider implements MediaStorageProvider {
     required File file,
     required String path,
     required String type,
-    String? ownerType,
-    String? ownerId,
-    String? mimeType,
-    int version = 1,
+    required String ownerType,
+    required String ownerId,
+    required String mimeType,
+    required int version,
   }) async {
     uploads.add(
       _UploadCall(localPath: file.path, path: path, mimeType: mimeType),
@@ -566,7 +589,6 @@ final class _FakeMediaStorageProvider implements MediaStorageProvider {
       mimeType: mimeType,
       sizeBytes: await file.length(),
       version: version,
-      downloadUrl: 'https://storage.example/$path',
     );
   }
 
@@ -580,11 +602,6 @@ final class _FakeMediaStorageProvider implements MediaStorageProvider {
       throw error;
     }
   }
-
-  @override
-  Future<String> getDownloadUrl(String path) async {
-    return 'https://storage.example/$path';
-  }
 }
 
 final class _UploadCall {
@@ -596,5 +613,5 @@ final class _UploadCall {
 
   final String localPath;
   final String path;
-  final String? mimeType;
+  final String mimeType;
 }

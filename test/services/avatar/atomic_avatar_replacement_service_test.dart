@@ -5,9 +5,9 @@ import 'package:epistola/domain/models/user_avatar.dart';
 import 'package:epistola/services/avatar/atomic_avatar_replacement_service.dart';
 import 'package:epistola/services/avatar/avatar_image_compressor_gateway.dart';
 import 'package:epistola/services/avatar/avatar_image_processor.dart';
+import 'package:epistola/services/avatar/avatar_storage_gateway.dart';
 import 'package:epistola/services/avatar/avatar_storage_upload_service.dart';
 import 'package:epistola/services/avatar/user_avatar_metadata_gateway.dart';
-import 'package:epistola/services/media/media_storage_provider.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -347,8 +347,8 @@ void main() {
     const publicBoundaryPaths = [
       'lib/services/avatar/atomic_avatar_replacement_service.dart',
       'lib/services/avatar/user_avatar_metadata_gateway.dart',
+      'lib/services/avatar/avatar_storage_gateway.dart',
       'lib/services/avatar/avatar_storage_upload_service.dart',
-      'lib/services/media/media_storage_provider.dart',
     ];
 
     for (final path in publicBoundaryPaths) {
@@ -422,7 +422,7 @@ final class _FakeMetadataGateway implements UserAvatarMetadataGateway {
   }
 }
 
-final class _FakeMediaStorageProvider implements MediaStorageProvider {
+final class _FakeMediaStorageProvider implements AvatarStorageGateway {
   _FakeMediaStorageProvider({
     required this.events,
     this.uploadErrors = const {},
@@ -443,10 +443,10 @@ final class _FakeMediaStorageProvider implements MediaStorageProvider {
     required File file,
     required String path,
     required String type,
-    String? ownerType,
-    String? ownerId,
-    String? mimeType,
-    int version = 1,
+    required String ownerType,
+    required String ownerId,
+    required String mimeType,
+    required int version,
   }) async {
     uploads.add(path);
     events.add('upload:$path');
@@ -468,7 +468,6 @@ final class _FakeMediaStorageProvider implements MediaStorageProvider {
       sizeBytes: await file.length(),
       version: version,
       updatedAt: DateTime.utc(2026, 7, 26),
-      downloadUrl: 'https://storage.example/$path',
     );
   }
 
@@ -483,11 +482,6 @@ final class _FakeMediaStorageProvider implements MediaStorageProvider {
       throw error;
     }
   }
-
-  @override
-  Future<String> getDownloadUrl(String path) async {
-    return 'https://storage.example/$path';
-  }
 }
 
 UserAvatar _avatar({required String uid, required int version}) {
@@ -500,9 +494,9 @@ UserAvatar _avatar({required String uid, required int version}) {
       ownerType: 'user',
       ownerId: uid,
       mimeType: 'image/jpeg',
+      sizeBytes: 1200,
       version: version,
       updatedAt: DateTime.utc(2026, 7, 25),
-      downloadUrl: 'https://storage.example/thumb.jpg',
     ),
     full: MediaAsset(
       id: 'user-avatar-$uid-v$version-full',
@@ -512,9 +506,9 @@ UserAvatar _avatar({required String uid, required int version}) {
       ownerType: 'user',
       ownerId: uid,
       mimeType: 'image/jpeg',
+      sizeBytes: 240000,
       version: version,
       updatedAt: DateTime.utc(2026, 7, 25),
-      downloadUrl: 'https://storage.example/full.jpg',
     ),
   );
 }

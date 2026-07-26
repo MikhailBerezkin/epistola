@@ -21,12 +21,16 @@ class UserAvatar {
   String get fullStoragePath => full.path;
 
   bool get hasThumbnail {
-    return thumbnailUrl?.trim().isNotEmpty ?? false;
+    return thumbnailStoragePath.trim().isNotEmpty;
   }
 
   bool get hasFullImage {
-    return fullUrl?.trim().isNotEmpty ?? false;
+    return fullStoragePath.trim().isNotEmpty;
   }
+
+  int? get thumbnailSizeBytes => thumbnail.sizeBytes;
+
+  int? get fullSizeBytes => full.sizeBytes;
 
   bool get isComplete {
     final ownerId = full.ownerId?.trim();
@@ -40,6 +44,18 @@ class UserAvatar {
         thumbnail.ownerId == full.ownerId &&
         hasThumbnail &&
         hasFullImage;
+  }
+
+  bool get hasPersistableMetadata {
+    final thumbnailSize = thumbnailSizeBytes;
+    final fullSize = fullSizeBytes;
+
+    return isComplete &&
+        thumbnailSize != null &&
+        thumbnailSize >= 0 &&
+        fullSize != null &&
+        fullSize >= 0 &&
+        updatedAt != null;
   }
 
   String thumbnailCacheKey(String userId) {

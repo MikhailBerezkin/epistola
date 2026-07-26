@@ -3,12 +3,12 @@ import 'dart:io';
 import '../../domain/models/media_asset.dart';
 import '../../domain/models/user_avatar.dart';
 import '../media/media_paths.dart';
-import '../media/media_storage_provider.dart';
 import 'avatar_image_pipeline_config.dart';
 import 'avatar_image_processor.dart';
+import 'avatar_storage_gateway.dart';
 
 final class AvatarStorageUploadService {
-  factory AvatarStorageUploadService({required MediaStorageProvider provider}) {
+  factory AvatarStorageUploadService({required AvatarStorageGateway provider}) {
     return AvatarStorageUploadService._(provider);
   }
 
@@ -17,7 +17,7 @@ final class AvatarStorageUploadService {
   static const _mimeType = 'image/jpeg';
   static const _ownerType = 'user';
 
-  final MediaStorageProvider _provider;
+  final AvatarStorageGateway _provider;
 
   Future<UserAvatar> upload({
     required String uid,
@@ -26,7 +26,14 @@ final class AvatarStorageUploadService {
   }) async {
     _validateUid(uid);
     _validateVersion(version);
-    await _validateFullImageSize(images.fullPath);
+    await _validateImageSize(
+      images.thumbnailPath,
+      AvatarImagePipelineConfig.hardThumbnailSizeBytes,
+    );
+    await _validateImageSize(
+      images.fullPath,
+      AvatarImagePipelineConfig.hardFullSizeBytes,
+    );
 
     final thumbnailPath = MediaPaths.userAvatarThumbnail(
       userId: uid,
@@ -151,13 +158,13 @@ final class AvatarStorageUploadService {
     }
   }
 
-  static Future<void> _validateFullImageSize(String fullPath) async {
-    final fullSize = await File(fullPath).length();
+  static Future<void> _validateImageSize(String path, int maximumBytes) async {
+    final size = await File(path).length();
 
-    if (fullSize > AvatarImagePipelineConfig.hardFullSizeBytes) {
+    if (size > maximumBytes) {
       throw AvatarImageHardLimitExceededException(
-        actualBytes: fullSize,
-        maximumBytes: AvatarImagePipelineConfig.hardFullSizeBytes,
+        actualBytes: size,
+        maximumBytes: maximumBytes,
       );
     }
   }

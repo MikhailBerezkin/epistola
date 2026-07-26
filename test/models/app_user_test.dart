@@ -6,7 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('AppUser avatars', () {
-    test('reads complete avatar metadata from the user document', () {
+    test('reads legacy URL-bearing avatar metadata from the user document', () {
       final updatedAt = DateTime.utc(2026, 7, 26, 12, 30);
 
       final user = AppUser.fromMap({
@@ -31,6 +31,33 @@ void main() {
       expect(user.avatar!.isComplete, isTrue);
       expect(user.effectiveAvatarThumbnailUrl, 'https://example.com/thumb.jpg');
       expect(user.effectiveAvatarFullUrl, 'https://example.com/full.jpg');
+      expect(user.hasAvatar, isTrue);
+    });
+
+    test('reads path-first avatar metadata without bearer URLs', () {
+      final updatedAt = DateTime.utc(2026, 7, 26, 12, 45);
+      final user = AppUser.fromMap({
+        'uid': 'user-1',
+        'email': 'user@example.com',
+        'name': 'Иван Иванов',
+        'phone': '',
+        'about': '',
+        'avatarProvider': 'firebase',
+        'avatarThumbStoragePath': 'user_avatars/user-1/v4/thumb.jpg',
+        'avatarFullStoragePath': 'user_avatars/user-1/v4/full.jpg',
+        'avatarThumbSizeBytes': 24000,
+        'avatarFullSizeBytes': 180000,
+        'avatarVersion': 4,
+        'avatarUpdatedAt': Timestamp.fromDate(updatedAt),
+      });
+
+      expect(user.avatar, isNotNull);
+      expect(user.avatar!.thumbnailUrl, isNull);
+      expect(user.avatar!.fullUrl, isNull);
+      expect(user.avatar!.thumbnailSizeBytes, 24000);
+      expect(user.avatar!.fullSizeBytes, 180000);
+      expect(user.effectiveAvatarThumbnailUrl, isNull);
+      expect(user.effectiveAvatarFullUrl, isNull);
       expect(user.hasAvatar, isTrue);
     });
 
@@ -64,9 +91,9 @@ void main() {
           ownerType: 'user',
           ownerId: 'user-1',
           mimeType: 'image/jpeg',
+          sizeBytes: 24000,
           version: 12,
           updatedAt: updatedAt,
-          downloadUrl: 'https://storage.example/thumb.jpg',
         ),
         full: MediaAsset(
           id: 'full',
@@ -76,21 +103,115 @@ void main() {
           ownerType: 'user',
           ownerId: 'user-1',
           mimeType: 'image/jpeg',
+          sizeBytes: 180000,
           version: 12,
           updatedAt: updatedAt,
-          downloadUrl: 'https://storage.example/full.jpg',
         ),
       );
 
       expect(AppUser.avatarMetadataToMap(avatar), {
         'avatarProvider': 'firebase',
-        'avatarThumbUrl': 'https://storage.example/thumb.jpg',
-        'avatarFullUrl': 'https://storage.example/full.jpg',
         'avatarThumbStoragePath': 'user_avatars/user-1/v12/thumb.jpg',
         'avatarFullStoragePath': 'user_avatars/user-1/v12/full.jpg',
+        'avatarThumbSizeBytes': 24000,
+        'avatarFullSizeBytes': 180000,
         'avatarVersion': 12,
         'avatarUpdatedAt': updatedAt,
       });
+    });
+
+    test('toMap keeps legacy URLs without writing path-first metadata', () {
+      final user = AppUser.fromMap({
+        'uid': 'legacy-user',
+        'email': 'legacy@example.com',
+        'name': 'Legacy User',
+        'phone': '+10000000000',
+        'about': 'Legacy profile',
+        'avatarUrl': 'https://example.com/legacy.jpg',
+        'avatarProvider': 'firebase',
+        'avatarThumbUrl': 'https://example.com/thumb.jpg',
+        'avatarFullUrl': 'https://example.com/full.jpg',
+        'avatarThumbStoragePath': 'user_avatars/legacy-user/v2/thumb.jpg',
+        'avatarFullStoragePath': 'user_avatars/legacy-user/v2/full.jpg',
+        'avatarVersion': 2,
+        'avatarUpdatedAt': DateTime.utc(2026, 7, 25),
+      });
+
+      final serialized = user.toMap();
+
+      expect(serialized['avatarUrl'], 'https://example.com/legacy.jpg');
+      for (final field in const <String>[
+        'avatarProvider',
+        'avatarThumbStoragePath',
+        'avatarFullStoragePath',
+        'avatarThumbSizeBytes',
+        'avatarFullSizeBytes',
+        'avatarVersion',
+        'avatarUpdatedAt',
+      ]) {
+        expect(serialized.containsKey(field), isFalse, reason: field);
+      }
+      expect(AppUser.fromMap(serialized).avatarUrl, user.avatarUrl);
+    });
+
+    test('toMap round-trips complete path-first metadata', () {
+      final updatedAt = DateTime.utc(2026, 7, 26, 14);
+      final user = AppUser.fromMap({
+        'uid': 'user-1',
+        'email': 'user@example.com',
+        'name': 'Path First',
+        'phone': '',
+        'about': '',
+        'avatarUrl': '',
+        'avatarProvider': 'firebase',
+        'avatarThumbStoragePath': 'user_avatars/user-1/v5/thumb.jpg',
+        'avatarFullStoragePath': 'user_avatars/user-1/v5/full.jpg',
+        'avatarThumbSizeBytes': 24000,
+        'avatarFullSizeBytes': 180000,
+        'avatarVersion': 5,
+        'avatarUpdatedAt': updatedAt,
+      });
+
+      final serialized = user.toMap();
+      final roundTripped = AppUser.fromMap(serialized);
+
+      expect(
+        serialized,
+        containsPair('avatarThumbStoragePath', user.avatar!.thumbnail.path),
+      );
+      expect(serialized, containsPair('avatarVersion', 5));
+      expect(serialized.containsKey('avatarThumbUrl'), isFalse);
+      expect(serialized.containsKey('avatarFullUrl'), isFalse);
+      expect(roundTripped.avatar?.hasPersistableMetadata, isTrue);
+      expect(roundTripped.avatar?.thumbnailSizeBytes, 24000);
+      expect(roundTripped.avatar?.fullSizeBytes, 180000);
+      expect(roundTripped.avatar?.updatedAt, updatedAt);
+    });
+
+    test('toMap round-trips a user without an avatar', () {
+      final user = AppUser.fromMap({
+        'uid': 'user-without-avatar',
+        'email': 'none@example.com',
+        'name': 'No Avatar',
+        'phone': '',
+        'about': '',
+      });
+
+      final serialized = user.toMap();
+      final roundTripped = AppUser.fromMap(serialized);
+
+      expect(serialized.keys, {
+        'uid',
+        'email',
+        'name',
+        'phone',
+        'about',
+        'avatarUrl',
+        'createdAt',
+      });
+      expect(roundTripped.avatar, isNull);
+      expect(roundTripped.avatarUrl, isEmpty);
+      expect(roundTripped.hasAvatar, isFalse);
     });
 
     test('rejects incomplete new metadata', () {

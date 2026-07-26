@@ -22,13 +22,14 @@ final class FirebaseUserAvatarMetadataGateway
       throw ArgumentError.value(uid, 'uid', 'UID must not be empty.');
     }
 
-    if (!avatar.isComplete ||
+    if (!avatar.hasPersistableMetadata ||
         avatar.thumbnail.ownerId != normalizedUid ||
         avatar.full.ownerId != normalizedUid) {
       throw ArgumentError.value(
         avatar,
         'avatar',
-        'Avatar must be complete and owned by the requested user.',
+        'Avatar metadata must be complete, sized, timestamped, and owned by '
+            'the requested user.',
       );
     }
 

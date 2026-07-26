@@ -32,5 +32,6 @@ class AvatarImagePipelineConfig {
   );
 
   static const desiredFullSizeBytes = 300 * 1024;
+  static const hardThumbnailSizeBytes = 128 * 1024;
   static const hardFullSizeBytes = 512 * 1024;
 }

@@ -60,7 +60,8 @@ class AppUser {
     return legacyUrl.isEmpty ? null : legacyUrl;
   }
 
-  bool get hasAvatar => effectiveAvatarFullUrl != null;
+  bool get hasAvatar =>
+      effectiveAvatar != null || effectiveAvatarFullUrl != null;
 
   factory AppUser.fromMap(Map<String, dynamic> data) {
     final uid = _readString(data['uid']);
@@ -106,7 +107,7 @@ class AppUser {
 
     final currentAvatar = effectiveAvatar;
 
-    if (currentAvatar != null) {
+    if (currentAvatar != null && currentAvatar.hasPersistableMetadata) {
       data.addAll(avatarMetadataToMap(currentAvatar));
     }
 
@@ -116,10 +117,10 @@ class AppUser {
   static Map<String, dynamic> avatarMetadataToMap(UserAvatar avatar) {
     return {
       'avatarProvider': avatar.provider,
-      'avatarThumbUrl': avatar.thumbnailUrl,
-      'avatarFullUrl': avatar.fullUrl,
       'avatarThumbStoragePath': avatar.thumbnailStoragePath,
       'avatarFullStoragePath': avatar.fullStoragePath,
+      'avatarThumbSizeBytes': avatar.thumbnailSizeBytes,
+      'avatarFullSizeBytes': avatar.fullSizeBytes,
       'avatarVersion': avatar.version,
       'avatarUpdatedAt': avatar.updatedAt,
     };
@@ -134,19 +135,26 @@ class AppUser {
     final fullUrl = _readString(data['avatarFullUrl']);
     final thumbnailPath = _readString(data['avatarThumbStoragePath']);
     final fullPath = _readString(data['avatarFullStoragePath']);
+    final thumbnailSize = _readNullableInt(data['avatarThumbSizeBytes']);
+    final fullSize = _readNullableInt(data['avatarFullSizeBytes']);
     final version = _readInt(data['avatarVersion']);
     final updatedAt = _readDateTime(data['avatarUpdatedAt']);
 
-    final hasCompleteMetadata =
+    final hasCoreMetadata =
         userId.isNotEmpty &&
         provider.isNotEmpty &&
-        thumbnailUrl.isNotEmpty &&
-        fullUrl.isNotEmpty &&
         thumbnailPath.isNotEmpty &&
         fullPath.isNotEmpty &&
         version > 0;
+    final hasPathFirstMetadata =
+        thumbnailSize != null &&
+        thumbnailSize >= 0 &&
+        fullSize != null &&
+        fullSize >= 0 &&
+        updatedAt != null;
+    final hasLegacyUrlMetadata = thumbnailUrl.isNotEmpty && fullUrl.isNotEmpty;
 
-    if (!hasCompleteMetadata) {
+    if (!hasCoreMetadata || (!hasPathFirstMetadata && !hasLegacyUrlMetadata)) {
       return null;
     }
 
@@ -159,9 +167,10 @@ class AppUser {
         ownerType: 'user',
         ownerId: userId,
         mimeType: 'image/jpeg',
+        sizeBytes: thumbnailSize,
         version: version,
         updatedAt: updatedAt,
-        downloadUrl: thumbnailUrl,
+        downloadUrl: thumbnailUrl.isEmpty ? null : thumbnailUrl,
       ),
       full: MediaAsset(
         id: 'user-avatar-$userId-v$version-full',
@@ -171,9 +180,10 @@ class AppUser {
         ownerType: 'user',
         ownerId: userId,
         mimeType: 'image/jpeg',
+        sizeBytes: fullSize,
         version: version,
         updatedAt: updatedAt,
-        downloadUrl: fullUrl,
+        downloadUrl: fullUrl.isEmpty ? null : fullUrl,
       ),
     );
 
@@ -186,6 +196,10 @@ class AppUser {
 
   static int _readInt(dynamic value) {
     return value is num ? value.toInt() : 0;
+  }
+
+  static int? _readNullableInt(dynamic value) {
+    return value is int ? value : null;
   }
 
   static DateTime? _readDateTime(dynamic value) {

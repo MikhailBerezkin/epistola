@@ -11,6 +11,7 @@ void main() {
       expect(AvatarImagePipelineConfig.thumbnail.width, 128);
       expect(AvatarImagePipelineConfig.thumbnail.height, 128);
       expect(AvatarImagePipelineConfig.thumbnail.qualityAttempts, [75]);
+      expect(AvatarImagePipelineConfig.hardThumbnailSizeBytes, 128 * 1024);
     });
   });
 

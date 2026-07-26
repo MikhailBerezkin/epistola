@@ -92,7 +92,7 @@ void main() {
       expect(avatar.isComplete, isFalse);
     });
 
-    test('is incomplete when one URL is missing', () {
+    test('path-first avatar is complete without download URLs', () {
       final avatar = UserAvatar(
         thumbnail: _asset(
           id: 'thumb',
@@ -108,9 +108,9 @@ void main() {
         ),
       );
 
-      expect(avatar.hasThumbnail, isFalse);
+      expect(avatar.hasThumbnail, isTrue);
       expect(avatar.hasFullImage, isTrue);
-      expect(avatar.isComplete, isFalse);
+      expect(avatar.isComplete, isTrue);
     });
     test('is incomplete when owner is missing', () {
       final avatar = UserAvatar(

@@ -13,12 +13,38 @@ service firebase.storage {
         && request.resource.size < 5 * 1024 * 1024;
     }
 
-    match /user_avatars/{userId}/{fileName} {
-      allow read: if signedIn();
-      allow write: if signedIn()
+    function isValidAvatarVersion(version) {
+      return version.matches('v[1-9][0-9]*');
+    }
+
+    match /user_avatars/{userId}/{version}/thumb.jpg {
+      allow get: if signedIn()
+        && isValidAvatarVersion(version);
+
+      allow create, update: if signedIn()
         && request.auth.uid == userId
-        && request.resource.size < 2 * 1024 * 1024
-        && request.resource.contentType.matches('image/.*');
+        && isValidAvatarVersion(version)
+        && request.resource.contentType == 'image/jpeg'
+        && request.resource.size <= 128 * 1024;
+
+      allow delete: if signedIn()
+        && request.auth.uid == userId
+        && isValidAvatarVersion(version);
+    }
+
+    match /user_avatars/{userId}/{version}/full.jpg {
+      allow get: if signedIn()
+        && isValidAvatarVersion(version);
+
+      allow create, update: if signedIn()
+        && request.auth.uid == userId
+        && isValidAvatarVersion(version)
+        && request.resource.contentType == 'image/jpeg'
+        && request.resource.size <= 512 * 1024;
+
+      allow delete: if signedIn()
+        && request.auth.uid == userId
+        && isValidAvatarVersion(version);
     }
 
     match /group_avatars/{chatId}/{fileName} {
