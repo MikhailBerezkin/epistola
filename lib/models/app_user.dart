@@ -107,18 +107,22 @@ class AppUser {
     final currentAvatar = effectiveAvatar;
 
     if (currentAvatar != null) {
-      data.addAll({
-        'avatarProvider': currentAvatar.provider,
-        'avatarThumbUrl': currentAvatar.thumbnailUrl,
-        'avatarFullUrl': currentAvatar.fullUrl,
-        'avatarThumbStoragePath': currentAvatar.thumbnailStoragePath,
-        'avatarFullStoragePath': currentAvatar.fullStoragePath,
-        'avatarVersion': currentAvatar.version,
-        'avatarUpdatedAt': currentAvatar.updatedAt,
-      });
+      data.addAll(avatarMetadataToMap(currentAvatar));
     }
 
     return data;
+  }
+
+  static Map<String, dynamic> avatarMetadataToMap(UserAvatar avatar) {
+    return {
+      'avatarProvider': avatar.provider,
+      'avatarThumbUrl': avatar.thumbnailUrl,
+      'avatarFullUrl': avatar.fullUrl,
+      'avatarThumbStoragePath': avatar.thumbnailStoragePath,
+      'avatarFullStoragePath': avatar.fullStoragePath,
+      'avatarVersion': avatar.version,
+      'avatarUpdatedAt': avatar.updatedAt,
+    };
   }
 
   static UserAvatar? _readAvatar({

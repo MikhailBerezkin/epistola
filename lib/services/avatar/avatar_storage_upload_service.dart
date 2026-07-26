@@ -8,9 +8,7 @@ import 'avatar_image_pipeline_config.dart';
 import 'avatar_image_processor.dart';
 
 final class AvatarStorageUploadService {
-  factory AvatarStorageUploadService({
-    required MediaStorageProvider provider,
-  }) {
+  factory AvatarStorageUploadService({required MediaStorageProvider provider}) {
     return AvatarStorageUploadService._(provider);
   }
 
@@ -62,6 +60,40 @@ final class AvatarStorageUploadService {
       await _deleteBestEffort(fullPath);
       Error.throwWithStackTrace(error, stackTrace);
     }
+  }
+
+  Future<void> deleteAvatarVersion({
+    required String uid,
+    required UserAvatar avatar,
+    required int activeVersion,
+  }) async {
+    final normalizedUid = uid.trim();
+
+    if (normalizedUid.isEmpty ||
+        avatar.version <= 0 ||
+        avatar.version == activeVersion ||
+        avatar.provider != _provider.providerName ||
+        avatar.thumbnail.ownerId != normalizedUid ||
+        avatar.full.ownerId != normalizedUid) {
+      return;
+    }
+
+    final expectedThumbnailPath = MediaPaths.userAvatarThumbnail(
+      userId: normalizedUid,
+      version: avatar.version,
+    );
+    final expectedFullPath = MediaPaths.userAvatarFull(
+      userId: normalizedUid,
+      version: avatar.version,
+    );
+
+    if (avatar.thumbnailStoragePath != expectedThumbnailPath ||
+        avatar.fullStoragePath != expectedFullPath) {
+      return;
+    }
+
+    await _deleteBestEffort(expectedThumbnailPath);
+    await _deleteBestEffort(expectedFullPath);
   }
 
   Future<MediaAsset> _uploadVariant({

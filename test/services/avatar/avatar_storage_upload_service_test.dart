@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:epistola/domain/models/media_asset.dart';
+import 'package:epistola/domain/models/user_avatar.dart';
 import 'package:epistola/services/avatar/avatar_image_compressor_gateway.dart';
 import 'package:epistola/services/avatar/avatar_image_pipeline_config.dart';
 import 'package:epistola/services/avatar/avatar_image_processor.dart';
@@ -320,6 +321,98 @@ void main() {
     expect(await File(images.fullPath).exists(), isTrue);
   });
 
+  test(
+    'deletes only the exact versioned paths owned by the current uid',
+    () async {
+      final provider = _FakeMediaStorageProvider();
+      final service = AvatarStorageUploadService(provider: provider);
+
+      await service.deleteAvatarVersion(
+        uid: 'user-1',
+        avatar: _avatar(
+          uid: 'user-1',
+          version: 11,
+          provider: provider.providerName,
+        ),
+        activeVersion: 12,
+      );
+
+      expect(provider.deletedPaths, [
+        'user_avatars/user-1/v11/thumb.jpg',
+        'user_avatars/user-1/v11/full.jpg',
+      ]);
+    },
+  );
+
+  test('refuses versioned paths belonging to another uid', () async {
+    final provider = _FakeMediaStorageProvider();
+    final service = AvatarStorageUploadService(provider: provider);
+
+    await service.deleteAvatarVersion(
+      uid: 'user-1',
+      avatar: _avatar(
+        uid: 'other-user',
+        version: 11,
+        provider: provider.providerName,
+      ),
+      activeVersion: 12,
+    );
+
+    expect(provider.deletedPaths, isEmpty);
+  });
+
+  test('refuses external and legacy avatar paths', () async {
+    final provider = _FakeMediaStorageProvider();
+    final service = AvatarStorageUploadService(provider: provider);
+    final externalAvatar = UserAvatar(
+      thumbnail: MediaAsset(
+        id: 'legacy-thumb',
+        provider: provider.providerName,
+        path: 'https://example.com/legacy-thumb.jpg',
+        type: 'userAvatarThumbnail',
+        ownerType: 'user',
+        ownerId: 'user-1',
+        version: 4,
+        downloadUrl: 'https://example.com/legacy-thumb.jpg',
+      ),
+      full: MediaAsset(
+        id: 'legacy-full',
+        provider: provider.providerName,
+        path: 'user_avatars/user-1/avatar.jpg',
+        type: 'userAvatarFull',
+        ownerType: 'user',
+        ownerId: 'user-1',
+        version: 4,
+        downloadUrl: 'https://example.com/legacy-full.jpg',
+      ),
+    );
+
+    await service.deleteAvatarVersion(
+      uid: 'user-1',
+      avatar: externalAvatar,
+      activeVersion: 5,
+    );
+
+    expect(provider.deletedPaths, isEmpty);
+  });
+
+  test('never deletes the protected active version', () async {
+    final provider = _FakeMediaStorageProvider();
+    final service = AvatarStorageUploadService(provider: provider);
+
+    await service.deleteAvatarVersion(
+      uid: 'user-1',
+      avatar: _avatar(
+        uid: 'user-1',
+        version: 11,
+        provider: provider.providerName,
+      ),
+      activeVersion: 11,
+    );
+
+    expect(provider.deletedPaths, isEmpty);
+  });
+
   test('public upload boundary has no Firebase or Firestore types', () {
     const publicBoundaryPaths = [
       'lib/services/avatar/avatar_storage_upload_service.dart',
@@ -354,6 +447,37 @@ void main() {
       }
     }
   });
+}
+
+UserAvatar _avatar({
+  required String uid,
+  required int version,
+  required String provider,
+}) {
+  return UserAvatar(
+    thumbnail: MediaAsset(
+      id: 'user-avatar-$uid-v$version-thumb',
+      provider: provider,
+      path: 'user_avatars/$uid/v$version/thumb.jpg',
+      type: 'userAvatarThumbnail',
+      ownerType: 'user',
+      ownerId: uid,
+      mimeType: 'image/jpeg',
+      version: version,
+      downloadUrl: 'https://storage.example/thumb.jpg',
+    ),
+    full: MediaAsset(
+      id: 'user-avatar-$uid-v$version-full',
+      provider: provider,
+      path: 'user_avatars/$uid/v$version/full.jpg',
+      type: 'userAvatarFull',
+      ownerType: 'user',
+      ownerId: uid,
+      mimeType: 'image/jpeg',
+      version: version,
+      downloadUrl: 'https://storage.example/full.jpg',
+    ),
+  );
 }
 
 Future<File> _createFile(

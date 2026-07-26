@@ -1,4 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:epistola/domain/models/media_asset.dart';
+import 'package:epistola/domain/models/user_avatar.dart';
 import 'package:epistola/models/app_user.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -49,6 +51,46 @@ void main() {
       );
       expect(user.effectiveAvatarFullUrl, 'https://example.com/legacy.jpg');
       expect(user.hasAvatar, isTrue);
+    });
+
+    test('serializes exactly the established avatar metadata fields', () {
+      final updatedAt = DateTime.utc(2026, 7, 26, 13, 45);
+      final avatar = UserAvatar(
+        thumbnail: MediaAsset(
+          id: 'thumb',
+          provider: 'firebase',
+          path: 'user_avatars/user-1/v12/thumb.jpg',
+          type: 'userAvatarThumbnail',
+          ownerType: 'user',
+          ownerId: 'user-1',
+          mimeType: 'image/jpeg',
+          version: 12,
+          updatedAt: updatedAt,
+          downloadUrl: 'https://storage.example/thumb.jpg',
+        ),
+        full: MediaAsset(
+          id: 'full',
+          provider: 'firebase',
+          path: 'user_avatars/user-1/v12/full.jpg',
+          type: 'userAvatarFull',
+          ownerType: 'user',
+          ownerId: 'user-1',
+          mimeType: 'image/jpeg',
+          version: 12,
+          updatedAt: updatedAt,
+          downloadUrl: 'https://storage.example/full.jpg',
+        ),
+      );
+
+      expect(AppUser.avatarMetadataToMap(avatar), {
+        'avatarProvider': 'firebase',
+        'avatarThumbUrl': 'https://storage.example/thumb.jpg',
+        'avatarFullUrl': 'https://storage.example/full.jpg',
+        'avatarThumbStoragePath': 'user_avatars/user-1/v12/thumb.jpg',
+        'avatarFullStoragePath': 'user_avatars/user-1/v12/full.jpg',
+        'avatarVersion': 12,
+        'avatarUpdatedAt': updatedAt,
+      });
     });
 
     test('rejects incomplete new metadata', () {
