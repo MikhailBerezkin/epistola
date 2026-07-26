@@ -317,6 +317,9 @@ class _ChatsPageState extends State<ChatsPage> {
                                 builder: (_) => ChatScreen(
                                   chatId: chat.id,
                                   chatName: chatName,
+                                  peerUser: data['type'] == 'private'
+                                      ? peerUser
+                                      : null,
                                 ),
                               ),
                             );
