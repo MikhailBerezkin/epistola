@@ -13,22 +13,43 @@ import '../widgets/group/group_members_section.dart';
 import '../widgets/group/leave_group_card.dart';
 import '../widgets/group/dissolve_group_card.dart';
 import '../services/avatar/group_avatar_metadata_mapper.dart';
+import '../services/avatar/avatar_image_dependencies.dart';
+import '../services/avatar/group_avatar_replacement_controller.dart';
 
-class GroupInfoScreen extends StatelessWidget {
+class GroupInfoScreen extends StatefulWidget {
+  const GroupInfoScreen({super.key, required this.chatId});
+
   final String chatId;
 
-  const GroupInfoScreen({super.key, required this.chatId});
+  @override
+  State<GroupInfoScreen> createState() => _GroupInfoScreenState();
+}
+
+class _GroupInfoScreenState extends State<GroupInfoScreen> {
+  final ChatService _chatService = ChatService();
+
+  late final GroupAvatarReplacementController _groupAvatarController;
+
+  @override
+  void initState() {
+    super.initState();
+    _groupAvatarController = createGroupAvatarReplacementController();
+  }
+
+  @override
+  void dispose() {
+    _groupAvatarController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final chatService = ChatService();
-
     return Scaffold(
       appBar: AppBar(title: const Text('Информация о группе')),
       body: StreamBuilder<DocumentSnapshot>(
         stream: FirebaseFirestore.instance
             .collection('chats')
-            .doc(chatId)
+            .doc(widget.chatId)
             .snapshots(),
         builder: (context, snapshot) {
           if (snapshot.hasError) {
@@ -49,7 +70,7 @@ class GroupInfoScreen extends StatelessWidget {
 
           final groupAvatar = GroupAvatarMetadataMapper.fromMap(
             data: data,
-            chatId: chatId,
+            chatId: widget.chatId,
           );
           final memberIds = List<String>.from(data['memberIds'] ?? []);
           final memberRoles =
@@ -91,7 +112,7 @@ class GroupInfoScreen extends StatelessWidget {
                           currentUserRole == 'owner')));
 
           return FutureBuilder<List<AppUser>>(
-            future: chatService.getUsersByIds(memberIds),
+            future: _chatService.getUsersByIds(memberIds),
             builder: (context, usersSnapshot) {
               final users = List<AppUser>.from(usersSnapshot.data ?? []);
 
@@ -105,7 +126,7 @@ class GroupInfoScreen extends StatelessWidget {
                 padding: const EdgeInsets.all(16),
                 children: [
                   GroupHeader(
-                    chatId: chatId,
+                    chatId: widget.chatId,
                     groupName: groupName,
                     memberCount: memberIds.length,
                     avatar: groupAvatar,
@@ -118,7 +139,8 @@ class GroupInfoScreen extends StatelessWidget {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (_) => GroupSettingsScreen(chatId: chatId),
+                            builder: (_) =>
+                                GroupSettingsScreen(chatId: widget.chatId),
                           ),
                         );
                       },
@@ -131,7 +153,8 @@ class GroupInfoScreen extends StatelessWidget {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (_) => AddMembersScreen(chatId: chatId),
+                            builder: (_) =>
+                                AddMembersScreen(chatId: widget.chatId),
                           ),
                         );
                       },
@@ -164,7 +187,9 @@ class GroupInfoScreen extends StatelessWidget {
 
                       if (shouldLeave != true) return;
 
-                      final left = await chatService.leaveGroupSafely(chatId);
+                      final left = await _chatService.leaveGroupSafely(
+                        widget.chatId,
+                      );
 
                       if (!context.mounted) return;
 
@@ -226,7 +251,7 @@ class GroupInfoScreen extends StatelessWidget {
 
                         if (shouldDissolve != true) return;
 
-                        await chatService.dissolveGroup(chatId);
+                        await _chatService.dissolveGroup(widget.chatId);
 
                         if (!context.mounted) return;
 
@@ -237,7 +262,7 @@ class GroupInfoScreen extends StatelessWidget {
 
                   const SizedBox(height: 24),
                   GroupMembersSection(
-                    chatId: chatId,
+                    chatId: widget.chatId,
                     users: users,
                     memberRoles: memberRoles,
                     isLoading:
