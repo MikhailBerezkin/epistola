@@ -12,6 +12,7 @@ import '../widgets/group/add_members_card.dart';
 import '../widgets/group/group_members_section.dart';
 import '../widgets/group/leave_group_card.dart';
 import '../widgets/group/dissolve_group_card.dart';
+import '../services/avatar/group_avatar_metadata_mapper.dart';
 
 class GroupInfoScreen extends StatelessWidget {
   final String chatId;
@@ -44,7 +45,12 @@ class GroupInfoScreen extends StatelessWidget {
             return const Center(child: Text('Группа не найдена'));
           }
 
-          final groupName = data['name'] ?? 'Группа';
+          final groupName = (data['name'] ?? 'Группа').toString();
+
+          final groupAvatar = GroupAvatarMetadataMapper.fromMap(
+            data: data,
+            chatId: chatId,
+          );
           final memberIds = List<String>.from(data['memberIds'] ?? []);
           final memberRoles =
               (data['memberRoles'] as Map<String, dynamic>?) ?? {};
@@ -99,8 +105,10 @@ class GroupInfoScreen extends StatelessWidget {
                 padding: const EdgeInsets.all(16),
                 children: [
                   GroupHeader(
+                    chatId: chatId,
                     groupName: groupName,
                     memberCount: memberIds.length,
+                    avatar: groupAvatar,
                   ),
                   if (canManageGroup)
                     GroupSettingsCard(
