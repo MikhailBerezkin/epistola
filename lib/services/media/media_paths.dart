@@ -16,6 +16,21 @@ class MediaPaths {
     return 'user_avatars/$userId/avatar.jpg';
   }
 
+  static String groupAvatarThumbnail({
+    required String chatId,
+    required int version,
+  }) {
+    return 'group_avatars/$chatId/v$version/thumb.jpg';
+  }
+
+  static String groupAvatarFull({
+    required String chatId,
+    required int version,
+  }) {
+    return 'group_avatars/$chatId/v$version/full.jpg';
+  }
+
+  // Временная совместимость со старым невариантным путём.
   static String groupAvatar(String chatId) {
     return 'group_avatars/$chatId/avatar.jpg';
   }
