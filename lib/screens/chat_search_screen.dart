@@ -70,14 +70,20 @@ class _ChatSearchScreenState extends State<ChatSearchScreen> {
     return 'Личный чат';
   }
 
-  bool matchesSearch(Map<String, dynamic> data) {
-    if (searchQuery.isEmpty) return true;
+  bool matchesSearch({required Map<String, dynamic> data, AppUser? peerUser}) {
+    final query = searchQuery.trim().toLowerCase();
 
-    final chatName = (data['name'] ?? '').toString().toLowerCase();
+    if (query.isEmpty) return true;
+
+    final displayName = _getDisplayChatName(data, peerUser).toLowerCase();
+
+    final peerEmail = peerUser?.email.toLowerCase() ?? '';
+
     final lastMessage = (data['lastMessage'] ?? '').toString().toLowerCase();
-    final query = searchQuery.toLowerCase();
 
-    return chatName.contains(query) || lastMessage.contains(query);
+    return displayName.contains(query) ||
+        peerEmail.contains(query) ||
+        lastMessage.contains(query);
   }
 
   Future<void> _openChat({
@@ -187,27 +193,35 @@ class _ChatSearchScreenState extends State<ChatSearchScreen> {
           }
 
           final chats = snapshot.data?.docs ?? [];
-          final currentUserId = FirebaseAuth.instance.currentUser?.uid ?? '';
-          final filteredChats = chats.where((chat) {
-            final data = chat.data() as Map<String, dynamic>;
-            return matchesSearch(data);
-          }).toList();
 
           if (chats.isEmpty) {
             return const Center(child: Text('Пока нет чатов'));
           }
 
-          if (filteredChats.isEmpty) {
-            return const Center(child: Text('Ничего не найдено'));
-          }
+          final currentUserId = FirebaseAuth.instance.currentUser?.uid ?? '';
+
           final peerUserIds = ChatPeerResolver.collectOtherUserIds(
-            chats: filteredChats.map(
-              (chat) => chat.data() as Map<String, dynamic>,
-            ),
+            chats: chats.map((chat) => chat.data() as Map<String, dynamic>),
             currentUserId: currentUserId,
           );
 
           _loadMissingPeerUsers(peerUserIds);
+
+          final filteredChats = chats.where((chat) {
+            final data = chat.data() as Map<String, dynamic>;
+
+            final peerUser = ChatPeerResolver.resolveOtherUser(
+              chatData: data,
+              currentUserId: currentUserId,
+              usersById: _peerUserCache.usersById,
+            );
+
+            return matchesSearch(data: data, peerUser: peerUser);
+          }).toList();
+
+          if (filteredChats.isEmpty) {
+            return const Center(child: Text('Ничего не найдено'));
+          }
 
           return ListView.builder(
             padding: const EdgeInsets.all(16),
