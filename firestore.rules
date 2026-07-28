@@ -349,6 +349,90 @@ function isMessageLinkedToExistingChatUpdate(chatId, messageId) {
         'avatarFullUrl'
       ];
     }
+    function groupAvatarMetadataKeys() {
+  return [
+    'groupAvatarProvider',
+    'groupAvatarThumbStoragePath',
+    'groupAvatarFullStoragePath',
+    'groupAvatarThumbSizeBytes',
+    'groupAvatarFullSizeBytes',
+    'groupAvatarVersion',
+    'groupAvatarUpdatedAt'
+  ];
+}
+
+function groupAvatarControlledKeys() {
+  return [
+    'groupAvatarProvider',
+    'groupAvatarThumbStoragePath',
+    'groupAvatarFullStoragePath',
+    'groupAvatarThumbSizeBytes',
+    'groupAvatarFullSizeBytes',
+    'groupAvatarVersion',
+    'groupAvatarUpdatedAt',
+    'groupAvatarUrl',
+    'groupAvatarThumbUrl',
+    'groupAvatarFullUrl',
+    'avatarUrl',
+    'avatarThumbUrl',
+    'avatarFullUrl'
+  ];
+}
+
+function hasValidGroupAvatarMetadata(chatId) {
+  let chat = request.resource.data;
+  let version = chat.groupAvatarVersion;
+
+  return chat.keys().hasAll(groupAvatarMetadataKeys())
+      && chat.groupAvatarProvider is string
+      && chat.groupAvatarProvider == 'firebase'
+
+      && chat.groupAvatarThumbStoragePath is string
+      && chat.groupAvatarThumbStoragePath
+          == 'group_avatars/' + chatId + '/v' + string(version)
+              + '/thumb.jpg'
+
+      && chat.groupAvatarFullStoragePath is string
+      && chat.groupAvatarFullStoragePath
+          == 'group_avatars/' + chatId + '/v' + string(version)
+              + '/full.jpg'
+
+      && chat.groupAvatarThumbSizeBytes is int
+      && chat.groupAvatarThumbSizeBytes >= 0
+      && chat.groupAvatarThumbSizeBytes <= 128 * 1024
+
+      && chat.groupAvatarFullSizeBytes is int
+      && chat.groupAvatarFullSizeBytes >= 0
+      && chat.groupAvatarFullSizeBytes <= 512 * 1024
+
+      && version is int
+      && version > 0
+
+      && chat.groupAvatarUpdatedAt is timestamp;
+}
+
+function isGroupAvatarMetadataUpdate(chatId) {
+  return signedIn()
+      && resource.data.type == 'group'
+      && request.resource.data.type == 'group'
+
+      && isCurrentMemberInChat()
+      && isCurrentAdminOrOwner()
+
+      && changedKeys().hasOnly(groupAvatarMetadataKeys())
+      && changedKeys().hasAny(['groupAvatarVersion'])
+
+      && hasValidGroupAvatarMetadata(chatId)
+
+      && (
+        !resource.data.keys().hasAny(['groupAvatarVersion'])
+        || (
+          resource.data.groupAvatarVersion is int
+          && request.resource.data.groupAvatarVersion
+              > resource.data.groupAvatarVersion
+        )
+      );
+}
 
     function hasValidAvatarMetadata(userId) {
       let user = request.resource.data;
@@ -877,20 +961,22 @@ function isDeleteLastMessageForEveryoneUpdate(chatId) {
       allow create: if isValidChatCreate(chatId);
 
       allow update: if (
-            isCurrentAdminOrOwner()
-            && !changesLastMessageMetadata()
-          )
-          || (isCurrentMemberInChat() && isOnlyLastReadUpdate())
-          || (canWrite(chatId) && isAtomicLastMessageUpdate(chatId))
-          || isAdminRightsTransferLastMessageUpdate()
-          || isDissolveGroupLastMessageUpdate()
-          || (canAddMembersByPermission() && isAddMembersUpdate())
-          || (canUpdateMemberStatus() && isOnlyMemberStatusUpdate())
-          || isLeaveGroupUpdate()
-          || isClearPrivateChatForCurrentUserUpdate()
-          || isPrivateChatSelfRepair()
-          || isHideLastMessageForCurrentUserUpdate(chatId)
-          || isDeleteLastMessageForEveryoneUpdate(chatId);
+      isCurrentAdminOrOwner()
+      && !changesLastMessageMetadata()
+      && !changedKeys().hasAny(groupAvatarControlledKeys())
+    )
+    || isGroupAvatarMetadataUpdate(chatId)
+    || (isCurrentMemberInChat() && isOnlyLastReadUpdate())
+    || (canWrite(chatId) && isAtomicLastMessageUpdate(chatId))
+    || isAdminRightsTransferLastMessageUpdate()
+    || isDissolveGroupLastMessageUpdate()
+    || (canAddMembersByPermission() && isAddMembersUpdate())
+    || (canUpdateMemberStatus() && isOnlyMemberStatusUpdate())
+    || isLeaveGroupUpdate()
+    || isClearPrivateChatForCurrentUserUpdate()
+    || isPrivateChatSelfRepair()
+    || isHideLastMessageForCurrentUserUpdate(chatId)
+    || isDeleteLastMessageForEveryoneUpdate(chatId);
 
       allow delete: if false;
 
