@@ -15,6 +15,8 @@ import '../widgets/group/dissolve_group_card.dart';
 import '../services/avatar/group_avatar_metadata_mapper.dart';
 import '../services/avatar/avatar_image_dependencies.dart';
 import '../services/avatar/group_avatar_replacement_controller.dart';
+import '../services/avatar/avatar_replacement_controller.dart'
+    show AvatarReplacementSource;
 
 class GroupInfoScreen extends StatefulWidget {
   const GroupInfoScreen({super.key, required this.chatId});
@@ -40,6 +42,26 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
   void dispose() {
     _groupAvatarController.dispose();
     super.dispose();
+  }
+
+  Future<void> _showGroupAvatarActions() async {
+    if (_groupAvatarController.isLoading) {
+      return;
+    }
+
+    HapticFeedback.selectionClick();
+
+    final source = await showModalBottomSheet<AvatarReplacementSource>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => const _GroupAvatarSourceSheet(),
+    );
+
+    if (source == null || !mounted) {
+      return;
+    }
+
+    // Запуск замены группового аватара подключим следующим шагом.
   }
 
   @override
@@ -130,6 +152,9 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                     groupName: groupName,
                     memberCount: memberIds.length,
                     avatar: groupAvatar,
+                    onAvatarTap: canManageGroup
+                        ? _showGroupAvatarActions
+                        : null,
                   ),
                   if (canManageGroup)
                     GroupSettingsCard(
@@ -274,6 +299,40 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
             },
           );
         },
+      ),
+    );
+  }
+}
+
+class _GroupAvatarSourceSheet extends StatelessWidget {
+  const _GroupAvatarSourceSheet();
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            leading: const Icon(Icons.photo_library_outlined),
+            title: const Text('Выбрать из галереи'),
+            onTap: () {
+              Navigator.pop(context, AvatarReplacementSource.gallery);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.photo_camera_outlined),
+            title: const Text('Сделать фото'),
+            onTap: () {
+              Navigator.pop(context, AvatarReplacementSource.camera);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.close),
+            title: const Text('Отмена'),
+            onTap: () => Navigator.pop(context),
+          ),
+        ],
       ),
     );
   }

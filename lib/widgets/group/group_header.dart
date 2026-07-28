@@ -10,24 +10,33 @@ class GroupHeader extends StatelessWidget {
     required this.groupName,
     required this.memberCount,
     this.avatar,
+    this.onAvatarTap,
   });
 
   final String chatId;
   final String groupName;
   final int memberCount;
   final GroupAvatar? avatar;
+  final VoidCallback? onAvatarTap;
 
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
         const SizedBox(height: 16),
-        GroupAvatarView(
-          chatId: chatId,
-          groupName: groupName,
-          avatar: avatar,
-          radius: 48,
-          imageVariant: GroupAvatarImageVariant.full,
+        Material(
+          type: MaterialType.transparency,
+          child: InkWell(
+            onTap: onAvatarTap,
+            customBorder: const CircleBorder(),
+            child: GroupAvatarView(
+              chatId: chatId,
+              groupName: groupName,
+              avatar: avatar,
+              radius: 48,
+              imageVariant: GroupAvatarImageVariant.full,
+            ),
+          ),
         ),
         const SizedBox(height: 16),
         Text(
