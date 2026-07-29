@@ -10,6 +10,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../models/app_user.dart';
 import '../services/chat/chat_peer_resolver.dart';
 import '../services/chat/chat_peer_user_cache.dart';
+import '../services/avatar/group_avatar_metadata_mapper.dart';
 
 class ChatSearchScreen extends StatefulWidget {
   const ChatSearchScreen({super.key});
@@ -240,12 +241,19 @@ class _ChatSearchScreenState extends State<ChatSearchScreen> {
 
               final chatName = _getDisplayChatName(data, peerUser);
               final lastMessage = data['lastMessage'] ?? '';
+              final groupAvatar = isPrivateChat
+                  ? null
+                  : GroupAvatarMetadataMapper.fromMap(
+                      data: data,
+                      chatId: chat.id,
+                    );
 
               return ChatTile(
                 chatId: chat.id,
                 chatName: chatName,
                 isPrivateChat: isPrivateChat,
                 peerUser: peerUser,
+                groupAvatar: groupAvatar,
                 lastMessage: lastMessage,
                 lastMessageAt: data['lastMessageAt'],
                 onTap: () {
