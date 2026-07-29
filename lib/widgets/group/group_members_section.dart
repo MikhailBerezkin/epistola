@@ -4,6 +4,7 @@ import 'package:flutter/services.dart' show HapticFeedback;
 import '../../helpers/role_helper.dart';
 import '../../models/app_user.dart';
 import '../../screens/group_member_screen.dart';
+import '../avatar/user_avatar_view.dart';
 
 class GroupMembersSection extends StatelessWidget {
   final String chatId;
@@ -38,13 +39,7 @@ class GroupMembersSection extends StatelessWidget {
             final role = memberRoles[user.uid] ?? 'member';
 
             return ListTile(
-              leading: CircleAvatar(
-                child: Text(
-                  user.name.isNotEmpty
-                      ? user.name[0].toUpperCase()
-                      : user.email[0].toUpperCase(),
-                ),
-              ),
+              leading: UserAvatarView(user: user, radius: 20),
               title: Text(user.name.isNotEmpty ? user.name : 'Без имени'),
               subtitle: RichText(
                 text: TextSpan(
