@@ -1,26 +1,37 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+import '../models/app_user.dart';
 import '../services/chat_service.dart';
+import '../domain/models/group_avatar.dart';
+import 'avatar/chat_avatar_view.dart';
 
 class ChatTile extends StatelessWidget {
   final String chatId;
   final String chatName;
+  final bool isPrivateChat;
+  final AppUser? peerUser;
+  final GroupAvatar? groupAvatar;
   final String lastMessage;
   final dynamic lastMessageAt;
   final bool showLastMessagePreview;
   final VoidCallback onTap;
   final VoidCallback? onLongPress;
+  final Future<int>? unreadCountFuture;
 
   const ChatTile({
     super.key,
     required this.chatId,
     required this.chatName,
+    this.isPrivateChat = false,
+    this.peerUser,
+    this.groupAvatar,
     required this.lastMessage,
     required this.lastMessageAt,
     this.showLastMessagePreview = true,
     required this.onTap,
     this.onLongPress,
+    this.unreadCountFuture,
   });
 
   String formatChatTime(dynamic value) {
@@ -47,7 +58,6 @@ class ChatTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final firstLetter = chatName.isNotEmpty ? chatName[0].toUpperCase() : '?';
     final timeText = showLastMessagePreview
         ? formatChatTime(lastMessageAt)
         : '';
@@ -56,11 +66,13 @@ class ChatTile extends StatelessWidget {
       child: ListTile(
         onTap: onTap,
         onLongPress: onLongPress,
-        leading: CircleAvatar(
-          child: Text(
-            firstLetter,
-            style: const TextStyle(fontWeight: FontWeight.bold),
-          ),
+        leading: ChatAvatarView(
+          chatId: chatId,
+          chatName: chatName,
+          isPrivateChat: isPrivateChat,
+          peerUser: peerUser,
+          groupAvatar: groupAvatar,
+          radius: 20,
         ),
         title: Row(
           children: [
@@ -93,7 +105,7 @@ class ChatTile extends StatelessWidget {
                   : const SizedBox.shrink(),
             ),
             FutureBuilder<int>(
-              future: ChatService().getUnreadCount(chatId),
+              future: unreadCountFuture ?? ChatService().getUnreadCount(chatId),
               builder: (context, snapshot) {
                 final unreadCount = snapshot.data ?? 0;
 

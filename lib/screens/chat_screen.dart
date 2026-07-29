@@ -11,12 +11,19 @@ import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/notification_service.dart';
 import '../domain/value_objects/message_text.dart';
+import '../models/app_user.dart';
 
 class ChatScreen extends StatefulWidget {
   final String chatId;
   final String chatName;
+  final AppUser? peerUser;
 
-  const ChatScreen({super.key, required this.chatId, required this.chatName});
+  const ChatScreen({
+    super.key,
+    required this.chatId,
+    required this.chatName,
+    this.peerUser,
+  });
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
@@ -103,7 +110,11 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: ChatAppBar(chatId: widget.chatId, chatName: widget.chatName),
+      appBar: ChatAppBar(
+        chatId: widget.chatId,
+        chatName: widget.chatName,
+        peerUser: widget.peerUser,
+      ),
       body: Column(
         children: [
           Expanded(

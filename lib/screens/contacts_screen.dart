@@ -3,6 +3,7 @@ import 'package:flutter/services.dart' show HapticFeedback;
 
 import '../models/app_user.dart';
 import '../services/chat_service.dart';
+import '../widgets/avatar/user_avatar_view.dart';
 import 'chat_screen.dart';
 import 'private_chat_draft_screen.dart';
 
@@ -89,7 +90,11 @@ class _ContactsScreenState extends State<ContactsScreen> {
         MaterialPageRoute(
           builder: (_) {
             if (chatExists) {
-              return ChatScreen(chatId: chatId, chatName: _displayName(user));
+              return ChatScreen(
+                chatId: chatId,
+                chatName: _displayName(user),
+                peerUser: user,
+              );
             }
 
             return PrivateChatDraftScreen(otherUser: user);
@@ -121,15 +126,10 @@ class _ContactsScreenState extends State<ContactsScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                CircleAvatar(
+                UserAvatarView(
+                  user: user,
                   radius: 42,
-                  child: Text(
-                    displayName[0].toUpperCase(),
-                    style: const TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
+                  imageVariant: UserAvatarImageVariant.full,
                 ),
                 const SizedBox(height: 12),
                 Text(
@@ -187,7 +187,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
     final displayName = _displayName(user);
 
     return ListTile(
-      leading: CircleAvatar(child: Text(displayName[0].toUpperCase())),
+      leading: UserAvatarView(user: user, radius: 20),
       title: Text(displayName),
       subtitle: Text(_subtitle(user)),
       onTap: () => _showUserCard(user),

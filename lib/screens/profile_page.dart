@@ -2,13 +2,42 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
-import '../widgets/profile_header.dart';
+import '../models/app_user.dart';
+import '../services/avatar/avatar_image_dependencies.dart';
+import '../services/avatar/avatar_replacement_controller.dart';
+import '../widgets/profile_avatar_editor.dart';
 import '../widgets/profile_info_card.dart';
 import 'edit_profile_screen.dart';
 import 'settings_screen.dart';
 
-class ProfilePage extends StatelessWidget {
-  const ProfilePage({super.key});
+class ProfilePage extends StatefulWidget {
+  const ProfilePage({super.key, this.avatarController});
+
+  final AvatarReplacementController? avatarController;
+
+  @override
+  State<ProfilePage> createState() => _ProfilePageState();
+}
+
+class _ProfilePageState extends State<ProfilePage> {
+  late final AvatarReplacementController _avatarController;
+  late final bool _ownsAvatarController;
+
+  @override
+  void initState() {
+    super.initState();
+    _ownsAvatarController = widget.avatarController == null;
+    _avatarController =
+        widget.avatarController ?? createAvatarReplacementController();
+  }
+
+  @override
+  void dispose() {
+    if (_ownsAvatarController) {
+      _avatarController.dispose();
+    }
+    super.dispose();
+  }
 
   void openEditProfile({
     required BuildContext context,
@@ -52,12 +81,30 @@ class ProfilePage extends StatelessWidget {
           return const Center(child: CircularProgressIndicator());
         }
 
-        final data = snapshot.data?.data() as Map<String, dynamic>?;
+        final document = snapshot.data;
+        final data = document?.data() as Map<String, dynamic>?;
 
-        final userName = data?['name'] ?? 'Пользователь';
-        final phone = data?['phone'] ?? '';
-        final about = data?['about'] ?? '';
-        final contactEmail = data?['contactEmail'] ?? '';
+        final profileUser = document == null
+            ? AppUser(
+                uid: user.uid,
+                email: user.email ?? '',
+                name: '',
+                phone: '',
+                about: '',
+              )
+            : AppUser.fromFirestore(document);
+
+        final userName = profileUser.name.isEmpty
+            ? 'Пользователь'
+            : profileUser.name;
+
+        final phone = profileUser.phone;
+        final about = profileUser.about;
+
+        final contactEmailValue = data?['contactEmail'];
+        final contactEmail = contactEmailValue is String
+            ? contactEmailValue.trim()
+            : '';
 
         final hasPhone = phone.toString().isNotEmpty;
         final hasEmail = contactEmail.toString().isNotEmpty;
@@ -82,9 +129,11 @@ class ProfilePage extends StatelessWidget {
           padding: const EdgeInsets.all(24),
           child: ListView(
             children: [
-              ProfileHeader(
+              ProfileAvatarEditor(
+                user: profileUser,
                 name: userName,
                 email: '',
+                controller: _avatarController,
                 onNameTap: () {
                   openEditProfile(
                     context: context,

@@ -12,22 +12,126 @@ import '../widgets/group/add_members_card.dart';
 import '../widgets/group/group_members_section.dart';
 import '../widgets/group/leave_group_card.dart';
 import '../widgets/group/dissolve_group_card.dart';
+import '../services/avatar/group_avatar_metadata_mapper.dart';
+import '../services/avatar/avatar_image_dependencies.dart';
+import '../services/avatar/group_avatar_replacement_controller.dart';
+import '../services/avatar/avatar_replacement_controller.dart'
+    show AvatarReplacementSource;
+import '../services/avatar/avatar_image_compressor_gateway.dart';
+import '../services/avatar/avatar_image_crop_gateway.dart';
+import '../services/avatar/avatar_image_processor.dart';
 
-class GroupInfoScreen extends StatelessWidget {
+class GroupInfoScreen extends StatefulWidget {
+  const GroupInfoScreen({super.key, required this.chatId});
+
   final String chatId;
 
-  const GroupInfoScreen({super.key, required this.chatId});
+  @override
+  State<GroupInfoScreen> createState() => _GroupInfoScreenState();
+}
+
+class _GroupInfoScreenState extends State<GroupInfoScreen> {
+  final ChatService _chatService = ChatService();
+
+  late final GroupAvatarReplacementController _groupAvatarController;
+
+  @override
+  void initState() {
+    super.initState();
+    _groupAvatarController = createGroupAvatarReplacementController();
+  }
+
+  @override
+  void dispose() {
+    _groupAvatarController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _showGroupAvatarActions() async {
+    if (_groupAvatarController.isLoading) {
+      return;
+    }
+
+    HapticFeedback.selectionClick();
+
+    final source = await showModalBottomSheet<AvatarReplacementSource>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => const _GroupAvatarSourceSheet(),
+    );
+
+    if (source == null || !mounted) {
+      return;
+    }
+
+    final result = await _groupAvatarController.replace(
+      chatId: widget.chatId,
+      source: source,
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    switch (result.status) {
+      case GroupAvatarReplacementStatus.success:
+        HapticFeedback.lightImpact();
+
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            const SnackBar(content: Text('Аватар группы обновлён')),
+          );
+
+      case GroupAvatarReplacementStatus.failure:
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            SnackBar(content: Text(_groupAvatarErrorMessage(result, source))),
+          );
+
+      case GroupAvatarReplacementStatus.cancelled:
+      case GroupAvatarReplacementStatus.alreadyRunning:
+        break;
+    }
+  }
+
+  String _groupAvatarErrorMessage(
+    GroupAvatarReplacementResult result,
+    AvatarReplacementSource source,
+  ) {
+    final error = result.error;
+
+    if (error is AvatarImageCropException) {
+      return 'Не удалось обрезать фото. Предыдущий аватар группы сохранён.';
+    }
+
+    if (error is AvatarImageCompressorException ||
+        error is AvatarImageProcessorException ||
+        error is AvatarImageHardLimitExceededException) {
+      return 'Не удалось обработать фото. Предыдущий аватар группы сохранён.';
+    }
+
+    if (result.failureStage == GroupAvatarReplacementFailureStage.preparation) {
+      return switch (source) {
+        AvatarReplacementSource.gallery =>
+          'Не удалось выбрать фото из галереи. Попробуйте ещё раз.',
+        AvatarReplacementSource.camera =>
+          'Не удалось сделать фото. Проверьте доступ к камере.',
+      };
+    }
+
+    return 'Не удалось сохранить новый аватар группы. Предыдущий аватар сохранён.';
+  }
 
   @override
   Widget build(BuildContext context) {
-    final chatService = ChatService();
-
     return Scaffold(
       appBar: AppBar(title: const Text('Информация о группе')),
       body: StreamBuilder<DocumentSnapshot>(
         stream: FirebaseFirestore.instance
             .collection('chats')
-            .doc(chatId)
+            .doc(widget.chatId)
             .snapshots(),
         builder: (context, snapshot) {
           if (snapshot.hasError) {
@@ -44,7 +148,12 @@ class GroupInfoScreen extends StatelessWidget {
             return const Center(child: Text('Группа не найдена'));
           }
 
-          final groupName = data['name'] ?? 'Группа';
+          final groupName = (data['name'] ?? 'Группа').toString();
+
+          final groupAvatar = GroupAvatarMetadataMapper.fromMap(
+            data: data,
+            chatId: widget.chatId,
+          );
           final memberIds = List<String>.from(data['memberIds'] ?? []);
           final memberRoles =
               (data['memberRoles'] as Map<String, dynamic>?) ?? {};
@@ -85,7 +194,7 @@ class GroupInfoScreen extends StatelessWidget {
                           currentUserRole == 'owner')));
 
           return FutureBuilder<List<AppUser>>(
-            future: chatService.getUsersByIds(memberIds),
+            future: _chatService.getUsersByIds(memberIds),
             builder: (context, usersSnapshot) {
               final users = List<AppUser>.from(usersSnapshot.data ?? []);
 
@@ -99,8 +208,13 @@ class GroupInfoScreen extends StatelessWidget {
                 padding: const EdgeInsets.all(16),
                 children: [
                   GroupHeader(
+                    chatId: widget.chatId,
                     groupName: groupName,
                     memberCount: memberIds.length,
+                    avatar: groupAvatar,
+                    onAvatarTap: canManageGroup
+                        ? _showGroupAvatarActions
+                        : null,
                   ),
                   if (canManageGroup)
                     GroupSettingsCard(
@@ -110,7 +224,8 @@ class GroupInfoScreen extends StatelessWidget {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (_) => GroupSettingsScreen(chatId: chatId),
+                            builder: (_) =>
+                                GroupSettingsScreen(chatId: widget.chatId),
                           ),
                         );
                       },
@@ -123,7 +238,8 @@ class GroupInfoScreen extends StatelessWidget {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (_) => AddMembersScreen(chatId: chatId),
+                            builder: (_) =>
+                                AddMembersScreen(chatId: widget.chatId),
                           ),
                         );
                       },
@@ -156,7 +272,9 @@ class GroupInfoScreen extends StatelessWidget {
 
                       if (shouldLeave != true) return;
 
-                      final left = await chatService.leaveGroupSafely(chatId);
+                      final left = await _chatService.leaveGroupSafely(
+                        widget.chatId,
+                      );
 
                       if (!context.mounted) return;
 
@@ -218,7 +336,7 @@ class GroupInfoScreen extends StatelessWidget {
 
                         if (shouldDissolve != true) return;
 
-                        await chatService.dissolveGroup(chatId);
+                        await _chatService.dissolveGroup(widget.chatId);
 
                         if (!context.mounted) return;
 
@@ -229,7 +347,7 @@ class GroupInfoScreen extends StatelessWidget {
 
                   const SizedBox(height: 24),
                   GroupMembersSection(
-                    chatId: chatId,
+                    chatId: widget.chatId,
                     users: users,
                     memberRoles: memberRoles,
                     isLoading:
@@ -241,6 +359,40 @@ class GroupInfoScreen extends StatelessWidget {
             },
           );
         },
+      ),
+    );
+  }
+}
+
+class _GroupAvatarSourceSheet extends StatelessWidget {
+  const _GroupAvatarSourceSheet();
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            leading: const Icon(Icons.photo_library_outlined),
+            title: const Text('Выбрать из галереи'),
+            onTap: () {
+              Navigator.pop(context, AvatarReplacementSource.gallery);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.photo_camera_outlined),
+            title: const Text('Сделать фото'),
+            onTap: () {
+              Navigator.pop(context, AvatarReplacementSource.camera);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.close),
+            title: const Text('Отмена'),
+            onTap: () => Navigator.pop(context),
+          ),
+        ],
       ),
     );
   }

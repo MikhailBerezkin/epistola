@@ -6,12 +6,20 @@ import 'package:flutter/services.dart' show HapticFeedback;
 import '../../helpers/status_helper.dart';
 import '../../screens/group_info_screen.dart';
 import '../chat_app_bar_title.dart';
+import '../../models/app_user.dart';
+import '../../services/avatar/group_avatar_metadata_mapper.dart';
 
 class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
   final String chatId;
   final String chatName;
+  final AppUser? peerUser;
 
-  const ChatAppBar({super.key, required this.chatId, required this.chatName});
+  const ChatAppBar({
+    super.key,
+    required this.chatId,
+    required this.chatName,
+    this.peerUser,
+  });
 
   @override
   Size get preferredSize => const Size.fromHeight(kToolbarHeight);
@@ -34,6 +42,9 @@ class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
             (data?['memberStatus'] as Map<String, dynamic>?) ?? {};
 
         final isGroup = chatType == 'group';
+        final groupAvatar = isGroup && data != null
+            ? GroupAvatarMetadataMapper.fromMap(data: data, chatId: chatId)
+            : null;
 
         final currentStatusData =
             (memberStatus[currentUser?.uid] as Map<String, dynamic>?) ??
@@ -51,7 +62,14 @@ class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
 
         return AppBar(
           titleSpacing: 0,
-          title: ChatAppBarTitle(chatName: chatName, subtitle: subtitle),
+          title: ChatAppBarTitle(
+            chatId: chatId,
+            chatName: chatName,
+            subtitle: subtitle,
+            peerUser: isGroup ? null : peerUser,
+            groupAvatar: groupAvatar,
+            isGroup: isGroup,
+          ),
           actions: [
             if (isGroup && !isBanned)
               IconButton(

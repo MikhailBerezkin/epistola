@@ -1,25 +1,38 @@
 import 'package:flutter/material.dart';
 
-class ChatAppBarTitle extends StatelessWidget {
-  final String chatName;
-  final String subtitle;
+import '../domain/models/group_avatar.dart';
+import '../models/app_user.dart';
+import 'avatar/chat_avatar_view.dart';
 
+class ChatAppBarTitle extends StatelessWidget {
   const ChatAppBarTitle({
     super.key,
+    this.chatId = '',
     required this.chatName,
     this.subtitle = 'личный чат',
+    this.peerUser,
+    this.groupAvatar,
+    this.isGroup = false,
   });
+
+  final String chatId;
+  final String chatName;
+  final String subtitle;
+  final AppUser? peerUser;
+  final GroupAvatar? groupAvatar;
+  final bool isGroup;
 
   @override
   Widget build(BuildContext context) {
     return Row(
       children: [
-        CircleAvatar(
+        ChatAvatarView(
+          chatId: chatId,
+          chatName: chatName,
+          isPrivateChat: !isGroup,
+          peerUser: peerUser,
+          groupAvatar: groupAvatar,
           radius: 18,
-          child: Text(
-            chatName.isNotEmpty ? chatName[0].toUpperCase() : '?',
-            style: const TextStyle(fontWeight: FontWeight.bold),
-          ),
         ),
         const SizedBox(width: 12),
         Expanded(

@@ -1,27 +1,41 @@
 import 'package:flutter/material.dart';
 
-class GroupHeader extends StatelessWidget {
-  final String groupName;
-  final int memberCount;
+import '../../domain/models/group_avatar.dart';
+import '../avatar/group_avatar_view.dart';
 
+class GroupHeader extends StatelessWidget {
   const GroupHeader({
     super.key,
+    required this.chatId,
     required this.groupName,
     required this.memberCount,
+    this.avatar,
+    this.onAvatarTap,
   });
+
+  final String chatId;
+  final String groupName;
+  final int memberCount;
+  final GroupAvatar? avatar;
+  final VoidCallback? onAvatarTap;
 
   @override
   Widget build(BuildContext context) {
-    final initial = groupName.isNotEmpty ? groupName[0].toUpperCase() : '?';
-
     return Column(
       children: [
         const SizedBox(height: 16),
-        CircleAvatar(
-          radius: 48,
-          child: Text(
-            initial,
-            style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
+        Material(
+          type: MaterialType.transparency,
+          child: InkWell(
+            onTap: onAvatarTap,
+            customBorder: const CircleBorder(),
+            child: GroupAvatarView(
+              chatId: chatId,
+              groupName: groupName,
+              avatar: avatar,
+              radius: 48,
+              imageVariant: GroupAvatarImageVariant.full,
+            ),
           ),
         ),
         const SizedBox(height: 16),
