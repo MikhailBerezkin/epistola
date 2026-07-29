@@ -7,6 +7,7 @@ import '../../helpers/status_helper.dart';
 import '../../screens/group_info_screen.dart';
 import '../chat_app_bar_title.dart';
 import '../../models/app_user.dart';
+import '../../services/avatar/group_avatar_metadata_mapper.dart';
 
 class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
   final String chatId;
@@ -41,6 +42,9 @@ class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
             (data?['memberStatus'] as Map<String, dynamic>?) ?? {};
 
         final isGroup = chatType == 'group';
+        final groupAvatar = isGroup && data != null
+            ? GroupAvatarMetadataMapper.fromMap(data: data, chatId: chatId)
+            : null;
 
         final currentStatusData =
             (memberStatus[currentUser?.uid] as Map<String, dynamic>?) ??
@@ -59,9 +63,11 @@ class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
         return AppBar(
           titleSpacing: 0,
           title: ChatAppBarTitle(
+            chatId: chatId,
             chatName: chatName,
             subtitle: subtitle,
             peerUser: isGroup ? null : peerUser,
+            groupAvatar: groupAvatar,
             isGroup: isGroup,
           ),
           actions: [

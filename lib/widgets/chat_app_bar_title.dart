@@ -1,27 +1,39 @@
 import 'package:flutter/material.dart';
 
+import '../domain/models/group_avatar.dart';
 import '../models/app_user.dart';
-import 'avatar/user_avatar_view.dart';
+import 'avatar/chat_avatar_view.dart';
 
 class ChatAppBarTitle extends StatelessWidget {
-  final String chatName;
-  final String subtitle;
-  final AppUser? peerUser;
-  final bool isGroup;
-
   const ChatAppBarTitle({
     super.key,
+    this.chatId = '',
     required this.chatName,
     this.subtitle = 'личный чат',
     this.peerUser,
+    this.groupAvatar,
     this.isGroup = false,
   });
+
+  final String chatId;
+  final String chatName;
+  final String subtitle;
+  final AppUser? peerUser;
+  final GroupAvatar? groupAvatar;
+  final bool isGroup;
 
   @override
   Widget build(BuildContext context) {
     return Row(
       children: [
-        _buildAvatar(),
+        ChatAvatarView(
+          chatId: chatId,
+          chatName: chatName,
+          isPrivateChat: !isGroup,
+          peerUser: peerUser,
+          groupAvatar: groupAvatar,
+          radius: 18,
+        ),
         const SizedBox(width: 12),
         Expanded(
           child: Column(
@@ -48,22 +60,6 @@ class ChatAppBarTitle extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-
-  Widget _buildAvatar() {
-    final user = peerUser;
-
-    if (!isGroup && user != null) {
-      return UserAvatarView(user: user, radius: 18);
-    }
-
-    return CircleAvatar(
-      radius: 18,
-      child: Text(
-        chatName.isNotEmpty ? chatName[0].toUpperCase() : '?',
-        style: const TextStyle(fontWeight: FontWeight.bold),
-      ),
     );
   }
 }
