@@ -9,6 +9,7 @@ import '../services/chat/chat_peer_user_cache.dart';
 import '../services/chat_service.dart';
 import '../widgets/chat_tile.dart';
 import 'chat_screen.dart';
+import '../services/avatar/group_avatar_metadata_mapper.dart';
 
 enum ChatFilter { private, group }
 
@@ -278,6 +279,12 @@ class _ChatsPageState extends State<ChatsPage> {
                     );
 
                     final chatName = _getDisplayChatName(data, peerUser);
+                    final groupAvatar = data['type'] == 'group'
+                        ? GroupAvatarMetadataMapper.fromMap(
+                            data: data,
+                            chatId: chat.id,
+                          )
+                        : null;
 
                     return FutureBuilder<({String text, Timestamp createdAt})?>(
                       future: showLastMessagePreview
@@ -305,6 +312,7 @@ class _ChatsPageState extends State<ChatsPage> {
                           chatName: chatName,
                           isPrivateChat: data['type'] == 'private',
                           peerUser: peerUser,
+                          groupAvatar: groupAvatar,
                           lastMessage: effectiveLastMessage,
                           lastMessageAt: effectiveLastMessageAt,
                           showLastMessagePreview: hasEffectivePreview,
