@@ -17,6 +17,9 @@ import '../services/avatar/avatar_image_dependencies.dart';
 import '../services/avatar/group_avatar_replacement_controller.dart';
 import '../services/avatar/avatar_replacement_controller.dart'
     show AvatarReplacementSource;
+import '../services/avatar/avatar_image_compressor_gateway.dart';
+import '../services/avatar/avatar_image_crop_gateway.dart';
+import '../services/avatar/avatar_image_processor.dart';
 
 class GroupInfoScreen extends StatefulWidget {
   const GroupInfoScreen({super.key, required this.chatId});
@@ -61,7 +64,64 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
       return;
     }
 
-    // Запуск замены группового аватара подключим следующим шагом.
+    final result = await _groupAvatarController.replace(
+      chatId: widget.chatId,
+      source: source,
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    switch (result.status) {
+      case GroupAvatarReplacementStatus.success:
+        HapticFeedback.lightImpact();
+
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            const SnackBar(content: Text('Аватар группы обновлён')),
+          );
+
+      case GroupAvatarReplacementStatus.failure:
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            SnackBar(content: Text(_groupAvatarErrorMessage(result, source))),
+          );
+
+      case GroupAvatarReplacementStatus.cancelled:
+      case GroupAvatarReplacementStatus.alreadyRunning:
+        break;
+    }
+  }
+
+  String _groupAvatarErrorMessage(
+    GroupAvatarReplacementResult result,
+    AvatarReplacementSource source,
+  ) {
+    final error = result.error;
+
+    if (error is AvatarImageCropException) {
+      return 'Не удалось обрезать фото. Предыдущий аватар группы сохранён.';
+    }
+
+    if (error is AvatarImageCompressorException ||
+        error is AvatarImageProcessorException ||
+        error is AvatarImageHardLimitExceededException) {
+      return 'Не удалось обработать фото. Предыдущий аватар группы сохранён.';
+    }
+
+    if (result.failureStage == GroupAvatarReplacementFailureStage.preparation) {
+      return switch (source) {
+        AvatarReplacementSource.gallery =>
+          'Не удалось выбрать фото из галереи. Попробуйте ещё раз.',
+        AvatarReplacementSource.camera =>
+          'Не удалось сделать фото. Проверьте доступ к камере.',
+      };
+    }
+
+    return 'Не удалось сохранить новый аватар группы. Предыдущий аватар сохранён.';
   }
 
   @override
