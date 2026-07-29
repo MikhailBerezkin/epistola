@@ -1,325 +1,588 @@
 # Epistola — Project Context
 
-> Живой документ состояния проекта. Использовать как главный handoff между чатами и аккаунтами. При расхождении приоритет: исходный код → этот документ → ARCHITECTURE.md → README.md.
+> Живой документ состояния проекта. Использовать как главный handoff между чатами и аккаунтами.
+> При расхождении приоритет: исходный код → `PROJECT_CONTEXT.md` → `ARCHITECTURE.md` → `README.md`.
 
 ## 1. Текущая контрольная точка
 
 - Репозиторий: `MikhailBerezkin/epistola`
-- Рабочая ветка: `fix/v0.6.2.1-security-foundation`
-- Текущий HEAD перед обновлением документации: `eee5d3b`
-- Готовящийся стабильный тег: `v0.6.2.1`
-- Последний опубликованный стабильный тег: `v0.6.2-media-foundation`
-- База ветки: `main`, commit `4fa8693` (`feat(media): create media storage foundation`)
-- Следующая ветка после релиза: `feat/v0.6.3-push-notification-foundation`
+- Рабочая ветка: `feat/v0.6.5-avatar-foundation`
+- Текущий HEAD перед обновлением документации: `f00b9a5`
+- Текущий этап: **Avatar Foundation**
+- Готовящийся стабильный релиз: `v0.6.5`
+- Последний опубликованный стабильный релиз: `v0.6.4`
+- Последний стабильный `main` до Avatar Foundation: `0e99f5b`
 - Firebase project: `epistola-434b7`
 - Firestore region: `eur3`
+- Cloud Functions region: `europe-west1`
 - Android package: `com.epistola.app`
-- Основная текущая платформа: Android.
+- Основная платформа: Android
+- Целевая пилотная группа: 40–50 пользователей
 
-Последние важные коммиты:
-
-```text
-eee5d3b perf: reduce message page size
-6a0fc82 feat: paginate chat messages
-eabb9c6 feat: send chat messages atomically
-0e42c4e feat: clear private chat for current user
-196f9a0 feat: create private chat on first message
-e802d6d security: validate private chat creation
-```
-
-## 2. Проверенное состояние сборки
+Последние важные коммиты Avatar Foundation:
 
 ```text
-flutter analyze → No issues found
-flutter test → 14 tests passed
-git diff --check → без ошибок, возможно предупреждение LF/CRLF для firestore.rules
-flutter build apk --debug → успешно
+f00b9a5 feat(group-avatar): show avatar in chat header
+7dca1f0 feat(group-avatar): show avatars in chat search
+4d13e3a feat(group-avatar): show avatars in group chat list
+e1fdb07 feat(group-avatar): show member avatars in group info
+79455b6 feat(group-avatar): enable avatar replacement
+425a5f9 feat(group-avatar): add avatar source menu
+8216fe5 refactor(group-avatar): manage controller lifecycle
+d5a759d feat(group-avatar): wire replacement dependencies
+a9d81ba feat(group-avatar): add replacement controller
+beca054 feat(group-avatar): secure firestore and storage rules
+732c53e feat(group-avatar): add atomic replacement service
+f1b3749 feat(group-avatar): add firestore metadata gateway
+f2c1d95 feat(group-avatar): add storage upload foundation
+f5a0713 feat(group-avatar): add domain and metadata foundation
+dea7d3d fix(search): match private chats by peer identity
 ```
 
-Функциональность проверена на физическом Android-телефоне и на очищенной Firebase-базе.
+## 2. Проверенное состояние проекта
 
-## 3. Завершённые изменения ветки
-
-### 3.1 Ограничения текста сообщений
-
-Добавлен `lib/domain/value_objects/message_text.dart`.
-
-- `trim()` по краям;
-- пустые сообщения запрещены;
-- максимум `4096` символов;
-- UI использует `LengthLimitingTextInputFormatter`;
-- поле ввода ограничено `maxLines: 5`, но пузырь сообщения может занимать больше строк;
-- `lastMessage` получает нормализованный текст;
-- Firestore Rules повторяют серверную валидацию текста и отправителя.
-
-### 3.2 Private chat создаётся только по первому сообщению
-
-Новый поток:
+Финальные проверки перед обновлением документации:
 
 ```text
-выбор пользователя
-→ детерминированный chatId из двух UID
-→ существующий чат: ChatScreen
-→ отсутствующий чат: PrivateChatDraftScreen
-→ выход без сообщения: Firestore не изменяется
-→ первое сообщение: chat + message одной транзакцией
+flutter.bat analyze
+→ No issues found
+
+flutter.bat test
+→ 251 tests passed
+
+flutter.bat build apk --release
+→ успешно
+
+git.exe diff --check
+→ без ошибок
+
+git.exe status --short
+→ рабочее дерево было чистым до изменения документации
 ```
 
-Основные файлы:
+Release APK:
 
 ```text
-lib/screens/private_chat_draft_screen.dart
-lib/screens/user_search_screen.dart
-lib/screens/contacts_screen.dart
-lib/screens/group_member_screen.dart
-lib/services/chat/chat_private_service.dart
-lib/services/chat_service.dart
-firestore.rules
+build/app/outputs/flutter-apk/app-release.apk
 ```
 
-Новый private chat содержит:
+Размер последней release-сборки:
+
+```text
+54.4 MB
+```
+
+Во время Android-сборки показывается предупреждение о будущем требовании Built-in Kotlin для плагинов `firebase_storage` и `flutter_image_compress_common`. Сборка завершается успешно. Обновление Kotlin/Gradle выполняется отдельным техническим этапом после `v0.6.5`, чтобы не смешивать его с Avatar Foundation.
+
+## 3. Завершённые стабильные этапы
+
+- `v0.6.2` — Media Foundation.
+- `v0.6.2.1` — Security Foundation.
+- `v0.6.3` — Push Notification Foundation.
+- `v0.6.4` — Message Deletion Foundation.
+- `v0.6.5` — Avatar Foundation, готовится к слиянию и выпуску.
+
+## 4. User Avatar Foundation
+
+### 4.1 Подготовка изображения
+
+Реализовано:
+
+- выбор фотографии из галереи;
+- съёмка фотографии камерой;
+- квадратный crop `1:1`;
+- корректная отмена source sheet, picker и crop;
+- Android `image_picker.retrieveLostData()` после пересоздания Activity;
+- thumbnail `128x128`;
+- full `512x512`;
+- JPEG-сжатие;
+- исправление ориентации;
+- удаление EXIF;
+- повторные попытки сжатия full-варианта;
+- жёсткие ограничения размера;
+- безопасная очистка временных файлов;
+- оригинал из picker не загружается и не удаляется приложением.
+
+Ограничения:
+
+```text
+thumbnail: максимум 128 KB
+full: целевой размер до 300 KB
+full: абсолютный максимум 512 KB
+```
+
+### 4.2 Версионное хранение
+
+Storage paths:
+
+```text
+user_avatars/{uid}/v{version}/thumb.jpg
+user_avatars/{uid}/v{version}/full.jpg
+```
+
+Metadata пользователя хранится в:
+
+```text
+users/{uid}
+```
+
+Поля metadata:
+
+```text
+avatarProvider
+avatarThumbStoragePath
+avatarFullStoragePath
+avatarThumbSizeBytes
+avatarFullSizeBytes
+avatarVersion
+avatarUpdatedAt
+```
+
+Новый pipeline не использует download URL как источник истины. Старое поле `avatarUrl` временно поддерживается только как legacy fallback.
+
+### 4.3 Атомарная замена
+
+Порядок операции:
+
+```text
+1. Подготовка thumbnail и full.
+2. Загрузка новой версионной пары в Storage.
+3. Транзакционная запись metadata в Firestore.
+4. Best-effort удаление предыдущей версии.
+```
+
+Гарантии:
+
+- при ошибке подготовки активный аватар не меняется;
+- при ошибке загрузки неполная новая версия очищается;
+- при ошибке Firestore новая загруженная версия удаляется как rollback;
+- старый аватар остаётся активным до успешной записи metadata;
+- ошибка удаления старых файлов после успешной записи не отменяет новый аватар;
+- версия должна быть положительной и строго возрастать;
+- конкурирующая устаревшая операция не может перезаписать более новую версию.
+
+### 4.4 Загрузка и кэш
+
+Реализовано:
+
+- path-first загрузка через аутентифицированный Firebase Storage SDK;
+- ключ кэша `path@version`;
+- in-memory LRU-кэш;
+- объединение параллельных запросов одного изображения;
+- повторная проверка максимального размера полученных байтов;
+- legacy URL fallback;
+- fallback на стабильные инициалы и цвет.
+
+Path-first кэш пока не сохраняется между запусками приложения.
+
+### 4.5 Отображение пользовательских аватаров
+
+`UserAvatarView` используется в:
+
+- профиле пользователя;
+- списке личных чатов;
+- поиске чатов;
+- контактах;
+- заголовке открытого личного чата;
+- черновике личного чата до отправки первого сообщения;
+- списке участников группы.
+
+Пользователи без фотографии получают fallback с инициалами. Цвет fallback стабилен и определяется по UID.
+
+## 5. Group Avatar Foundation
+
+### 5.1 Общая модель
+
+Групповые аватары реализованы отдельно от пользовательских:
+
+- доменная модель `GroupAvatar`;
+- `GroupAvatarMetadataMapper`;
+- `GroupAvatarStorageUploadService`;
+- `FirebaseGroupAvatarMetadataGateway`;
+- `AtomicGroupAvatarReplacementService`;
+- `GroupAvatarReplacementController`;
+- `GroupAvatarView`.
+
+Общий pipeline выбора, crop и подготовки изображения используется повторно, но group metadata, права и Storage paths остаются отдельными.
+
+### 5.2 Версионное хранение
+
+Storage paths:
+
+```text
+group_avatars/{chatId}/v{version}/thumb.jpg
+group_avatars/{chatId}/v{version}/full.jpg
+```
+
+Metadata хранится в документе:
+
+```text
+chats/{chatId}
+```
+
+Thumbnail и full обязаны относиться к одной группе, одному provider и одной version.
+
+### 5.3 Права управления
+
+Изменять групповой аватар могут только участники группы с ролью:
+
+```text
+owner
+admin
+```
+
+Firestore Rules и Storage Rules проверяют:
+
+- аутентификацию;
+- существование группы;
+- `type == group`;
+- членство текущего пользователя;
+- роль `owner` или `admin`;
+- корректность `chatId` в путях;
+- полную согласованную metadata;
+- положительную строго возрастающую версию;
+- MIME type `image/jpeg`;
+- лимиты `128 KB` и `512 KB`.
+
+Rules опубликованы в Firebase project `epistola-434b7`.
+
+### 5.4 Установка и замена
+
+В информации о группе администратор может:
+
+- выбрать фото из галереи;
+- сделать фото камерой;
+- выполнить квадратный crop;
+- установить первый групповой аватар;
+- заменить существующий аватар.
+
+Замена использует безопасный порядок:
+
+```text
+upload новой версии
+→ transaction metadata
+→ best-effort cleanup старой версии
+```
+
+При любой неуспешной операции предыдущий групповой аватар остаётся активным.
+
+### 5.5 Отображение групповых аватаров
+
+`GroupAvatarView` и общий `ChatAvatarView` используются в:
+
+- информации о группе;
+- основном списке групп;
+- поиске чатов;
+- заголовке открытого группового чата.
+
+У группы без фотографии отображается fallback с первой буквой названия.
+
+## 6. Проверенные Android-сценарии
+
+### 6.1 Пользовательские аватары
+
+Проверено на Android:
+
+- выбор фотографии из галереи;
+- фотографирование камерой;
+- crop;
+- отмена;
+- первая установка;
+- повторная замена;
+- изменение metadata в Firestore;
+- загрузка файлов в Storage;
+- отображение в профиле;
+- отображение в списке личных чатов;
+- отображение в заголовке личного чата;
+- отображение в поиске и контактах;
+- отображение пользователей, с которыми ещё не создавался чат;
+- сохранение предыдущего аватара при неуспешной операции.
+
+### 6.2 Групповые аватары
+
+Проверено на физическом Android-телефоне:
+
+```text
+камера → crop → установка
+галерея → crop → замена
+```
+
+Также проверено:
+
+- создание папки версии в Firebase Storage;
+- запись thumbnail и full;
+- изменение metadata группы;
+- отображение новой версии без переустановки приложения;
+- fallback у группы без фотографии;
+- отображение в информации о группе;
+- отображение в основном списке групп;
+- отображение в поиске;
+- отображение в заголовке открытого группового чата;
+- отображение пользовательских аватаров участников группы.
+
+## 7. Исправление поиска чатов
+
+До исправления карточка private chat показывала имя собеседника, но `matchesSearch()` могла искать по техническому полю:
 
 ```text
 name: private_chat
-type: private
-memberIds: [uid1, uid2]
-memberEmails
-memberRoles: оба member
-memberStatus: оба normal
-groupSettings.messagePermission: all
-lastRead: создающий пользователь
-isDissolved: false
-createdAt
-lastMessage
-lastMessageAt
-firstMessageId
 ```
 
-`firstMessageId` совпадает с ID первого документа сообщения. Rules используют `getAfter()` и запрещают пустой private chat.
+Исправлено:
 
-Проверено:
+- private chat сопоставляется по профилю второго участника;
+- поиск использует имя, email и доступные данные собеседника;
+- техническое имя документа больше не является пользовательским названием private chat;
+- поиск групп работает по названию группы;
+- аватары пользователей и групп отображаются в результатах поиска.
 
-- выход из черновика не создаёт чат;
-- первое сообщение создаёт чат и message document;
-- существующие private chats работают;
-- группы по-прежнему создаются сразу после публикации названия.
+Проверено вручную на Android.
 
-### 3.3 «Удалить личный чат у себя»
+## 8. Архитектурные границы
 
-Физическое удаление документов не выполняется.
+Avatar Foundation сохраняет разделение слоёв:
 
 ```text
-clearedAtByUser.{uid} = serverTimestamp
-lastRead.{uid} = serverTimestamp
+UI widgets
+    ↓
+Controllers
+    ↓
+Preparation / replacement services
+    ↓
+Storage and metadata gateways
+    ↓
+Firebase adapters
 ```
 
-Поведение:
+### 8.1 UI-слой
+
+Основные компоненты:
 
 ```text
-чат скрывается только у удалившего пользователя
-→ у собеседника всё остаётся
-→ message documents остаются в Firestore
-→ при повторном открытии сообщения до clearedAt не загружаются
-→ сообщение позже clearedAt возвращает чат в список
+AvatarView
+UserAvatarView
+GroupAvatarView
+ChatAvatarView
+ChatAppBarTitle
+ChatTile
+GroupHeader
+GroupMembersSection
 ```
 
-Основные файлы:
+UI:
+
+- получает готовые модели;
+- не выполняет прямой crop;
+- не выполняет прямой Storage upload;
+- не записывает metadata напрямую;
+- не содержит Firebase transaction logic;
+- не определяет security policy.
+
+`ChatAvatarView` централизует визуальный выбор:
 
 ```text
-lib/screens/chats_page.dart
-lib/screens/chat_screen.dart
-lib/widgets/chat_tile.dart
-lib/widgets/messages_list.dart
-lib/services/chat/chat_private_service.dart
-lib/services/chat/chat_messages_service.dart
-lib/services/chat_service.dart
-firestore.rules
+private chat → UserAvatarView
+group chat → GroupAvatarView
+нет данных → fallback
 ```
 
-История запрашивается с условием `createdAt > clearedAt`. Карточка возвращается, когда `lastMessageAt > clearedAt`.
+Это позволяет позднее менять:
 
-Проверено на двух аккаунтах:
+- форму и размер аватаров;
+- анимацию загрузки и замены;
+- цвета fallback;
+- размеры шрифтов;
+- оформление карточек;
+- темы и декоративные элементы;
 
-- чат исчезает только у одного пользователя;
-- `clearedAtByUser` содержит только его UID;
-- собеседник видит историю;
-- новые входящие и исходящие сообщения возвращают чат;
-- `lastMessage` и `lastMessageAt` обновляются;
-- группы не получают действие очистки private chat.
+без изменения Firestore, Storage и application logic.
 
-### 3.4 Firestore Security Foundation
+### 8.2 Application/service-слой
 
-Rules:
+Контроллеры:
 
-- валидируют поля сообщения и отправителя;
-- ограничивают текст 4096 символами;
-- валидируют структуру и ID private chat;
-- требуют существования обоих `users/{uid}`;
-- требуют атомарного первого сообщения через `getAfter()`;
-- требуют атомарной обычной отправки message + chat metadata;
-- связывают `lastMessageId`, `lastMessage`, `lastMessageAt` и созданный message document;
-- разрешают менять только свой ключ `clearedAtByUser` и `lastRead`;
-- запрещают клиентское удаление chat/message documents;
-- сохраняют проверки ролей, mute/ban, добавления участников, выхода и защиты последнего администратора.
+- сериализуют пользовательские операции;
+- возвращают `success`, `cancelled`, `failure`, `alreadyRunning`;
+- не рисуют интерфейс;
+- не зависят от конкретной карточки или экрана.
 
-### 3.5 Атомарная отправка и pagination
+Services отвечают за:
 
-Обычная отправка использует `WriteBatch`:
+- подготовку;
+- загрузку;
+- атомарную замену;
+- rollback;
+- cleanup;
+- защиту версий.
 
-```text
-message document
-+ chat.lastMessage
-+ chat.lastMessageAt
-+ chat.lastMessageId
-```
+### 8.3 Infrastructure-слой
 
-История сообщений:
+Firebase adapters отвечают только за:
 
-- последняя страница — realtime;
-- размер страницы — 20 документов;
-- старые страницы — `startAfterDocument`;
-- документы объединяются по ID;
-- позиция прокрутки сохраняется;
-- загруженная история живёт в памяти экрана до выхода из чата;
-- private clear продолжает применять `createdAt > clearedAt`.
+- Storage upload/delete/getData;
+- Firestore transaction;
+- чтение и запись metadata.
 
-Rules опубликованы:
+Domain-модели не зависят от Flutter UI.
 
-```powershell
-firebase.cmd deploy --only firestore:rules
-```
+## 9. Завершённые предыдущие этапы
 
-## 4. Проверенное состояние групп
-
-На чистой базе создано 5 пользователей через приложение. Проверено:
-
-- создание группы;
-- групповые сообщения;
-- добавление участника;
-- назначение moderator;
-- запрет выхода единственного администратора;
-- передача прав;
-- выход после передачи прав.
-
-### Owner
-
-`owner` поддерживается helpers, UI-названиями и проверками как роль максимального административного приоритета. Сейчас это заготовка для будущего развития. Роль нельзя удалять или упрощать. Основной текущий поток групп использует `admin`; расширение owner выполнять отдельно, сохраняя защиту последнего администратора.
-
-## 5. Media Foundation и будущая Avatar Foundation
-
-Стабильная база `v0.6.2-media-foundation` содержит:
+### Media Foundation — `v0.6.2`
 
 - `MediaAsset`;
 - `MediaStorageProvider`;
 - `FirebaseMediaStorageProvider`;
 - `MediaStorageService`;
 - `MediaPaths`;
-- Firebase Storage и Storage Rules.
+- Firebase Storage;
+- Storage Rules.
 
-Старый незавершённый avatar prototype сохранён в:
+### Security Foundation — `v0.6.2.1`
 
-```text
-archive/avatar-prototype-wip
-```
+- private chat создаётся только после первого сообщения;
+- pagination по 20 сообщений;
+- атомарная отправка message + chat metadata;
+- персональная очистка private chat;
+- усиленные Firestore Rules.
 
-Не возвращать его автоматически.
+### Push Notification Foundation — `v0.6.3`
 
-Чистая Avatar Foundation ещё не начата. Обязательная схема:
+- FCM;
+- foreground/background/terminated notifications;
+- device tokens;
+- Cloud Function `sendMessageNotification`;
+- регион `europe-west1`;
+- удаление невалидных токенов;
+- push для личных и групповых чатов.
 
-```text
-user_avatars/{uid}/v{version}/thumb.jpg
-user_avatars/{uid}/v{version}/full.jpg
-
-avatarProvider
-avatarThumbUrl
-avatarFullUrl
-avatarThumbStoragePath
-avatarFullStoragePath
-avatarVersion
-avatarUpdatedAt
-```
-
-Private chat получает аватар только через другого участника:
+Известное ограничение:
 
 ```text
-chat.memberIds → otherUserId → users/{otherUserId}
+нажатие на уведомление открывает приложение,
+но пока не переводит непосредственно в нужный чат
 ```
 
-Общий `avatarUrl` в private chat запрещён.
+### Message Deletion Foundation — `v0.6.4`
 
-Перед Avatar Foundation договорено проверить и при необходимости очистить тестовые Firebase-данные.
+- удалить сообщение у себя;
+- удалить собственное сообщение у всех;
+- логическое удаление без физического удаления документа;
+- состояния `visible`, `hiddenForCurrentUser`, `deletedForEveryone`;
+- отдельный presentation/UI-слой;
+- поиск предыдущего видимого сообщения для preview карточки чата.
 
-## 6. Известный технический долг
-
-### Высокий приоритет
-
-1. **Push Notification Foundation.** Подключить FCM на Android, хранение устройств пользователя, foreground/background handling и Cloud Function на создание сообщения.
-2. **Rules emulator tests.** Firestore Rules задеплоены и проверены вручную, но требуют автоматизированных тестов.
-3. **Оптимизация Firestore reads.** Убрать отдельный listener вибрации и пересмотреть подсчёт unread без загрузки всех непрочитанных message documents.
-
-### Средний приоритет
-
-- README.md и ARCHITECTURE.md частично устарели относительно ветки.
-- ARCHITECTURE.md нужно позже разделить на отдельные документы.
-- Нужны тесты одновременного первого сообщения с двух устройств.
-- Нужно определить будущий UX удаления отдельных сообщений.
-- Для тяжёлых медиа нужны лимиты, сжатие, превью и кэш.
-
-## 7. Неприкосновенные функции
+## 10. Неприкосновенные функции
 
 Нельзя ломать:
 
 - соответствие Firebase Auth UID документу `users/{uid}`;
-- private/group сообщения;
-- создание private chat только при первом сообщении;
+- личные и групповые сообщения;
+- создание private chat только после первого сообщения;
 - отсутствие пустых private chats;
-- `firstMessageId` и атомарное первое сообщение;
-- персональную очистку без физического удаления;
-- возврат скрытого чата после нового сообщения;
-- поиск пользователей и контактов;
-- роли, mute/ban и permissions;
+- атомарное первое сообщение;
+- атомарное обновление `lastMessage`;
+- pagination по 20 сообщений;
+- персональную очистку private chat;
+- логическое удаление сообщений;
+- push-уведомления;
+- поиск пользователей, контактов и чатов;
+- роли, mute, ban и permissions;
 - добавление участников;
 - защиту последнего администратора;
 - передачу прав и безопасный выход;
 - Media Foundation abstractions;
-- будущую роль owner максимального приоритета.
+- версионную замену аватаров;
+- rollback при ошибке metadata;
+- fallback на инициалы;
+- отдельный заменяемый UI-слой;
+- будущую роль `owner` максимального приоритета.
 
-## 8. Рекомендуемый порядок продолжения
+## 11. Известный технический долг
 
-1. Обновить README.md, ARCHITECTURE.md и PROJECT_CONTEXT.md.
-2. Выполнить финальные analyze/test/build проверки.
-3. Merge в `main` и создать тег `v0.6.2.1`.
-4. Создать ветку `feat/v0.6.3-push-notification-foundation`.
-5. Подключить FCM на физическом Android-телефоне и проверить тестовое уведомление из Firebase Console.
-6. Добавить регистрацию устройств и Cloud Function для новых сообщений.
-7. После Push Foundation реализовать удаление сообщений у себя/у всех.
-8. Затем перейти к чистой Avatar Foundation.
+### Высокий и средний приоритет
 
-## 9. Команды Windows
+- Push-нажатие пока не открывает непосредственно нужный чат.
+- Avatar path-first cache пока только in-memory.
+- Kotlin Gradle Plugin и Android Gradle-конфигурацию нужно обновить отдельным этапом.
+- Firestore Rules emulator tests нужно расширять.
+- Требуется дальнейшая оптимизация Firestore reads.
+- Нужны дополнительные тесты конкурентных операций с двух устройств.
+- `ARCHITECTURE.md` позднее желательно разделить на отдельные документы.
+- Необходимо контролировать Storage usage для пилотной группы 40–50 пользователей.
+
+### Будущий UI
+
+Через отдельный UI-слой планируются:
+
+- анимации установки и удаления;
+- темы;
+- фон чатов;
+- формы и размеры пузырей;
+- размеры и семейства шрифтов;
+- дополнительные стили карточек;
+- визуальные эффекты без изменения бизнес-логики.
+
+## 12. Следующий порядок действий
+
+1. Обновить `PROJECT_CONTEXT.md`.
+2. Обновить `README.md`.
+3. Обновить `ARCHITECTURE.md`.
+4. Выполнить финальные проверки:
 
 ```powershell
-dart format lib test
-flutter clean
-flutter pub get
-flutter analyze
-flutter test
-flutter build apk --debug
-
-firebase.cmd use
-firebase.cmd deploy --only firestore:rules
-firebase.cmd deploy --only storage
-
-git status
-git log --oneline --decorate --graph -n 30
-git tag
+flutter.bat analyze
+flutter.bat test
+flutter.bat build apk --release
+git.exe diff --check
+git.exe status --short
 ```
 
-APK:
+5. Закоммитить документацию в `feat/v0.6.5-avatar-foundation`.
+6. Отправить ветку в GitHub.
+7. Перейти в `main`.
+8. Обновить `main`.
+9. Слить `feat/v0.6.5-avatar-foundation` в `main`.
+10. Повторить analyze, test и release build на `main`.
+11. Создать тег `v0.6.5`.
+12. Отправить `main` и тег в GitHub.
+13. Подготовить новую рабочую ветку для следующего этапа.
 
-```text
-build/app/outputs/flutter-apk/app-debug.apk
+## 13. Команды Windows
+
+Использовать PowerShell и явные executable-имена:
+
+```powershell
+flutter.bat analyze
+flutter.bat test
+flutter.bat build apk --release
+
+firebase.cmd deploy --only firestore:rules,storage
+
+git.exe status --short
+git.exe diff --check
+git.exe add .
+git.exe commit
+git.exe push
 ```
 
-## 10. Сопровождение контекста
+Для форматирования Dart-файлов:
 
-После каждого крупного этапа обновлять этот файл. Если его станет недостаточно, заранее предупредить владельца проекта и создать дополнительные документы, не теряя контрольную точку.
+```powershell
+$flutterBin = Split-Path (Get-Command flutter.bat).Source
+$dartExe = Join-Path $flutterBin "cache\\dart-sdk\\bin\\dart.exe"
+
+& $dartExe format lib test
+```
+
+## 14. Рабочий стиль
+
+- Работать маленькими проверяемыми шагами.
+- Перед коммитом выполнять ручную проверку изменённого сценария.
+- После этапа выполнять format, analyze, test и release build.
+- Не смешивать feature-изменения с обновлением toolchain.
+- Команды для Windows давать с явными executable-именами:
+  - `flutter.bat`
+  - `firebase.cmd`
+  - `npm.cmd`
+  - `git.exe`
+- Учитывать Firebase usage и целевую пилотную группу 40–50 пользователей.
