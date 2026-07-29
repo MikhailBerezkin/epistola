@@ -6,12 +6,12 @@
 ## 1. Текущая контрольная точка
 
 - Репозиторий: `MikhailBerezkin/epistola`
-- Рабочая ветка: `feat/v0.6.5-avatar-foundation`
-- Текущий HEAD перед обновлением документации: `f00b9a5`
-- Текущий этап: **Avatar Foundation**
-- Готовящийся стабильный релиз: `v0.6.5`
-- Последний опубликованный стабильный релиз: `v0.6.4`
-- Последний стабильный `main` до Avatar Foundation: `0e99f5b`
+- Рабочая ветка: `chore/v0.6.6-android-toolchain`
+- Базовый стабильный commit: `3d0974c`
+- Базовый стабильный tag: `v0.6.5`
+- Текущий этап: **Android Toolchain Foundation**
+- Планируемый технический релиз: `v0.6.6`
+- Последний опубликованный стабильный релиз: `v0.6.5`
 - Firebase project: `epistola-434b7`
 - Firestore region: `eur3`
 - Cloud Functions region: `europe-west1`
@@ -19,29 +19,237 @@
 - Основная платформа: Android
 - Целевая пилотная группа: 40–50 пользователей
 
-Последние важные коммиты Avatar Foundation:
+Стабильная точка:
 
 ```text
-f00b9a5 feat(group-avatar): show avatar in chat header
-7dca1f0 feat(group-avatar): show avatars in chat search
-4d13e3a feat(group-avatar): show avatars in group chat list
-e1fdb07 feat(group-avatar): show member avatars in group info
-79455b6 feat(group-avatar): enable avatar replacement
-425a5f9 feat(group-avatar): add avatar source menu
-8216fe5 refactor(group-avatar): manage controller lifecycle
-d5a759d feat(group-avatar): wire replacement dependencies
-a9d81ba feat(group-avatar): add replacement controller
-beca054 feat(group-avatar): secure firestore and storage rules
-732c53e feat(group-avatar): add atomic replacement service
-f1b3749 feat(group-avatar): add firestore metadata gateway
-f2c1d95 feat(group-avatar): add storage upload foundation
-f5a0713 feat(group-avatar): add domain and metadata foundation
-dea7d3d fix(search): match private chats by peer identity
+3d0974c merge: release v0.6.5 Avatar Foundation
 ```
 
-## 2. Проверенное состояние проекта
+`main` был синхронизирован с `origin/main`, а рабочее дерево было чистым до создания технической ветки.
 
-Финальные проверки перед обновлением документации:
+Текущая ветка создана от стабильного `main`:
+
+```text
+chore/v0.6.6-android-toolchain
+```
+
+Текущий этап не добавляет пользовательские функции и не начинает передачу изображений в сообщениях. Его задача — проверить Android toolchain, локализовать предупреждение Built-in Kotlin и внести только действительно необходимые изменения.
+
+По итогам аудита обновление Gradle, Android Gradle Plugin, Kotlin и целевых медиа-зависимостей не выполнялось: текущая конфигурация совместима, release APK собирается, а доступных версий плагинов с нужной миграцией пока не найдено.
+
+## 2. Android Toolchain Foundation — `v0.6.6`
+
+### 2.1 Цель и границы этапа
+
+Цели:
+
+- зафиксировать текущие версии Flutter, Dart, Java, Gradle, Android Gradle Plugin и Kotlin;
+- проверить Android SDK levels;
+- проверить `firebase_storage` и `flutter_image_compress`;
+- воспроизвести и локализовать предупреждение Built-in Kotlin;
+- обновлять только необходимые зависимости и Android-конфигурацию;
+- не смешивать toolchain-работу с Image Message Foundation;
+- выполнить analyze, все тесты и release build;
+- провести ручной Android regression test перед закрытием этапа.
+
+В этом этапе запрещено:
+
+- добавлять тип сообщения `image`;
+- добавлять отправку изображений;
+- менять Firestore message metadata;
+- менять Storage Rules под сообщения;
+- редактировать плагины внутри Pub Cache;
+- обновлять весь набор зависимостей без причины;
+- смешивать технический commit с новой функциональностью.
+
+### 2.2 Зафиксированные версии окружения
+
+```text
+Flutter: 3.44.1 stable
+Flutter framework revision: 924134a44c
+Flutter engine revision: 39b1f7043775b9578bbb26a1676e79c4e31c8b5e
+Dart: 3.12.1
+DevTools: 2.57.0
+
+Java: OpenJDK 21.0.10
+Java source: Android Studio bundled JBR
+Java path: C:\Program Files\Android\Android Studio\jbr\bin\java
+
+Android SDK: 36.1.0
+Android SDK path: C:\Dev\Android\Sdk
+Android platform: android-36.1
+Android build-tools: 36.1.0
+
+Gradle Wrapper: 9.1.0
+Android Gradle Plugin: 9.0.1
+Kotlin Gradle Plugin: 2.3.20
+Google Services Plugin: 4.3.15
+```
+
+Важно различать две версии Kotlin:
+
+```text
+Kotlin 2.3.20
+→ Kotlin Gradle Plugin приложения, указан в android/settings.gradle.kts
+
+Kotlin 2.2.0
+→ встроенная версия Kotlin, которую показывает gradlew.bat --version
+  и использует сам Gradle
+```
+
+Это не конфликт версий.
+
+### 2.3 Java и PowerShell
+
+Обычная команда:
+
+```powershell
+java.exe -version
+```
+
+не срабатывает, потому что Java не добавлена в глобальный `PATH`.
+
+Flutter при этом корректно использует JDK из Android Studio:
+
+```text
+C:\Program Files\Android\Android Studio\jbr
+```
+
+Для прямого запуска Gradle в текущем PowerShell-сеансе можно временно задать:
+
+```powershell
+$env:JAVA_HOME = "C:\Program Files\Android\Android Studio\jbr"
+```
+
+После этого работают:
+
+```powershell
+& "$env:JAVA_HOME\bin\java.exe" -version
+.\android\gradlew.bat -p .\android --version
+```
+
+Это временная настройка текущего терминала и не изменяет систему после его закрытия.
+
+### 2.4 Android SDK levels и bytecode target
+
+Flutter `3.44.1` подставляет:
+
+```text
+compileSdk: 36
+targetSdk: 36
+minSdk: 24
+```
+
+В `android/app/build.gradle.kts` используются значения Flutter:
+
+```kotlin
+compileSdk = flutter.compileSdkVersion
+minSdk = flutter.minSdkVersion
+targetSdk = flutter.targetSdkVersion
+```
+
+Java и Kotlin компилируются в JVM 17 bytecode:
+
+```text
+Java compatibility: 17
+Kotlin jvmTarget: JVM_17
+```
+
+Сама Gradle-сборка запускается на JDK 21. Такая связка допустима: JDK 21 запускает toolchain, а приложение получает совместимый JVM 17 bytecode.
+
+Дополнительная Android-зависимость:
+
+```text
+com.android.tools:desugar_jdk_libs:2.1.4
+```
+
+### 2.5 Текущие Gradle compatibility flags
+
+В `android/gradle.properties` уже присутствуют:
+
+```properties
+android.useAndroidX=true
+android.newDsl=false
+android.builtInKotlin=false
+kotlin.incremental=false
+```
+
+`android.newDsl=false` и `android.builtInKotlin=false` сохраняют временный режим совместимости с плагинами, которые ещё подключают Kotlin Gradle Plugin старым способом.
+
+Удалять или менять эти флаги до миграции плагинов нельзя.
+
+### 2.6 Проверенные версии медиа-зависимостей
+
+```text
+firebase_storage: 13.4.5
+firebase_storage_platform_interface: 6.0.5
+firebase_storage_web: 3.11.11
+
+flutter_image_compress: 2.5.1
+flutter_image_compress_common: 1.1.1
+flutter_image_compress_platform_interface: 1.1.0
+```
+
+Команда:
+
+```powershell
+flutter.bat pub outdated
+```
+
+не показала доступных обновлений для:
+
+```text
+firebase_storage
+flutter_image_compress
+```
+
+Следовательно, предупреждение Built-in Kotlin нельзя устранить обычным обновлением этих зависимостей на текущем этапе.
+
+Отдельно доступны небольшие обновления, не связанные с предупреждением:
+
+```text
+flutter_local_notifications: 22.1.0 → 22.2.0
+image_picker: 1.2.2 → 1.2.3
+```
+
+Они намеренно не включены в `v0.6.6`, потому что не требуются для решения текущей задачи.
+
+### 2.7 Локализованное предупреждение Built-in Kotlin
+
+Release build показывает предупреждение для плагинов:
+
+```text
+firebase_storage
+flutter_image_compress_common
+```
+
+Смысл предупреждения:
+
+- плагины пока сами применяют Kotlin Gradle Plugin;
+- будущие версии Flutter прекратят поддерживать такой способ;
+- плагины должны перейти на Built-in Kotlin;
+- текущая сборка ещё поддерживается и завершается успешно.
+
+Предупреждение относится к внутренней Android-конфигурации плагинов, а не к устаревшей версии Kotlin в Epistola.
+
+Не выполнять:
+
+- ручное редактирование файлов в Pub Cache;
+- принудительное удаление compatibility flags;
+- случайное понижение или повышение Gradle/AGP/Kotlin;
+- замену плагинов без отдельного проектирования и тестов.
+
+Принятое решение:
+
+```text
+сохранить текущую совместимую конфигурацию
+→ отслеживать обновления плагинов
+→ мигрировать после появления официально совместимых версий
+```
+
+### 2.8 Проверки технической ветки
+
+В ветке `chore/v0.6.6-android-toolchain` выполнено:
 
 ```text
 flutter.bat analyze
@@ -52,27 +260,86 @@ flutter.bat test
 
 flutter.bat build apk --release
 → успешно
-
-git.exe diff --check
-→ без ошибок
-
-git.exe status --short
-→ рабочее дерево было чистым до изменения документации
 ```
 
 Release APK:
 
 ```text
-build/app/outputs/flutter-apk/app-release.apk
+build\app\outputs\flutter-apk\app-release.apk
 ```
 
-Размер последней release-сборки:
+Размер:
 
 ```text
 54.4 MB
 ```
 
-Во время Android-сборки показывается предупреждение о будущем требовании Built-in Kotlin для плагинов `firebase_storage` и `flutter_image_compress_common`. Сборка завершается успешно. Обновление Kotlin/Gradle выполняется отдельным техническим этапом после `v0.6.5`, чтобы не смешивать его с Avatar Foundation.
+Предупреждение Built-in Kotlin не останавливает сборку.
+
+Диагностические строки тестов:
+
+```text
+Corrupt JPEG data: 2 extraneous bytes before marker 0xd9
+JPEG datastream contains no image
+```
+
+выводятся тестовыми JPEG-данными и не являются падением тестов. Все 251 тест завершаются успешно.
+
+После `analyze`, `test` и `build` Flutter может изменять:
+
+```text
+linux/flutter/generated_plugins.cmake
+macos/Flutter/GeneratedPluginRegistrant.swift
+windows/flutter/generated_plugins.cmake
+```
+
+Если изменения вызваны только генерацией плагинов и не относятся к задаче, файлы восстанавливаются через `git.exe restore` и не коммитятся.
+
+После последнего восстановления:
+
+```text
+git.exe status --short
+→ пустой вывод
+```
+
+### 2.9 Ручная проверка перед закрытием `v0.6.6`
+
+До финального commit и выпуска `v0.6.6` требуется проверить на Android:
+
+- запуск приложения;
+- вход в существующий аккаунт;
+- открытие списка личных и групповых чатов;
+- пользовательские аватары;
+- групповые аватары;
+- выбор изображения из галереи;
+- камера;
+- квадратный crop;
+- замена пользовательского аватара;
+- замена группового аватара;
+- запись metadata в Firestore;
+- загрузка thumbnail и full в Firebase Storage.
+
+Так как рабочие зависимости и Android-конфигурация не изменялись, ожидается отсутствие функциональных отличий от `v0.6.5`, но ручная regression-проверка всё равно обязательна перед релизом.
+
+### 2.10 Нормальные сообщения, не являющиеся ошибками
+
+Tree-shaking MaterialIcons:
+
+```text
+Tree-shaking reduced MaterialIcons font size
+```
+
+является нормальной оптимизацией release build.
+
+Git-сообщения:
+
+```text
+LF will be replaced by CRLF
+```
+
+не являются ошибками Flutter или Android-сборки.
+
+Отсутствие Visual Studio в `flutter.bat doctor -v` относится только к сборке Windows desktop. Для основной Android-платформы Epistola это не блокирующая проблема.
 
 ## 3. Завершённые стабильные этапы
 
@@ -80,9 +347,17 @@ build/app/outputs/flutter-apk/app-release.apk
 - `v0.6.2.1` — Security Foundation.
 - `v0.6.3` — Push Notification Foundation.
 - `v0.6.4` — Message Deletion Foundation.
-- `v0.6.5` — Avatar Foundation, готовится к слиянию и выпуску.
+- `v0.6.5` — Avatar Foundation.
 
-## 4. User Avatar Foundation
+Текущий технический этап:
+
+- `v0.6.6` — Android Toolchain Foundation, в работе.
+
+Следующий функциональный этап после успешного завершения `v0.6.6`:
+
+- `v0.7.0` — Image Message Foundation.
+
+## 4. User Avatar Foundation — `v0.6.5`
 
 ### 4.1 Подготовка изображения
 
@@ -184,12 +459,12 @@ Path-first кэш пока не сохраняется между запуска
 - поиске чатов;
 - контактах;
 - заголовке открытого личного чата;
-- черновике личного чата до отправки первого сообщения;
+- draft-чате до отправки первого сообщения;
 - списке участников группы.
 
-Пользователи без фотографии получают fallback с инициалами. Цвет fallback стабилен и определяется по UID.
+Пользователи без фотографии получают fallback с двумя буквами. Цвет fallback стабилен и определяется по UID.
 
-## 5. Group Avatar Foundation
+## 5. Group Avatar Foundation — `v0.6.5`
 
 ### 5.1 Общая модель
 
@@ -248,7 +523,7 @@ Rules опубликованы в Firebase project `epistola-434b7`.
 
 ### 5.4 Установка и замена
 
-В информации о группе администратор может:
+В информации о группе owner/admin может:
 
 - выбрать фото из галереи;
 - сделать фото камерой;
@@ -277,7 +552,7 @@ upload новой версии
 
 У группы без фотографии отображается fallback с первой буквой названия.
 
-## 6. Проверенные Android-сценарии
+## 6. Проверенные Android-сценарии `v0.6.5`
 
 ### 6.1 Пользовательские аватары
 
@@ -340,23 +615,28 @@ name: private_chat
 
 ## 8. Архитектурные границы
 
-Avatar Foundation сохраняет разделение слоёв:
+Основное правило:
 
 ```text
-UI widgets
-    ↓
-Controllers
-    ↓
-Preparation / replacement services
-    ↓
-Storage and metadata gateways
-    ↓
-Firebase adapters
+Flutter UI
+→ controllers
+→ application services
+→ domain models/contracts
+→ Firebase gateways/adapters
 ```
+
+UI должен оставаться отдельно от:
+
+- Firebase Storage;
+- Firestore transactions;
+- application services;
+- rollback;
+- cleanup;
+- security rules.
 
 ### 8.1 UI-слой
 
-Основные компоненты:
+Основные avatar-компоненты:
 
 ```text
 AvatarView
@@ -425,7 +705,41 @@ Firebase adapters отвечают только за:
 
 Domain-модели не зависят от Flutter UI.
 
-## 9. Завершённые предыдущие этапы
+### 8.4 Требование к будущим изображениям в сообщениях
+
+Image Message Foundation должен повторять существующее разделение:
+
+```text
+Message UI
+→ image message controller
+→ preparation/upload/send services
+→ image message domain model and contracts
+→ Firebase Storage and Firestore adapters
+```
+
+Нельзя размещать в message bubble:
+
+- прямой Firebase Storage upload;
+- Firestore transaction logic;
+- rollback;
+- cleanup;
+- security policy;
+- подготовку thumbnail/full.
+
+Визуальные компоненты должны быть заменяемыми, чтобы позднее можно было менять:
+
+- темы;
+- размеры и семейства шрифтов;
+- форму и размер пузырей;
+- анимации;
+- цвета;
+- фон чатов;
+- размеры и форму аватаров;
+- оформление image preview;
+
+без переписывания business logic и Firebase-слоя.
+
+## 9. Завершённые предыдущие foundations
 
 ### Media Foundation — `v0.6.2`
 
@@ -482,18 +796,25 @@ Domain-модели не зависят от Flutter UI.
 - атомарное первое сообщение;
 - атомарное обновление `lastMessage`;
 - pagination по 20 сообщений;
+- сохранение загруженной истории при realtime updates;
 - персональную очистку private chat;
 - логическое удаление сообщений;
+- удаление сообщения «у себя»;
+- удаление собственного сообщения «у всех»;
 - push-уведомления;
 - поиск пользователей, контактов и чатов;
+- private chat search по данным второго участника;
 - роли, mute, ban и permissions;
 - добавление участников;
 - защиту последнего администратора;
 - передачу прав и безопасный выход;
 - Media Foundation abstractions;
-- версионную замену аватаров;
+- версионную замену пользовательских аватаров;
+- версионную замену групповых аватаров;
 - rollback при ошибке metadata;
+- path-first loading;
 - fallback на инициалы;
+- fallback группы по первой букве;
 - отдельный заменяемый UI-слой;
 - будущую роль `owner` максимального приоритета.
 
@@ -503,12 +824,27 @@ Domain-модели не зависят от Flutter UI.
 
 - Push-нажатие пока не открывает непосредственно нужный чат.
 - Avatar path-first cache пока только in-memory.
-- Kotlin Gradle Plugin и Android Gradle-конфигурацию нужно обновить отдельным этапом.
+- `firebase_storage` и `flutter_image_compress_common` ещё используют старый способ подключения Kotlin Gradle Plugin.
+- Compatibility flags `android.newDsl=false` и `android.builtInKotlin=false` пока необходимы.
+- После появления совместимых версий плагинов нужен отдельный повторный аудит Built-in Kotlin.
 - Firestore Rules emulator tests нужно расширять.
 - Требуется дальнейшая оптимизация Firestore reads.
 - Нужны дополнительные тесты конкурентных операций с двух устройств.
 - `ARCHITECTURE.md` позднее желательно разделить на отдельные документы.
 - Необходимо контролировать Storage usage для пилотной группы 40–50 пользователей.
+- Перед Image Message Foundation нужно отдельно спроектировать лимиты хранения, cache и cleanup.
+- Release APK пока подписывается debug signing configuration; перед внешним production-релизом потребуется отдельная signing-настройка.
+
+### Отложенные небольшие обновления
+
+Не включены в `v0.6.6`, потому что не относятся к предупреждению Built-in Kotlin:
+
+```text
+flutter_local_notifications: 22.1.0 → 22.2.0
+image_picker: 1.2.2 → 1.2.3
+```
+
+Обновлять их следует отдельным контролируемым изменением с analyze, test, release build и ручной проверкой соответствующих сценариев.
 
 ### Будущий UI
 
@@ -522,67 +858,242 @@ Domain-модели не зависят от Flutter UI.
 - дополнительные стили карточек;
 - визуальные эффекты без изменения бизнес-логики.
 
-## 12. Следующий порядок действий
+## 12. Следующий функциональный этап — Image Message Foundation `v0.7.0`
 
-1. Обновить `PROJECT_CONTEXT.md`.
-2. Обновить `README.md`.
-3. Обновить `ARCHITECTURE.md`.
-4. Выполнить финальные проверки:
+Image Message Foundation начинается только после успешного завершения `v0.6.6`.
+
+Будущий поток:
+
+```text
+галерея или камера
+→ подготовка изображения
+→ thumbnail + full
+→ Firebase Storage
+→ metadata сообщения
+→ отображение изображения в сообщении
+→ полноэкранный просмотр
+```
+
+Планируется:
+
+- тип сообщения `image`;
+- выбор из галереи;
+- камера;
+- квадратный или безопасно ограниченный crop, если он потребуется по UX;
+- исправление ориентации;
+- удаление EXIF;
+- сжатие;
+- thumbnail;
+- full;
+- progress;
+- отмена;
+- retry;
+- rollback;
+- cleanup;
+- Firestore metadata;
+- Storage Rules;
+- preview в списке чатов;
+- push-текст `Фотография`;
+- совместимость с удалением «у себя / у всех»;
+- сохранение pagination;
+- экономный cache;
+- полноэкранный просмотр.
+
+Не начинать весь этап одним большим изменением.
+
+Первый подэтап:
+
+```text
+Image Message Domain + Metadata Foundation
+```
+
+Сначала отдельно спроектировать:
+
+- domain-модель image message;
+- message type;
+- metadata schema;
+- инварианты thumbnail/full;
+- Storage paths;
+- ограничения размеров;
+- состояния upload;
+- rollback/cleanup contracts;
+- правила совместимости с удалением;
+- preview contract;
+- push representation;
+- тесты mapper/domain logic.
+
+Только после этого подключать picker, camera, compression, upload и UI.
+
+### 12.1 Предварительные Storage paths
+
+Пути пока не утверждены и должны быть спроектированы до реализации.
+
+Ожидаемое направление:
+
+```text
+chat_media/{chatId}/messages/{messageId}/v{version}/thumb.jpg
+chat_media/{chatId}/messages/{messageId}/v{version}/full.jpg
+```
+
+Финальный формат нельзя закреплять до проверки:
+
+- Firestore message creation flow;
+- возможности заранее получить `messageId`;
+- retry semantics;
+- cleanup orphan uploads;
+- delete-for-everyone policy;
+- Storage Rules;
+- стоимости Storage operations.
+
+### 12.2 Экономия Firebase
+
+Для пилотной группы 40–50 пользователей:
+
+- не хранить исходный файл;
+- загружать только подготовленные thumbnail и full;
+- не выполнять лишние Firestore reads для каждого bubble;
+- объединять параллельные запросы одинакового изображения;
+- использовать версионные cache keys;
+- ограничивать максимальный размер скачиваемых байтов;
+- не загружать full до явного открытия, если thumbnail достаточно;
+- предусмотреть cleanup незавершённых upload;
+- не удалять физические данные без продуманной совместимости с delete-for-self/delete-for-everyone;
+- контролировать количество Storage list/read/delete operations.
+
+## 13. Следующий порядок действий
+
+Текущий порядок для `v0.6.6`:
+
+1. Заменить `PROJECT_CONTEXT.md` актуальной полной версией.
+2. Проверить diff документа.
+3. При необходимости обновить `ARCHITECTURE.md`.
+4. При необходимости обновить `README.md`.
+5. Выполнить:
 
 ```powershell
-flutter.bat analyze
-flutter.bat test
-flutter.bat build apk --release
 git.exe diff --check
 git.exe status --short
 ```
 
-5. Закоммитить документацию в `feat/v0.6.5-avatar-foundation`.
-6. Отправить ветку в GitHub.
-7. Перейти в `main`.
-8. Обновить `main`.
-9. Слить `feat/v0.6.5-avatar-foundation` в `main`.
-10. Повторить analyze, test и release build на `main`.
-11. Создать тег `v0.6.5`.
-12. Отправить `main` и тег в GitHub.
-13. Подготовить новую рабочую ветку для следующего этапа.
-
-## 13. Команды Windows
-
-Использовать PowerShell и явные executable-имена:
+6. Установить или запустить текущий release APK на Android.
+7. Выполнить ручной regression test:
+   - вход;
+   - пользовательские аватары;
+   - групповые аватары;
+   - камера;
+   - галерея;
+   - crop;
+   - Firebase Storage;
+   - Firestore metadata.
+8. После ручного подтверждения повторить финальные проверки:
 
 ```powershell
 flutter.bat analyze
 flutter.bat test
 flutter.bat build apk --release
+```
 
-firebase.cmd deploy --only firestore:rules,storage
+9. Восстановить посторонние generated plugin files, если Flutter снова их изменит.
+10. Выполнить:
 
-git.exe status --short
+```powershell
 git.exe diff --check
+git.exe status --short
+```
+
+11. Закоммитить документацию и только необходимые изменения в `chore/v0.6.6-android-toolchain`.
+12. Отправить ветку в GitHub.
+13. Слить ветку в `main`.
+14. Повторить analyze, test и release build на `main`.
+15. Создать tag `v0.6.6`.
+16. Отправить `main` и tag.
+17. Создать отдельную ветку для `v0.7.0 Image Message Foundation`.
+18. Начать только с domain-модели и metadata.
+
+Не коммитить до ручной проверки изменённого сценария, если пользователь явно не подтвердил обратное.
+
+## 14. Команды Windows
+
+Использовать PowerShell и явные executable-имена.
+
+### 14.1 Flutter
+
+```powershell
+flutter.bat --version
+flutter.bat doctor -v
+flutter.bat pub deps --style=compact
+flutter.bat pub outdated
+flutter.bat analyze
+flutter.bat test
+flutter.bat build apk --release
+```
+
+### 14.2 Форматирование Dart
+
+```powershell
+$flutterBin = Split-Path (Get-Command flutter.bat).Source
+$dartExe = Join-Path $flutterBin "cache\dart-sdk\bin\dart.exe"
+
+& $dartExe format lib test
+```
+
+### 14.3 Gradle и Java
+
+Для текущего PowerShell-сеанса:
+
+```powershell
+$env:JAVA_HOME = "C:\Program Files\Android\Android Studio\jbr"
+
+& "$env:JAVA_HOME\bin\java.exe" -version
+.\android\gradlew.bat -p .\android --version
+```
+
+### 14.4 Firebase и Node
+
+```powershell
+firebase.cmd --version
+firebase.cmd deploy --only firestore:rules,storage
+npm.cmd --version
+```
+
+### 14.5 Git
+
+```powershell
+git.exe status --short
+git.exe diff
+git.exe diff --check
+git.exe log -1 --oneline --decorate
+git.exe branch --show-current
 git.exe add .
 git.exe commit
 git.exe push
 ```
 
-Для форматирования Dart-файлов:
+Восстановление generated plugin files:
 
 ```powershell
-$flutterBin = Split-Path (Get-Command flutter.bat).Source
-$dartExe = Join-Path $flutterBin "cache\\dart-sdk\\bin\\dart.exe"
-
-& $dartExe format lib test
+git.exe restore -- `
+  linux/flutter/generated_plugins.cmake `
+  macos/Flutter/GeneratedPluginRegistrant.swift `
+  windows/flutter/generated_plugins.cmake
 ```
 
-## 14. Рабочий стиль
+## 15. Рабочий стиль
 
 - Работать маленькими проверяемыми шагами.
-- Перед коммитом выполнять ручную проверку изменённого сценария.
-- После этапа выполнять format, analyze, test и release build.
+- После каждого шага ждать скриншот или полный результат пользователя.
+- Не давать сразу много изменений.
+- Перед изменением кратко объяснять, какой файл меняется и зачем.
+- Не коммитить до ручной проверки изменённого сценария, если пользователь явно не подтвердил обратное.
+- После завершённого этапа выполнять format, analyze, test и release build.
 - Не смешивать feature-изменения с обновлением toolchain.
+- Не начинать Image Message Foundation до закрытия Android Toolchain Foundation.
 - Команды для Windows давать с явными executable-именами:
   - `flutter.bat`
   - `firebase.cmd`
   - `npm.cmd`
   - `git.exe`
+- При сборке отслеживать generated plugin files и не коммитить их без причины.
 - Учитывать Firebase usage и целевую пилотную группу 40–50 пользователей.
+- Сохранять архитектурные границы между UI, controllers, services, domain и Firebase adapters.
+- Если `PROJECT_CONTEXT.md` становится слишком большим или недостаточным, заранее предложить разделение на дополнительные документы, но основной источник handoff остаётся `PROJECT_CONTEXT.md`.
