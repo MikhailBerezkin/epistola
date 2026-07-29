@@ -1,8 +1,8 @@
 # Epistola
 
-> **Современный корпоративный мессенджер на Flutter и Firebase**
+> **Корпоративный мессенджер на Flutter и Firebase**
 
-Epistola — долгосрочный проект корпоративной коммуникационной платформы. Сейчас это Android-first мессенджер на Flutter и Firebase. Архитектура постепенно готовится к Web/iOS, рабочим пространствам Spaces, медиа-подсистеме, возможной смене backend-хранилища и будущему собственному backend.
+Epistola — Android-first корпоративный мессенджер и долгосрочная коммуникационная платформа. Проект развивается небольшими проверяемыми этапами с разделением UI, application logic, domain-моделей и Firebase infrastructure.
 
 ---
 
@@ -10,55 +10,81 @@ Epistola — долгосрочный проект корпоративной к
 
 | Параметр | Значение |
 | --- | --- |
-| Текущая версия | `v0.6.5` |
-| Название этапа | **Avatar Foundation** |
-| Последний опубликованный стабильный релиз | `v0.6.4` |
-| Статус | 🟢 Реализация, Android-проверки, автоматические тесты и release APK готовы |
+| Последний стабильный релиз | `v0.6.5` |
+| Последний стабильный commit | `3d0974c` |
+| Текущий этап | **Android Toolchain Foundation** |
+| Планируемая техническая версия | `v0.6.6` |
+| Рабочая ветка | `chore/v0.6.6-android-toolchain` |
+| Следующий функциональный этап | `v0.7.0 Image Message Foundation` |
 | Основная платформа | Android |
-| Текущий backend | Firebase |
+| Backend | Firebase |
 | Репозиторий | `MikhailBerezkin/epistola` |
 | Firebase project | `epistola-434b7` |
 | Android package | `com.epistola.app` |
 | Пилотная группа | примерно 40–50 пользователей |
 
-В ветке `feat/v0.6.5-avatar-foundation` завершён Avatar Foundation:
+`v0.6.5 Avatar Foundation` выпущен и является текущей стабильной базой.
 
-- пользовательские и групповые аватары;
-- галерея и камера;
-- квадратный crop;
-- JPEG thumbnail и full;
-- версионное Storage-хранение;
-- атомарная замена metadata;
-- rollback при ошибках;
-- path-first загрузка;
-- кэш;
-- fallback на инициалы;
-- отображение на основных экранах;
-- исправление поиска private chats по данным собеседника.
-
-Финальная release-сборка успешно создана:
+В `v0.6.6 Android Toolchain Foundation` выполнен аудит Flutter, Java, Gradle, Android Gradle Plugin, Kotlin и медиа-зависимостей. Код приложения и Android-конфигурация пока не менялись: текущая связка совместима, а release APK успешно собирается.
 
 ```text
-build/app/outputs/flutter-apk/app-release.apk
+Flutter: 3.44.1 stable
+Dart: 3.12.1
+Java: OpenJDK 21.0.10
+Gradle Wrapper: 9.1.0
+Android Gradle Plugin: 9.0.1
+Kotlin Gradle Plugin: 2.3.20
+
+compileSdk: 36
+targetSdk: 36
+minSdk: 24
+JVM target: 17
 ```
 
-Размер последней сборки:
+Последние проверки:
+
+```text
+flutter.bat analyze
+→ No issues found
+
+flutter.bat test
+→ 251 tests passed
+
+flutter.bat build apk --release
+→ успешно
+```
+
+Release APK:
+
+```text
+build\app\outputs\flutter-apk\app-release.apk
+```
+
+Размер:
 
 ```text
 54.4 MB
 ```
 
-Известное ограничение push-навигации сохраняется: нажатие на уведомление открывает приложение, но пока не переводит непосредственно в нужный чат.
-
 ---
 
 ## ⚡ Что такое Epistola
 
-Epistola создаётся как единая коммуникационная платформа для сотрудников компании.
+Краткосрочная цель — стабильный мессенджер для пилотной группы 40–50 пользователей.
 
-Краткосрочная цель — стабильный мессенджер для пилотной группы примерно 40–50 пользователей.
+Долгосрочная цель — коммуникационная платформа для компании на 600–700 сотрудников:
 
-Долгосрочная цель — рабочая платформа для компании на 600–700 сотрудников с чатами, группами, ролями, Spaces, мини-приложениями, файлами, рабочими сменами, задачами, объявлениями, документами и внутренними сервисами.
+- личные и групповые чаты;
+- роли и модерация;
+- Spaces;
+- задачи;
+- объявления;
+- документы;
+- рабочие смены;
+- файлы и медиа;
+- мини-приложения;
+- внутренние корпоративные сервисы;
+- возможный собственный backend.
 
 Основной принцип:
 
@@ -71,14 +97,14 @@ Epistola создаётся как единая коммуникационная
 ### 🔐 Пользователи и авторизация
 
 - Firebase Authentication.
-- Регистрация пользователя.
+- Регистрация.
 - Вход по E-mail и паролю.
 - Постоянная сессия.
 - Запоминание последнего E-mail.
 - Профиль пользователя.
 - Редактирование профиля.
 - Публичный контактный E-mail, независимый от FirebaseAuth.
-- Карточка контакта пользователя.
+- Карточка контакта.
 - Поиск пользователей.
 - Экран контактов.
 - Пользовательские аватары.
@@ -89,32 +115,30 @@ Epistola создаётся как единая коммуникационная
 - Групповые чаты.
 - Создание private chat только после первого сообщения.
 - Отсутствие пустых private chats.
-- История сообщений с cursor pagination по 20 документов.
-- Realtime-подписка на последнюю страницу.
+- Атомарное создание первого сообщения и metadata чата.
+- Cursor pagination по 20 сообщений.
 - Дозагрузка старой истории при прокрутке вверх.
 - Сохранение позиции прокрутки.
-- Список чатов.
-- Последнее видимое сообщение.
-- Время последнего сообщения.
+- Realtime-обновления без потери загруженной истории.
+- Последнее видимое сообщение в карточке чата.
 - Счётчик непрочитанных сообщений.
-- Атомарная запись message document и metadata чата.
-- Персональная очистка private chat без физического удаления истории.
-- Меню вложений как подготовка к Media Foundation.
-- Поиск чатов по имени собеседника и названию группы.
+- Персональная очистка private chat.
+- Поиск чатов по данным собеседника и названию группы.
+- Логическое удаление сообщений.
 
 ### 👥 Группы
 
 - Создание групп.
 - Добавление участников.
-- Просмотр информации о группе.
+- Информация о группе.
 - Список участников.
 - Карточки участников.
-- Передача прав администратора.
+- Передача прав.
 - Защита последнего администратора.
 - Безопасный выход.
 - Роспуск группы.
 - Настройки группы.
-- Ограничение отправки сообщений по ролям.
+- Ограничение отправки по ролям.
 - Групповые аватары.
 - Управление групповым аватаром для `owner` и `admin`.
 
@@ -122,47 +146,44 @@ Epistola создаётся как единая коммуникационная
 
 Поддерживаемые роли:
 
-- Владелец.
-- Администратор.
-- Модератор.
-- Участник.
-- Гость.
+```text
+owner
+admin
+moderator
+member
+guest
+```
 
 Реализовано:
 
-- Mute.
-- Ban.
-- Разграничение прав.
-- Ограничение отправки сообщений.
-- Управление участниками.
-- Скрытие недоступных действий в UI.
-- Защита от удаления или demote последнего администратора.
-- Firestore Rules для ролей и прав.
+- mute;
+- ban;
+- разграничение прав;
+- ограничения отправки;
+- управление участниками;
+- скрытие недоступных действий в UI;
+- Firestore Rules для ролей и permissions;
+- защита последнего администратора;
+- передача прав и безопасный выход.
 
-### 🔔 Push Notification Foundation
+---
 
-В `v0.6.3` реализовано:
+## 🔔 Push Notification Foundation — `v0.6.3`
+
+Реализовано:
 
 - Firebase Cloud Messaging;
 - локальные Android-уведомления;
-- канал `epistola_messages`;
 - foreground, background и terminated-состояния;
-- регистрация FCM-токенов устройств;
-- автоматическая перерегистрация обновлённого токена;
-- удаление токена текущего устройства при выходе;
+- уведомления при заблокированном экране;
+- регистрация FCM tokens;
+- обновление token;
+- удаление token текущего устройства при logout;
 - Cloud Function `sendMessageNotification`;
-- регион функции `europe-west1`;
-- исключение отправителя из получателей;
+- регион `europe-west1`;
+- исключение отправителя;
 - личные и групповые push;
-- удаление невалидных токенов;
-- безопасный preview длинного текста.
-
-Push проверены на физическом Android-устройстве:
-
-- приложение открыто;
-- приложение свёрнуто;
-- приложение закрыто;
-- экран заблокирован.
+- очистка невалидных tokens.
 
 Известное ограничение:
 
@@ -171,22 +192,9 @@ Push проверены на физическом Android-устройстве:
 но пока не переводит непосредственно в нужный чат
 ```
 
-### 🗑 Message Deletion Foundation
+---
 
-В `v0.6.4` реализовано:
-
-- удалить сообщение у себя;
-- удалить собственное сообщение у всех;
-- действие «Удалить у всех» только для отправителя;
-- подтверждение удаления у всех;
-- логическое удаление без физического удаления Firestore-документа;
-- персональное поле `hiddenFor`;
-- признаки `deletedForEveryone`, `deletedBy`, `deletedAt`;
-- отдельная модель `MessagePresentation`;
-- отдельный визуальный слой `MessageItem`;
-- сохранение стабильности пагинации;
-- поиск предыдущего видимого сообщения для preview карточки чата;
-- отсутствие повторного push при логическом удалении.
+## 🗑 Message Deletion Foundation — `v0.6.4`
 
 Поддерживаемые состояния:
 
@@ -196,7 +204,19 @@ hiddenForCurrentUser
 deletedForEveryone
 ```
 
-Разделение слоёв:
+Реализовано:
+
+- удалить сообщение у себя;
+- удалить собственное сообщение у всех;
+- «Удалить у всех» только для отправителя;
+- logical deletion без физического удаления Firestore document;
+- отдельная `MessagePresentation`;
+- отдельный `MessageItem`;
+- стабильность pagination;
+- поиск предыдущего видимого сообщения для chat preview;
+- отсутствие повторного push при logical deletion.
+
+Presentation flow:
 
 ```text
 Firestore message state
@@ -208,38 +228,36 @@ MessageItem
 MessageBubble
 ```
 
-Это позволяет менять анимации, форму пузырей, цвета и оформление без изменения Firestore-логики.
+Это позволяет менять bubble UI без изменения Firestore deletion logic.
 
 ---
 
-## 🖼 Avatar Foundation v0.6.5
+## 🖼 Avatar Foundation — `v0.6.5`
 
 ### Пользовательские аватары
 
-Реализовано:
+Поддерживается:
 
-- выбор изображения из галереи;
-- съёмка камерой;
-- корректная отмена source sheet, picker и crop;
-- Android `image_picker.retrieveLostData()`;
+- галерея;
+- камера;
 - квадратный crop `1:1`;
-- thumbnail `128x128`;
-- full `512x512`;
+- отмена picker и crop;
+- Android `retrieveLostData()`;
+- thumbnail `128×128`;
+- full `512×512`;
 - JPEG-сжатие;
 - коррекция ориентации;
 - удаление EXIF;
-- жёсткие ограничения размера;
+- ограничения размера;
 - очистка временных файлов;
-- загрузка только подготовленных вариантов;
-- версионное хранение;
-- атомарная замена;
-- rollback новой версии при ошибке Firestore;
-- best-effort очистка предыдущей версии;
-- path-first authenticated loading;
-- in-memory LRU-кэш;
-- дедупликация параллельных запросов;
-- legacy `avatarUrl` fallback;
-- стабильные инициалы и цвет.
+- versioned Storage paths;
+- atomic replacement;
+- rollback при ошибке metadata;
+- best-effort cleanup старой версии;
+- path-first loading;
+- in-memory LRU cache;
+- дедупликация parallel loads;
+- fallback на две буквы и стабильный цвет.
 
 Storage paths:
 
@@ -260,35 +278,31 @@ avatarVersion
 avatarUpdatedAt
 ```
 
-Пользовательские аватары отображаются в:
+Отображение:
 
-- профиле;
-- списке личных чатов;
-- поиске чатов;
-- контактах;
-- заголовке открытого личного чата;
-- черновике чата до первого сообщения;
-- списке участников группы.
+- профиль;
+- контакты;
+- список private chats;
+- поиск чатов;
+- заголовок private chat;
+- draft chat;
+- участники группы.
 
 ### Групповые аватары
 
-Реализовано:
+Реализовано отдельно от пользовательских:
 
-- отдельная модель `GroupAvatar`;
-- отдельный metadata mapper;
-- отдельный Storage upload service;
-- отдельный Firestore metadata gateway;
-- атомарная замена;
-- rollback при ошибке metadata;
-- защита версий;
-- управление только для `owner` и `admin`;
+- `GroupAvatar`;
+- metadata mapper;
+- Storage upload service;
+- Firestore metadata gateway;
+- atomic replacement service;
+- replacement controller;
 - Firestore Rules;
 - Storage Rules;
-- галерея;
-- камера;
-- квадратный crop;
-- первая установка;
-- последующая замена.
+- gallery/camera/crop;
+- установка и замена;
+- управление только `owner` и `admin`.
 
 Storage paths:
 
@@ -303,37 +317,14 @@ Metadata хранится в:
 chats/{chatId}
 ```
 
-Групповые аватары отображаются в:
+Отображение:
 
-- информации о группе;
-- основном списке групп;
-- поиске чатов;
-- заголовке открытого группового чата.
+- информация о группе;
+- список групп;
+- поиск чатов;
+- заголовок group chat.
 
-У группы без фотографии остаётся fallback с первой буквой названия.
-
-### Проверенные Android-сценарии
-
-Пользовательские аватары:
-
-- галерея → crop → установка;
-- камера → crop → установка;
-- замена;
-- отображение на основных экранах;
-- сохранение старого аватара при ошибке;
-- отображение пользователей, с которыми ещё не было чата.
-
-Групповые аватары:
-
-- камера → crop → установка;
-- галерея → crop → замена;
-- запись thumbnail и full в Firebase Storage;
-- обновление metadata;
-- отображение в информации о группе;
-- отображение в списке;
-- отображение в поиске;
-- отображение в заголовке;
-- fallback у группы без фотографии.
+Fallback — первая буква названия группы.
 
 ---
 
@@ -345,15 +336,84 @@ Private chat в Firestore может иметь техническое поле:
 name: private_chat
 ```
 
-Пользовательский поиск больше не зависит от этого значения.
+Пользовательский поиск не зависит от этого значения.
 
-Реализовано:
+Private chat ищется по:
 
-- определение второго участника private chat;
-- поиск по имени собеседника;
-- поиск по E-mail и доступным данным профиля;
-- сохранение поиска групп по названию;
-- отображение пользовательских и групповых аватаров в результатах.
+- имени второго участника;
+- E-mail;
+- доступным данным профиля.
+
+Group chat ищется по названию группы.
+
+В результатах отображаются пользовательские и групповые аватары.
+
+---
+
+## 🧰 Android Toolchain Foundation — `v0.6.6`
+
+### Зафиксированные версии
+
+```text
+Flutter: 3.44.1 stable
+Dart: 3.12.1
+Java: OpenJDK 21.0.10
+Android SDK: 36.1.0
+Gradle Wrapper: 9.1.0
+Android Gradle Plugin: 9.0.1
+Kotlin Gradle Plugin: 2.3.20
+Google Services Plugin: 4.3.15
+
+compileSdk: 36
+targetSdk: 36
+minSdk: 24
+JVM target: 17
+```
+
+### Проверенные зависимости
+
+```text
+firebase_storage: 13.4.5
+flutter_image_compress: 2.5.1
+flutter_image_compress_common: 1.1.1
+```
+
+`flutter.bat pub outdated` не показал обновлений для `firebase_storage` и `flutter_image_compress`.
+
+### Built-in Kotlin warning
+
+Warning появляется для:
+
+```text
+firebase_storage
+flutter_image_compress_common
+```
+
+Он связан с внутренней Android-конфигурацией плагинов, которые пока применяют Kotlin Gradle Plugin прежним способом.
+
+Текущие compatibility flags:
+
+```properties
+android.newDsl=false
+android.builtInKotlin=false
+kotlin.incremental=false
+```
+
+Принятое решение:
+
+- не редактировать Pub Cache;
+- не обновлять Gradle, AGP и Kotlin вслепую;
+- не удалять compatibility flags;
+- ждать официальной миграции плагинов;
+- не смешивать toolchain work с новыми функциями.
+
+APK продолжает успешно собираться.
+
+Нормальные сообщения:
+
+- tree-shaking MaterialIcons — нормальная release-оптимизация;
+- `LF will be replaced by CRLF` — нормальное Git-предупреждение на Windows;
+- отсутствие Visual Studio в `flutter doctor` не блокирует Android-разработку.
 
 ---
 
@@ -364,15 +424,14 @@ name: private_chat
 - Edge-to-edge UI.
 - Экран настроек.
 - Экран профиля.
-- BottomSheet для редактирования профиля.
+- BottomSheet редактирования профиля.
 - Контакты.
 - Поиск пользователей и чатов.
-- Улучшенная обработка Android-кнопки «Назад».
 - Haptic feedback.
 - Отдельные UI-компоненты для аватаров и сообщений.
-- Подготовленный контур для будущих вложений.
+- Подготовленный контур вложений.
 
-Основные avatar UI-компоненты:
+Avatar UI:
 
 ```text
 AvatarView
@@ -385,52 +444,49 @@ GroupHeader
 GroupMembersSection
 ```
 
-UI получает готовые модели и не выполняет прямые Storage upload, crop или Firestore transaction.
+UI получает готовые модели и не выполняет напрямую:
 
-Это позволяет позднее менять:
+- Storage upload;
+- crop orchestration;
+- Firestore transaction;
+- rollback;
+- cleanup;
+- security policy.
 
-- размеры аватаров;
-- форму;
-- анимации;
-- цвета fallback;
-- размеры шрифтов;
-- темы;
-- карточки;
-- декоративные эффекты;
-
-без изменения бизнес-логики и Firebase-слоя.
+Это позволяет менять темы, размеры, форму пузырей, фон чатов, аватары и анимации без переписывания Firebase-слоя.
 
 ---
 
-## 🧭 Архитектурная идея
+## 🧭 Архитектура
 
 ```text
 Flutter UI
     ↓
-Controllers
+Presentation controllers
     ↓
 Application services
     ↓
-Storage / metadata gateways
+Domain models and contracts
     ↓
-Firebase adapters
+Infrastructure gateways/adapters
+    ↓
+Firebase
 ```
 
-Ключевые принципы:
+Принципы:
 
-- UI не знает детали инфраструктуры.
-- Domain-модели не зависят от Flutter, Firebase или UI.
-- Firebase — текущая инфраструктура, но не вечная зависимость.
-- Внешние сервисы обёрнуты в gateways/providers.
-- Крупные подсистемы сначала проектируются, затем реализуются.
-- Визуальный слой остаётся заменяемым.
-- Код должен проходить `flutter.bat analyze` без ошибок.
+- UI не знает детали Firebase infrastructure.
+- Domain не зависит от Flutter и Firebase.
+- Firebase adapters скрыты за contracts.
+- Rollback и cleanup находятся в application services.
+- Storage paths формируются централизованно.
+- UI-компоненты заменяемы.
+- Feature changes не смешиваются с toolchain changes.
+- Крупные foundations сначала проектируются, затем реализуются.
 
 ---
 
 ## 🏗 Архитектура чатов
-
-Монолитный `ChatService` разделён на специализированные сервисы, сохранив внешний API через фасад:
 
 ```text
 UI / Screens
@@ -451,108 +507,44 @@ Cloud Firestore
 
 ---
 
-## 🧱 Media Foundation v0.6.2
-
-Media Foundation служит основой для:
-
-- пользовательских аватаров;
-- групповых аватаров;
-- изображений в сообщениях;
-- файлов;
-- документов;
-- превью;
-- голосовых сообщений;
-- видео;
-- локального кэша;
-- сменяемого backend-хранилища.
-
-Слои:
-
-```text
-UI
- │
- ▼
-Avatar / Attachment application services
- │
- ▼
-MediaStorageService
- │
- ▼
-MediaStorageProvider
- │
- ├── FirebaseMediaStorageProvider
- ├── S3MediaStorageProvider (future)
- ├── YandexStorageProvider (future)
- └── EpistolaBackendStorageProvider (future)
-```
+## 🧱 Media Foundation — `v0.6.2`
 
 Основные элементы:
 
-| Слой | Ответственность |
+| Элемент | Ответственность |
 | --- | --- |
-| `MediaAsset` | Доменное описание медиа |
-| `MediaPaths` | Централизованные пути |
-| `MediaStorageProvider` | Абстрактный контракт |
+| `MediaAsset` | Доменное описание media |
+| `MediaPaths` | Централизованные Storage paths |
+| `MediaStorageProvider` | Абстрактный Storage contract |
 | `FirebaseMediaStorageProvider` | Firebase Storage adapter |
-| `MediaStorageService` | Фасад для приложения |
+| `MediaStorageService` | Application facade |
 
----
-
-## 🧩 MediaPaths
-
-Актуальные пути:
+Path-first identity:
 
 ```text
-user_avatars/{userId}/v{version}/thumb.jpg
-user_avatars/{userId}/v{version}/full.jpg
-
-group_avatars/{chatId}/v{version}/thumb.jpg
-group_avatars/{chatId}/v{version}/full.jpg
-
-attachments/{chatId}/{messageId}/{fileName}
-previews/{chatId}/{messageId}/{fileName}
+provider + storage path + version
 ```
 
-Legacy path:
+Download URL не является доменной основой.
 
-```text
-user_avatars/{userId}/avatar.jpg
-```
+Будущие providers могут включать:
 
-Он сохраняется только для совместимости и не используется новым avatar pipeline.
+- S3-compatible storage;
+- Yandex Object Storage;
+- Cloudflare R2;
+- локальный сервер компании;
+- собственный Epistola backend.
 
 ---
 
 ## 🔥 Firebase
 
-Firebase project:
-
 ```text
-epistola-434b7
-```
-
-Android package:
-
-```text
-com.epistola.app
-```
-
-Firestore region:
-
-```text
-eur3
-```
-
-Cloud Functions region:
-
-```text
-europe-west1
-```
-
-Storage bucket:
-
-```text
-gs://epistola-434b7.firebasestorage.app
+Firebase project: epistola-434b7
+Firestore region: eur3
+Cloud Functions region: europe-west1
+Android package: com.epistola.app
+Storage bucket: gs://epistola-434b7.firebasestorage.app
 ```
 
 Основные файлы:
@@ -565,49 +557,20 @@ firestore.indexes.json
 storage.rules
 android/app/google-services.json
 lib/firebase_options.dart
+functions/src/index.ts
 ```
 
-### Деплой правил
+Деплой Rules:
 
 ```powershell
 firebase.cmd deploy --only firestore:rules,storage
 ```
 
-Firestore indexes:
+Indexes:
 
 ```powershell
 firebase.cmd deploy --only firestore:indexes
 ```
-
----
-
-## 🛡 Firestore и Storage Rules
-
-Firestore Rules защищают:
-
-- профили пользователей;
-- avatar metadata;
-- чаты;
-- сообщения;
-- членство;
-- роли;
-- права отправки;
-- логическое удаление;
-- последнего администратора;
-- групповую avatar metadata;
-- строго возрастающие версии.
-
-Storage Rules проверяют:
-
-- аутентификацию;
-- владельца пользовательского аватара;
-- роль `owner` или `admin` для группового аватара;
-- соответствие пути конкретному UID или `chatId`;
-- MIME type `image/jpeg`;
-- thumbnail максимум `128 KB`;
-- full максимум `512 KB`;
-- положительную версию;
-- запрет неизвестных путей.
 
 ---
 
@@ -637,7 +600,8 @@ Storage Rules проверяют:
 ```text
 lib/
 ├── domain/
-│   └── models/
+│   ├── models/
+│   └── value_objects/
 ├── helpers/
 ├── models/
 ├── screens/
@@ -661,7 +625,7 @@ test/
 └── widgets/
 ```
 
-Старые модели постепенно переносятся из `lib/models` в `lib/domain/models` без большого несвязанного рефакторинга.
+Legacy models постепенно переносятся из `lib/models` в domain-слой без большого несвязанного рефакторинга.
 
 ---
 
@@ -670,28 +634,25 @@ test/
 | Возможность | Статус |
 | --- | :---: |
 | Авторизация и сессия | ✅ |
-| Профиль и редактирование | ✅ |
-| Контакты и поиск пользователей | ✅ |
+| Профиль и контакты | ✅ |
 | Личные чаты | ✅ |
 | Групповые чаты | ✅ |
 | Pagination сообщений | ✅ |
 | Роли, mute и ban | ✅ |
 | Передача прав и безопасный выход | ✅ |
 | Push-уведомления | ✅ |
-| Push-переход непосредственно в чат | ⏳ |
-| Удаление сообщения у себя | ✅ |
-| Удаление сообщения у всех | ✅ |
-| Предыдущее preview после удаления | ✅ |
+| Push deep-link в конкретный чат | ⏳ |
+| Удаление у себя | ✅ |
+| Удаление у всех | ✅ |
 | Media Foundation | ✅ |
 | Пользовательские аватары | ✅ |
 | Групповые аватары | ✅ |
 | Галерея, камера и crop | ✅ |
-| Версионное хранение аватаров | ✅ |
-| Атомарная замена и rollback | ✅ |
-| Аватары в профиле и контактах | ✅ |
-| Аватары в списках и поиске | ✅ |
-| Аватары в заголовках чатов | ✅ |
-| Аватары участников группы | ✅ |
+| Versioned avatar storage | ✅ |
+| Atomic replacement и rollback | ✅ |
+| Android Toolchain audit | ✅ |
+| Built-in Kotlin migration плагинов | ⏳ |
+| Image Message Domain + Metadata | ⏳ |
 | Отправка изображений | ⏳ |
 | Отправка файлов | ⏳ |
 | Голосовые сообщения | ⏳ |
@@ -701,74 +662,128 @@ test/
 
 ---
 
-## 🚀 Дорожная карта
+## 🖼 Следующий этап — `v0.7.0 Image Message Foundation`
 
-### Завершено
+Image Message Foundation начинается только после закрытия `v0.6.6`.
 
-- `v0.6.2` — Media Foundation.
-- `v0.6.2.1` — Security Foundation.
-- `v0.6.3` — Push Notification Foundation.
-- `v0.6.4` — Message Deletion Foundation.
-- `v0.6.5` — Avatar Foundation, готовится к публикации.
+Первый подэтап:
 
-### Ближайшие технические задачи
+```text
+Image Message Domain + Metadata Foundation
+```
 
-- обновление Kotlin/Gradle toolchain;
-- расширение emulator tests для Security Rules;
-- дальнейшая оптимизация Firestore reads;
-- тесты конкурентных avatar-операций с двух устройств;
-- persistent path-first avatar cache;
-- push deep-link непосредственно в чат.
+Сначала проектируются:
 
-### Будущие Media-этапы
+- message type `image`;
+- domain model;
+- Firestore metadata schema;
+- thumbnail/full assets;
+- provider;
+- Storage paths;
+- sizes и dimensions;
+- upload states;
+- retry;
+- rollback;
+- cleanup;
+- chat preview;
+- push representation;
+- delete-for-self/delete-for-everyone compatibility;
+- tests domain/mappers.
 
-- изображения в сообщениях;
-- документы;
-- карточки файлов;
-- полноэкранный просмотр изображений;
-- прогресс загрузки;
-- голосовые сообщения;
-- видео;
-- локальный disk cache;
-- автоматическая очистка кэша;
-- гибридное хранилище.
+Будущий поток:
 
-### Будущие продуктовые этапы
+```text
+галерея или камера
+→ preparation
+→ thumbnail + full
+→ Firebase Storage
+→ message metadata
+→ image bubble
+→ fullscreen view
+```
 
-- статусы доставки и прочтения;
-- пересылка сообщений;
-- закреплённые сообщения;
-- приглашения в группы;
-- Spaces;
-- мини-приложения;
-- Web;
-- iOS;
-- возможный собственный backend.
+Планируется:
+
+- gallery;
+- camera;
+- compression;
+- EXIF removal;
+- thumbnail;
+- full;
+- upload progress;
+- cancel;
+- retry;
+- rollback;
+- cleanup;
+- Storage Rules;
+- chat preview `Фотография`;
+- push `Фотография`;
+- pagination compatibility;
+- экономный cache.
+
+Не начинать весь этап одним большим изменением.
 
 ---
 
-## 🧩 Spaces
+## 🧪 Проверки
 
-Spaces — стратегическое направление развития Epistola.
+Основные команды:
 
-Планируется, что Space сможет объединять:
+```powershell
+flutter.bat analyze
+flutter.bat test
+flutter.bat build apk --release
+git.exe diff --check
+git.exe status --short
+```
 
-- чаты;
-- группы;
-- задачи;
-- объявления;
-- документы;
-- смены;
-- внутренние сервисы;
-- мини-приложения.
+Форматирование Dart:
 
-Spaces должны использовать те же архитектурные принципы:
+```powershell
+$flutterBin = Split-Path (Get-Command flutter.bat).Source
+$dartExe = Join-Path $flutterBin "cache\dart-sdk\bin\dart.exe"
 
-- доменные модели;
-- отдельные application services;
-- абстракции инфраструктуры;
-- заменяемый UI;
-- контролируемые расходы Firebase.
+& $dartExe format lib test
+```
+
+Generated plugin files, которые Flutter может изменить автоматически:
+
+```text
+linux/flutter/generated_plugins.cmake
+macos/Flutter/GeneratedPluginRegistrant.swift
+windows/flutter/generated_plugins.cmake
+```
+
+Если они не относятся к задаче:
+
+```powershell
+git.exe restore -- `
+  linux/flutter/generated_plugins.cmake `
+  macos/Flutter/GeneratedPluginRegistrant.swift `
+  windows/flutter/generated_plugins.cmake
+```
+
+---
+
+## 🪟 Windows / PowerShell
+
+Использовать явные executable-имена:
+
+```powershell
+flutter.bat
+firebase.cmd
+npm.cmd
+git.exe
+```
+
+Java для прямого Gradle-вызова в текущем terminal session:
+
+```powershell
+$env:JAVA_HOME = "C:\Program Files\Android\Android Studio\jbr"
+
+& "$env:JAVA_HOME\bin\java.exe" -version
+.\android\gradlew.bat -p .\android --version
+```
 
 ---
 
@@ -783,229 +798,54 @@ Spaces должны использовать те же архитектурны�
 → README.md
 ```
 
-Основные файлы:
-
-```text
-PROJECT_CONTEXT.md
-ARCHITECTURE.md
-README.md
-```
-
-В будущем документация будет разделена на модульную структуру `docs/`, а `ARCHITECTURE.md` станет индексом и точкой входа.
+- `PROJECT_CONTEXT.md` — главный handoff текущего состояния.
+- `ARCHITECTURE.md` — устойчивые технические решения.
+- `README.md` — краткий обзор проекта.
 
 ---
 
-## 🧪 Проверка и сборка
+## 🔒 Неприкосновенные функции
 
-Получение зависимостей:
+Нельзя ломать:
 
-```powershell
-flutter.bat pub get
-```
-
-Запуск:
-
-```powershell
-flutter.bat run
-```
-
-Анализ:
-
-```powershell
-flutter.bat analyze
-```
-
-Тесты:
-
-```powershell
-flutter.bat test
-```
-
-Release APK:
-
-```powershell
-flutter.bat build apk --release
-```
-
-APK:
-
-```text
-build\app\outputs\flutter-apk\app-release.apk
-```
-
-Проверка diff и дерева:
-
-```powershell
-git.exe diff --check
-git.exe status --short
-```
-
-Последняя проверка Avatar Foundation:
-
-```text
-flutter.bat analyze
-→ No issues found
-
-flutter.bat test
-→ 251 tests passed
-
-flutter.bat build apk --release
-→ успешно, 54.4 MB
-```
-
-Во время сборки показывается предупреждение Kotlin Gradle Plugin. Оно не останавливает текущую сборку и будет устранено отдельным техническим этапом.
-
----
-
-## 🔧 Команды Windows
-
-В проекте используются явные executable-имена:
-
-```powershell
-flutter.bat analyze
-flutter.bat test
-flutter.bat build apk --release
-
-firebase.cmd deploy --only firestore:rules,storage
-
-git.exe status --short
-git.exe diff --check
-git.exe add .
-git.exe commit
-git.exe push
-```
-
----
-
-## 🏷 Git Tags
-
-Последний опубликованный стабильный тег:
-
-```text
-v0.6.4
-```
-
-Готовящийся тег:
-
-```text
-v0.6.5
-```
-
-Назначение:
-
-```text
-Avatar Foundation
-```
-
-Команды после слияния в `main`:
-
-```powershell
-git.exe tag -a v0.6.5 -m "Avatar Foundation"
-git.exe push origin v0.6.5
-```
-
----
-
-## 🧾 История последних этапов
-
-### v0.6.2 — Media Foundation
-
-- Firebase Storage;
-- `MediaAsset`;
-- `MediaStorageProvider`;
-- `FirebaseMediaStorageProvider`;
-- `MediaStorageService`;
-- `MediaPaths`;
-- сменяемое backend-хранилище.
-
-### v0.6.2.1 — Security Foundation
-
-- нормализация текста;
-- лимит 4096 символов;
-- атомарная отправка сообщения;
-- private chat после первого сообщения;
-- персональная очистка;
+- Auth UID ↔ `users/{uid}`;
+- регистрацию, login и постоянную сессию;
+- private/group messages;
+- создание private chat только после первого message;
+- отсутствие пустых private chats;
+- atomic first message;
 - pagination по 20;
-- усиленные Firestore Rules.
-
-### v0.6.3 — Push Notification Foundation
-
-- FCM;
-- локальные уведомления;
-- device tokens;
-- Cloud Function;
-- личные и групповые push;
-- foreground, background, terminated и locked-screen проверки.
-
-### v0.6.4 — Message Deletion Foundation
-
-- удалить у себя;
-- удалить у всех;
-- logical deletion;
-- presentation layer;
-- стабильная pagination;
-- предыдущее видимое preview.
-
-### v0.6.5 — Avatar Foundation
-
-- пользовательские аватары;
-- групповые аватары;
-- галерея;
-- камера;
-- crop;
-- thumbnail и full;
-- версионные пути;
-- атомарная замена;
+- сохранение history при realtime update;
+- personal clear;
+- delete-for-self;
+- delete-for-everyone только sender;
+- push notifications;
+- user/contact/chat search;
+- private chat search по peer identity;
+- роли и permissions;
+- защиту последнего администратора;
+- передачу прав и безопасный выход;
+- Media Foundation contracts;
+- versioned avatars;
 - rollback;
 - path-first loading;
-- кэш;
-- Security Rules;
-- отображение на основных экранах;
-- исправленный поиск private chats;
-- физические Android-проверки;
-- успешная release-сборка.
+- fallback;
+- заменяемый UI.
 
 ---
 
-## 🎯 Принципы разработки
+## 🗺 Дальнейшее направление
 
-- Архитектура важнее скорости.
-- Сначала проектирование, затем реализация.
-- Работать маленькими проверяемыми шагами.
-- Не смешивать UI, application logic и Firebase infrastructure.
-- UI должен оставаться заменяемым.
-- Domain-модели не должны зависеть от Flutter или Firebase.
-- Firestore хранит данные и metadata, но не бинарные файлы.
-- Медиа проходят сжатие и ограничения.
-- Storage paths централизованы.
-- Feature-изменения не смешиваются с обновлением toolchain.
-- После этапа выполняются analyze, test и release build.
-- После стабильной версии создаётся Git tag.
+После `v0.7.0 Image Message Foundation` планируются:
 
----
-
-## 🧭 Контроль расходов
-
-Epistola проектируется с учётом ограниченного бюджета инфраструктуры.
-
-Контролируются:
-
-- Firestore reads и writes;
-- Storage operations;
-- Storage egress;
-- размеры thumbnail и full;
-- повторные загрузки;
-- кэш;
-- временные файлы;
-- число версий;
-- реальные показатели пилотной группы.
-
-Для пилота важно собирать реальные метрики и не выполнять преждевременную оптимизацию без данных.
-
----
-
-## ❤️ О проекте
-
-Epistola — долгосрочный проект современной корпоративной платформы для общения и совместной работы.
-
-Текущая цель — безопасно и последовательно развивать стабильную основу, сохраняя возможность будущего роста, смены инфраструктуры и полной замены визуального слоя без переписывания бизнес-логики.
+- файлы и документы;
+- карточки файлов;
+- voice messages;
+- video;
+- persistent media cache;
+- automatic cache cleanup;
+- hybrid storage;
+- message media retention policy;
+- Spaces;
+- корпоративные сервисы;
+- возможный собственный backend.
