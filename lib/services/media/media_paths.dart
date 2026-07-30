@@ -35,6 +35,22 @@ class MediaPaths {
     return 'group_avatars/$chatId/avatar.jpg';
   }
 
+  static String chatMessageImageThumbnail({
+    required String chatId,
+    required String messageId,
+    required int version,
+  }) {
+    return 'chat_media/$chatId/messages/$messageId/v$version/thumb.jpg';
+  }
+
+  static String chatMessageImageFull({
+    required String chatId,
+    required String messageId,
+    required int version,
+  }) {
+    return 'chat_media/$chatId/messages/$messageId/v$version/full.jpg';
+  }
+
   static String chatAttachment({
     required String chatId,
     required String messageId,
