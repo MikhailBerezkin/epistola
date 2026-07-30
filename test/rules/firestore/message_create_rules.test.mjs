@@ -70,7 +70,7 @@ after(async () => {
   await testEnvironment.cleanup();
 });
 
-describe('Firestore message creation baseline', () => {
+describe('Firestore message creation rules', () => {
   test('allows the current legacy text message format', async () => {
     const result = createMessageBatch({
       messageId: 'legacy-message-1',
@@ -87,7 +87,7 @@ describe('Firestore message creation baseline', () => {
     await assertSucceeds(result);
   });
 
-  test('currently rejects explicit text messageType', async () => {
+  test('allows explicit text messageType', async () => {
     const result = createMessageBatch({
       messageId: 'explicit-text-message-1',
       lastMessage: 'Explicit text message',
@@ -101,27 +101,17 @@ describe('Firestore message creation baseline', () => {
       },
     });
 
-    await assertFails(result);
+    await assertSucceeds(result);
   });
 
-  test('currently rejects image message metadata', async () => {
+  test('allows valid image message metadata', async () => {
     const messageId = 'image-message-1';
 
-    const result = createMessageBatch({
+    const result = createImageMessageBatch({
       messageId,
-      lastMessage: 'Фотография',
-      messageData: {
-        messageType: 'image',
-        text: '',
-        image: imageMetadata(messageId),
-        senderId: sender.uid,
-        senderEmail: sender.email,
-        senderName: sender.name,
-        createdAt: serverTimestamp(),
-      },
     });
 
-    await assertFails(result);
+    await assertSucceeds(result);
   });
 
   test('rejects sender ID impersonation', async () => {
@@ -139,13 +129,172 @@ describe('Firestore message creation baseline', () => {
 
     await assertFails(result);
   });
+
+  test('rejects an unknown message type', async () => {
+    const result = createMessageBatch({
+      messageId: 'unknown-message-type-1',
+      lastMessage: 'Video',
+      messageData: {
+        messageType: 'video',
+        text: 'Video',
+        senderId: sender.uid,
+        senderEmail: sender.email,
+        senderName: sender.name,
+        createdAt: serverTimestamp(),
+      },
+    });
+
+    await assertFails(result);
+  });
+
+  test('rejects explicit text containing image metadata', async () => {
+    const messageId = 'text-with-image-1';
+
+    const result = createMessageBatch({
+      messageId,
+      lastMessage: 'Text message',
+      messageData: {
+        messageType: 'text',
+        text: 'Text message',
+        image: imageMetadata(messageId),
+        senderId: sender.uid,
+        senderEmail: sender.email,
+        senderName: sender.name,
+        createdAt: serverTimestamp(),
+      },
+    });
+
+    await assertFails(result);
+  });
+
+  test('rejects image message containing non-empty text', async () => {
+    const result = createImageMessageBatch({
+      messageId: 'image-with-text-1',
+      text: 'Unexpected caption',
+    });
+
+    await assertFails(result);
+  });
+
+  test('rejects an incorrect image preview in the chat', async () => {
+    const result = createImageMessageBatch({
+      messageId: 'incorrect-image-preview-1',
+      lastMessage: 'Фото',
+    });
+
+    await assertFails(result);
+  });
+
+  const invalidImageCases = [
+    {
+      name: 'rejects an image path belonging to another chat',
+      mutateImage: (image) => ({
+        ...image,
+        thumbStoragePath:
+            image.thumbStoragePath.replace(
+              `chat_media/${chatId}/`,
+              'chat_media/another-chat/',
+            ),
+      }),
+    },
+    {
+      name: 'rejects an image path belonging to another message',
+      mutateImage: (image) => ({
+        ...image,
+        fullStoragePath:
+            image.fullStoragePath.replace(
+              '/messages/',
+              '/messages/another-message/',
+            ),
+      }),
+    },
+    {
+      name: 'rejects an unsupported image provider',
+      mutateImage: (image) => ({
+        ...image,
+        provider: 'another-provider',
+      }),
+    },
+    {
+      name: 'rejects an unsupported image MIME type',
+      mutateImage: (image) => ({
+        ...image,
+        mimeType: 'image/png',
+      }),
+    },
+    {
+      name: 'rejects an unexpected image metadata field',
+      mutateImage: (image) => ({
+        ...image,
+        downloadUrl: 'https://example.com/image.jpg',
+      }),
+    },
+    {
+      name: 'rejects an oversized thumbnail',
+      mutateImage: (image) => ({
+        ...image,
+        thumbSizeBytes: (128 * 1024) + 1,
+      }),
+    },
+    {
+      name: 'rejects an oversized full image',
+      mutateImage: (image) => ({
+        ...image,
+        fullSizeBytes: (1024 * 1024) + 1,
+      }),
+    },
+    {
+      name: 'rejects invalid full image dimensions',
+      mutateImage: (image) => ({
+        ...image,
+        fullWidth: 200,
+      }),
+    },
+    {
+      name: 'rejects a fractional image version',
+      mutateImage: (image) => ({
+        ...image,
+        version: 3.5,
+      }),
+    },
+    {
+      name: 'rejects incomplete image metadata',
+      mutateImage: (image) => {
+        const result = {
+          ...image,
+        };
+
+        delete result.fullStoragePath;
+
+        return result;
+      },
+    },
+  ];
+
+  invalidImageCases.forEach(
+    ({name, mutateImage}, index) => {
+      test(name, async () => {
+        const messageId = `invalid-image-${index + 1}`;
+
+        const result = createImageMessageBatch({
+          messageId,
+          image: mutateImage(
+            imageMetadata(messageId),
+          ),
+        });
+
+        await assertFails(result);
+      });
+    },
+  );
 });
 
 async function seedExistingPrivateChat() {
   await testEnvironment.withSecurityRulesDisabled(
     async (context) => {
       const database = context.firestore();
-      const seedTimestamp = new Date('2026-07-30T09:00:00.000Z');
+      const seedTimestamp =
+          new Date('2026-07-30T09:00:00.000Z');
 
       await setDoc(
         doc(database, 'users', sender.uid),
@@ -206,12 +355,32 @@ async function seedExistingPrivateChat() {
   );
 }
 
+function createImageMessageBatch({
+  messageId,
+  image = imageMetadata(messageId),
+  text = '',
+  lastMessage = 'Фотография',
+}) {
+  return createMessageBatch({
+    messageId,
+    lastMessage,
+    messageData: {
+      messageType: 'image',
+      text,
+      image,
+      senderId: sender.uid,
+      senderEmail: sender.email,
+      senderName: sender.name,
+      createdAt: serverTimestamp(),
+    },
+  });
+}
+
 function createMessageBatch({
   messageId,
   lastMessage,
   messageData,
 }) {
-
   const context = testEnvironment.authenticatedContext(
     sender.uid,
     {
