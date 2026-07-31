@@ -1132,10 +1132,10 @@ function isDeleteLastMessageForEveryoneUpdate(chatId) {
 
             allow delete: if false;
 
-      match /messages/{messageId} {
+           match /messages/{messageId} {
         allow read: if isChatMember(chatId);
 
-                allow create: if
+        allow create: if
           isValidNewMessage(chatId, messageId)
           && (
             isFirstMessageForNewPrivateChat(
@@ -1163,6 +1163,12 @@ function isDeleteLastMessageForEveryoneUpdate(chatId) {
 
         allow delete: if false;
       }
+    }
+
+    // Grants are issued only by trusted server code through Admin SDK.
+    // Client applications must never access this collection directly.
+    match /imageMessageUploadGrants/{grantId} {
+      allow read, write: if false;
     }
 
     match /{document=**} {

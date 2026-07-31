@@ -44,6 +44,297 @@ service firebase.storage {
         && request.auth.uid == userId
         && isValidAvatarVersion(version);
     }
+        function chatData(chatId) {
+      return firestore.get(
+        /databases/(default)/documents/chats/$(chatId)
+      ).data;
+    }
+
+    function isValidMessageMediaVersion(version) {
+      return version.matches('v[1-9][0-9]*');
+    }
+
+    function isMessageMediaStatusActive(statusData) {
+      return statusData.permanent == true
+          || (
+            statusData.expiresAt is timestamp
+            && statusData.expiresAt > request.time
+          );
+    }
+
+    function isMessageMediaMutedOrBanned(statusData) {
+      return (
+            statusData.status == 'muted'
+            || statusData.status == 'banned'
+          )
+          && isMessageMediaStatusActive(statusData);
+    }
+
+    function isMessageMediaAdminOrOwner(role) {
+      return role == 'admin' || role == 'owner';
+    }
+
+    function isMessageMediaModeratorOrAbove(role) {
+      return role == 'moderator'
+          || role == 'admin'
+          || role == 'owner';
+    }
+
+    function isChatMediaMember(chatId) {
+      let chat = chatData(chatId);
+
+      return signedIn()
+          && chat.memberIds is list
+          && request.auth.uid in chat.memberIds;
+    }
+
+    function canWriteChatMedia(chatId) {
+      let chat = chatData(chatId);
+      let role = chat.memberRoles[request.auth.uid];
+      let statusData = chat.memberStatus[request.auth.uid];
+      let permission = chat.groupSettings.messagePermission;
+
+      return signedIn()
+          && chat.memberIds is list
+          && request.auth.uid in chat.memberIds
+          && (
+            chat.type == 'private'
+            || (
+              chat.type == 'group'
+              && role != 'guest'
+              && !isMessageMediaMutedOrBanned(statusData)
+              && (
+                permission == 'all'
+                || (
+                  permission == 'moderators'
+                  && isMessageMediaModeratorOrAbove(role)
+                )
+                || (
+                  permission == 'admins'
+                  && isMessageMediaAdminOrOwner(role)
+                )
+              )
+            )
+          );
+    }
+
+    function hasValidMessageMediaMetadata(
+      chatId,
+      messageId,
+      version
+    ) {
+      return request.resource.metadata.size() == 4
+          && request.resource.metadata.uploaderId
+              == request.auth.uid
+          && request.resource.metadata.chatId == chatId
+          && request.resource.metadata.messageId == messageId
+          && request.resource.metadata.version == version;
+    }
+        function hasValidFirstPrivateImageMediaMetadata(
+      chatId,
+      messageId,
+      version
+    ) {
+      return request.resource.metadata.size() == 5
+          && request.resource.metadata.uploaderId
+              == request.auth.uid
+          && request.resource.metadata.chatId == chatId
+          && request.resource.metadata.messageId == messageId
+          && request.resource.metadata.version == version
+          && request.resource.metadata.uploadGrantType
+              == 'first_private_image';
+    }
+
+    function hasValidFirstPrivateImageUploadGrant(
+      chatId,
+      messageId,
+      version
+    ) {
+      let grant = firestore.get(
+        /databases/(default)/documents/imageMessageUploadGrants/$(messageId)
+      ).data;
+
+      return grant.keys().hasAll([
+            'grantType',
+            'uploaderId',
+            'peerId',
+            'chatId',
+            'messageId',
+            'version',
+            'createdAt',
+            'expiresAt'
+          ])
+          && grant.keys().hasOnly([
+            'grantType',
+            'uploaderId',
+            'peerId',
+            'chatId',
+            'messageId',
+            'version',
+            'createdAt',
+            'expiresAt'
+          ])
+
+          && grant.grantType == 'first_private_image'
+
+          && grant.uploaderId is string
+          && grant.uploaderId == request.auth.uid
+
+          && grant.peerId is string
+          && grant.peerId.size() > 0
+          && grant.peerId != request.auth.uid
+
+          && grant.chatId is string
+          && grant.chatId == chatId
+          && (
+            chatId == grant.uploaderId + '_' + grant.peerId
+            || chatId == grant.peerId + '_' + grant.uploaderId
+          )
+
+          && grant.messageId is string
+          && grant.messageId == messageId
+
+          && grant.version is string
+          && grant.version == version
+
+          && grant.createdAt is timestamp
+          && grant.createdAt <= request.time
+
+          && grant.expiresAt is timestamp
+          && grant.expiresAt > request.time
+          && grant.expiresAt
+              <= grant.createdAt + duration.value(10, 'm');
+    }
+
+    function canUseFirstPrivateImageUploadGrant(
+      chatId,
+      messageId,
+      version
+    ) {
+      return signedIn()
+          && firestore.exists(
+            /databases/(default)/documents/imageMessageUploadGrants/$(messageId)
+          )
+          && hasValidFirstPrivateImageUploadGrant(
+            chatId,
+            messageId,
+            version
+          );
+    }
+
+        function canCreateMessageMedia(
+      chatId,
+      messageId,
+      version,
+      maxSizeBytes
+    ) {
+      return resource == null
+          && isValidMessageMediaVersion(version)
+          && request.resource.contentType == 'image/jpeg'
+          && request.resource.size > 0
+          && request.resource.size <= maxSizeBytes
+          && (
+            (
+              canUseFirstPrivateImageUploadGrant(
+                chatId,
+                messageId,
+                version
+              )
+              && hasValidFirstPrivateImageMediaMetadata(
+                chatId,
+                messageId,
+                version
+              )
+            )
+            || (
+              canWriteChatMedia(chatId)
+              && hasValidMessageMediaMetadata(
+                chatId,
+                messageId,
+                version
+              )
+            )
+          );
+    }
+        function hasValidStoredMessageMediaMetadata(
+      chatId,
+      messageId,
+      version
+    ) {
+      return (
+            resource.metadata.size() == 4
+            || (
+              resource.metadata.size() == 5
+              && resource.metadata.uploadGrantType
+                  == 'first_private_image'
+            )
+          )
+
+          && resource.metadata.uploaderId
+              == request.auth.uid
+          && resource.metadata.chatId == chatId
+          && resource.metadata.messageId == messageId
+          && resource.metadata.version == version;
+    }
+
+    function canDeleteOrphanedMessageMedia(
+      chatId,
+      messageId,
+      version
+    ) {
+      return signedIn()
+          && isValidMessageMediaVersion(version)
+
+          && hasValidStoredMessageMediaMetadata(
+            chatId,
+            messageId,
+            version
+          )
+
+          && !firestore.exists(
+            /databases/(default)/documents/chats/$(chatId)/messages/$(messageId)
+          );
+    }
+
+    match /chat_media/{chatId}/messages/{messageId}/{version}/thumb.jpg {
+      allow get: if isChatMediaMember(chatId);
+      allow list: if false;
+
+      allow create: if canCreateMessageMedia(
+        chatId,
+        messageId,
+        version,
+        128 * 1024
+      );
+
+            allow update: if false;
+
+      allow delete: if canDeleteOrphanedMessageMedia(
+        chatId,
+        messageId,
+        version
+      );
+    }
+
+    match /chat_media/{chatId}/messages/{messageId}/{version}/full.jpg {
+      allow get: if isChatMediaMember(chatId);
+      allow list: if false;
+
+      allow create: if canCreateMessageMedia(
+        chatId,
+        messageId,
+        version,
+        1024 * 1024
+      );
+
+            allow update: if false;
+
+      allow delete: if canDeleteOrphanedMessageMedia(
+        chatId,
+        messageId,
+        version
+      );
+    }
 
     match /user_avatars/{userId}/{version}/full.jpg {
       allow get: if signedIn()
