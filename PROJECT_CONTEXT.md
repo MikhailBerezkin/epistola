@@ -26,23 +26,23 @@
 Последняя стабильная версия:
 
 ```text
-v0.7.0 — Image Message Foundation
+v0.7.1 — Push Deep Link Foundation
 ```
 
 Стабильный `main`:
 
 ```text
-commit: 192f565
-tag: v0.7.0
+release merge commit: ee8b27b
+tag: v0.7.1
 ```
 
-Текущая рабочая ветка:
+Текущая ветка:
 
 ```text
-feat/v0.7.1-push-deep-link-foundation
+main
 ```
 
-Текущий этап:
+Последний завершённый этап:
 
 ```text
 v0.7.1 — Push Deep Link Foundation
@@ -58,7 +58,9 @@ v0.7.1 — Push Deep Link Foundation
 → release APK собран
 → APK установлен на физический Android-телефон
 → private и group deep links вручную проверены
-→ документация обновляется перед commit/release
+→ feature commit 21ce30f создан и отправлен
+→ release merge ee8b27b создан в main
+→ release tag v0.7.1
 ```
 
 Итоговые проверки:
@@ -618,38 +620,28 @@ Client validation не заменяет Firestore Rules.
 - duplicate route protection;
 - centralized private/group destination resolution.
 
-## 17. Git-план завершения
+## 17. Git-результат v0.7.1
 
-Сначала заменить три документа и проверить:
+```text
+feature commit:
+21ce30f feat(push): add notification deep links
 
-```powershell
-git.exe status --short
-git.exe diff --check
-git.exe diff --stat
+release merge:
+ee8b27b merge: release v0.7.1 Push Deep Link Foundation
+
+release tag:
+v0.7.1
 ```
 
-Затем commit feature branch:
+Функциональная ветка отправлена в GitHub:
 
-```powershell
-git.exe add .
-git.exe commit -m "feat(push): add notification deep links"
-git.exe push -u origin feat/v0.7.1-push-deep-link-foundation
+```text
+origin/feat/v0.7.1-push-deep-link-foundation
 ```
 
-После проверки branch:
+Release merge выполнен в `main`.
 
-```powershell
-git.exe switch main
-git.exe pull --ff-only
-git.exe merge --no-ff feat/v0.7.1-push-deep-link-foundation `
-  -m "merge: release v0.7.1 Push Deep Link Foundation"
-git.exe tag -a v0.7.1 -m "v0.7.1 Push Deep Link Foundation"
-git.exe push origin main
-git.exe push origin v0.7.1
-```
-
-Перед командами обязательно посмотреть реальный commit hash и working tree.
-
+После публикации `main` и тега рабочее дерево должно оставаться чистым.
 ## 18. Следующий этап
 
 После выпуска `v0.7.1`:

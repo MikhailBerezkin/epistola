@@ -8,11 +8,11 @@ Epistola — Android-first корпоративный мессенджер и о
 
 | Параметр | Значение |
 |---|---|
-| Последний стабильный релиз | `v0.7.0` |
-| Последний стабильный commit `main` | `192f565` |
-| Текущий функциональный этап | `v0.7.1 Push Deep Link Foundation` |
-| Рабочая ветка | `feat/v0.7.1-push-deep-link-foundation` |
-| Состояние этапа | функциональность реализована и вручную проверена; документация обновляется перед релизом |
+| Последний стабильный релиз | `v0.7.1` |
+| Release merge commit | `ee8b27b` |
+| Последний завершённый этап | `v0.7.1 Push Deep Link Foundation` |
+| Текущая ветка | `main` |
+| Состояние этапа | завершён и слит в `main`; release tag — `v0.7.1` |
 | Основная платформа | Android |
 | Backend | Firebase |
 | Репозиторий | `MikhailBerezkin/epistola` |
@@ -22,7 +22,7 @@ Epistola — Android-first корпоративный мессенджер и о
 | Android package | `com.epistola.app` |
 | Пилотная группа | около 40–50 пользователей |
 
-Текущая ветка создана от стабильного `v0.7.0 Image Message Foundation`.
+Релизная ветка была создана от `v0.7.0 Image Message Foundation` и слита в `main` release merge commit `ee8b27b`.
 
 Последние итоговые проверки функциональной ветки:
 
