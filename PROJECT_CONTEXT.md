@@ -26,1084 +26,55 @@
 Последняя стабильная версия:
 
 ```text
-v0.6.6 — Android Toolchain Foundation
+v0.7.0 — Image Message Foundation
 ```
 
 Стабильный `main`:
 
 ```text
-commit: e0a966c
-tag: v0.6.6
+commit: 192f565
+tag: v0.7.0
 ```
 
 Текущая рабочая ветка:
 
 ```text
-feat/v0.7.0-image-message-foundation
-```
-
-Текущий функциональный HEAD до обновления документации:
-
-```text
-7b7189c feat(image-message): integrate image messages into chat UI
-```
-
-Рабочая ветка:
-
-```text
-ahead of e0a966c by 17 commits
-behind by 0 commits
-```
-
-Последние функциональные commits:
-
-```text
-f5c47ae feat(image-message): add image editing before upload
-7b7189c feat(image-message): integrate image messages into chat UI
+feat/v0.7.1-push-deep-link-foundation
 ```
 
 Текущий этап:
 
 ```text
-v0.7.0 — Image Message Foundation
+v0.7.1 — Push Deep Link Foundation
 ```
 
 Состояние этапа:
 
 ```text
 функциональный контур реализован
-→ серверные функции и rules опубликованы
+→ профильные тесты пройдены
+→ полный analyze пройден
+→ полный test suite пройден
 → release APK собран
-→ основные сценарии проверены на эмуляторе
-→ основные сценарии проверены на физическом Android-телефоне
-→ документация обновляется перед выпуском v0.7.0
+→ APK установлен на физический Android-телефон
+→ private и group deep links вручную проверены
+→ документация обновляется перед commit/release
 ```
 
-После push commit `7b7189c` рабочее дерево было чистым.
-
-Сейчас локально изменяется только документация этапа.
-
----
-
-## 2. Image Message Foundation — `v0.7.0`
-
-### 2.1 Цель этапа
-
-Цель — добавить безопасную и экономную отправку JPEG-фотографий в сообщениях с сохранением существующих гарантий Epistola:
-
-- private chat создаётся только после первого успешно отправленного сообщения;
-- пустые личные чаты не создаются;
-- первое сообщение и документ чата записываются атомарно;
-- существующая пагинация не ломается;
-- realtime-обновления не удаляют уже загруженную историю;
-- удаление «у себя» и «у всех» остаётся логическим;
-- push и preview получают понятное представление изображения;
-- UI не содержит прямой Firebase business logic;
-- незавершённые загрузки очищаются;
-- оригинальный файл пользователя не загружается;
-- Firebase usage учитывает пилотную группу 40–50 пользователей.
-
-Реально проверенный пользовательский scope текущего этапа:
-
-```text
-личные чаты
-```
-
-Включая:
-
-```text
-существующий личный чат
-первая фотография новому контакту
-```
-
-Отправку изображений в групповые чаты нельзя считать завершённой без отдельной реализации и ручной проверки.
-
-### 2.2 Пользовательский поток
-
-Существующий личный чат:
-
-```text
-галерея или камера
-→ редактор изображения
-→ thumbnail + full
-→ Firebase Storage
-→ Firestore message
-→ обновление preview чата
-→ отображение у обоих пользователей
-```
-
-Первое сообщение новому контакту:
-
-```text
-выбор пользователя
-→ галерея или камера
-→ редактор изображения
-→ подготовка thumbnail + full
-→ получение server-side upload grant
-→ загрузка файлов
-→ атомарное создание private chat и первого image message
-→ появление чата у обоих пользователей
-```
-
-При отмене на любом пользовательском шаге:
-
-```text
-чат не создаётся
-сообщение не создаётся
-загрузка не начинается или очищается
-```
-
----
-
-## 3. Domain и metadata изображений
-
-### 3.1 Типы сообщений
-
-Введены доменные модели:
-
-```text
-MessageType
-MessageContent
-MessagePreview
-MessagePushRepresentation
-ImageMessageMetadata
-ImageMessageLimits
-ImageMessageSendState
-ImageMessageDeletionPolicy
-```
-
-Поддерживаемые пользовательские типы:
-
-```text
-text
-image
-```
-
-Неизвестный или некорректный тип не должен незаметно интерпретироваться как валидное изображение.
-
-### 3.2 Image metadata
-
-Image message содержит согласованную пару:
-
-```text
-thumbnail
-full
-```
-
-Оба варианта обязаны:
-
-- принадлежать одному сообщению;
-- иметь одинаковый provider;
-- иметь одинаковую положительную version;
-- использовать MIME type `image/jpeg`;
-- иметь разные Storage paths;
-- иметь положительные размеры файлов;
-- иметь положительные размеры изображения;
-- сохранять одинаковое соотношение сторон с небольшим допуском округления.
-
-Firestore-представление image metadata содержит:
-
-```text
-provider
-thumbStoragePath
-fullStoragePath
-thumbSizeBytes
-fullSizeBytes
-thumbWidth
-thumbHeight
-fullWidth
-fullHeight
-mimeType
-version
-```
-
-Поддерживаемый provider:
-
-```text
-firebase
-```
-
-Поддерживаемый MIME type:
-
-```text
-image/jpeg
-```
-
-### 3.3 Лимиты
-
-Thumbnail:
-
-```text
-максимальный размер файла: 128 KB
-максимальная сторона: 480 px
-```
-
-Full:
-
-```text
-целевой размер файла: 512 KB
-абсолютный максимум: 1 MB
-максимальная сторона: 1920 px
-```
-
-Допустимое расхождение пропорций thumbnail и full из-за округления:
-
-```text
-0.02
-```
-
-Оригинальный файл из галереи или камеры в Firebase Storage не загружается.
-
----
-
-## 4. Storage paths и cache keys
-
-Версионные пути:
-
-```text
-chat_media/{chatId}/messages/{messageId}/v{version}/thumb.jpg
-chat_media/{chatId}/messages/{messageId}/v{version}/full.jpg
-```
-
-Текущая версия изображения сообщения:
-
-```text
-version > 0
-```
-
-Cache keys:
-
-```text
-{thumbnailStoragePath}@{version}
-{fullStoragePath}@{version}
-```
-
-Thumbnail используется в ленте сообщений.
-
-Full загружается только после явного открытия фотографии пользователем.
-
-Это уменьшает:
-
-- сетевой трафик;
-- лишнюю загрузку больших файлов;
-- нагрузку на Firebase Storage;
-- потребление памяти в длинных чатах.
-
----
-
-## 5. Подготовка изображения
-
-### 5.1 Источники
-
-Поддерживаются:
-
-```text
-галерея
-камера
-Android lost-data recovery
-```
-
-Подготовка не начинается, если пользователь:
-
-- отменил выбор;
-- отменил камеру;
-- отменил редактор;
-- Android не вернул потерянное изображение.
-
-### 5.2 Редактор
-
-После выбора или фотографирования открывается редактор:
-
-```text
-Редактирование фотографии
-```
-
-Поддерживается:
-
-- свободный crop;
-- изменение рамки;
-- исходное соотношение сторон;
-- квадрат;
-- `3:2`;
-- `4:3`;
-- `16:9`;
-- поворот;
-- сброс;
-- подтверждение;
-- отмена без отправки.
-
-Для image messages используется прямоугольный свободный crop.
-
-Квадратный avatar crop остаётся отдельным пользовательским сценарием.
-
-### 5.3 Processor
-
-После редактора создаются два JPEG-файла:
-
-```text
-thumbnail
-full
-```
-
-Processor выполняет:
-
-- чтение исходных размеров;
-- уменьшение без увеличения маленького изображения;
-- сохранение пропорций;
-- отдельные ограничения thumbnail и full;
-- повторные попытки качества;
-- проверку фактического размера результата;
-- проверку фактических dimensions;
-- проверку согласованности thumbnail и full;
-- безопасную очистку временной рабочей папки.
-
-Если processor не может получить валидную согласованную пару, отправка прекращается.
-
-### 5.4 Временные файлы
-
-Гарантии:
-
-- оригинальный picker-файл не удаляется приложением;
-- временный crop-файл удаляется после подготовки;
-- рабочая директория processor очищается;
-- ошибка cleanup не должна заменять исходную ошибку подготовки;
-- успешно подготовленные файлы освобождаются после завершения upload/send pipeline.
-
----
-
-## 6. Upload foundation
-
-### 6.1 Storage gateway
-
-Добавлен отдельный контракт:
-
-```text
-ImageMessageStorageGateway
-```
-
-Firebase-реализация:
-
-```text
-FirebaseImageMessageStorageAdapter
-```
-
-Gateway предоставляет отдельные операции:
-
-```text
-uploadThumbnail
-uploadFull
-delete
-```
-
-UI не обращается к Firebase Storage напрямую.
-
-### 6.2 Metadata загрузки
-
-Каждый Storage object получает canonical metadata, связанную с:
-
-- uploader;
-- chat;
-- message;
-- version;
-- variant;
-- MIME type;
-- размером и назначением объекта.
-
-Допускаются только canonical paths:
-
-```text
-.../thumb.jpg
-.../full.jpg
-```
-
-Произвольные дополнительные пути не должны приниматься как image message assets.
-
-### 6.3 Upload orchestration
-
-Сервис:
-
-```text
-ImageMessageUploadService
-```
-
-отвечает за:
-
-- валидацию входных идентификаторов;
-- загрузку thumbnail;
-- загрузку full;
-- формирование `ImageMessageMetadata`;
-- проверку persistable metadata;
-- cleanup уже загруженных объектов при частичной ошибке.
-
-Порядок:
-
-```text
-upload thumbnail
-→ upload full
-→ validate metadata
-→ вернуть согласованную пару
-```
-
-При ошибке после загрузки thumbnail:
-
-```text
-thumbnail удаляется
-```
-
-При ошибке после загрузки обоих вариантов:
-
-```text
-thumbnail и full удаляются
-```
-
----
-
-## 7. Отправка в существующий чат
-
-Application services:
-
-```text
-ExistingImageMessageSendService
-ExistingImageMessageWriteService
-```
-
-Порядок:
-
-```text
-подготовка изображения
-→ резервирование messageId
-→ загрузка Storage assets
-→ создание image message
-→ обновление lastMessage
-```
-
-Запись Firestore должна сохранять согласованность:
-
-```text
-message document
-chat lastMessage
-chat lastMessageAt
-```
-
-Preview чата для image message:
-
-```text
-Фотография
-```
-
-Если Firestore write завершается ошибкой после upload:
-
-```text
-загруженные Storage assets очищаются best-effort
-```
-
-Успешное сообщение не должно удаляться из-за последующей незначительной ошибки cleanup временных локальных файлов.
-
----
-
-## 8. Первая фотография нового private chat
-
-Application services:
-
-```text
-FirstPrivateImageMessageSendService
-FirstPrivateImageMessageWriteService
-FirstPrivateImageUploadGrantService
-```
-
-Главное требование:
-
-```text
-выбор пользователя и выход назад
-→ не создаёт private chat
-```
-
-То же правило действует при фотографии:
-
-```text
-отмена галереи
-отмена камеры
-отмена редактора
-ошибка подготовки
-ошибка grant
-ошибка загрузки
-ошибка Firestore write
-→ не оставляют пустой private chat
-```
-
-### 8.1 Server-side upload grant
-
-Для безопасной загрузки первой фотографии до существования chat document используется Cloud Function:
-
-```text
-createFirstPrivateImageUploadGrant
-```
-
-Регион:
-
-```text
-europe-west1
-```
-
-Grant связывает:
-
-- uploader;
-- peer;
-- canonical private chat ID;
-- messageId;
-- version.
-
-Клиент не должен самостоятельно выдавать себе grant.
-
-Grant не может использоваться:
-
-- другим uploader;
-- для другого peer;
-- для другого chatId;
-- для другого messageId;
-- для другой version;
-- для произвольного Storage path.
-
-### 8.2 Атомарное создание
-
-После успешной загрузки выполняется атомарная Firestore-операция:
-
-```text
-создание private chat
-создание первого image message
-обновление lastMessage
-обновление lastMessageAt
-```
-
-При конфликте существующего чата используется безопасный путь обновления существующего private chat.
-
----
-
-## 9. Rollback и remote cleanup
-
-Модели и сервисы:
-
-```text
-ImageMessageRemoteCleanupPlan
-ImageMessageRemoteCleanupService
-```
-
-Cleanup plan знает, какие remote assets были созданы текущей попыткой.
-
-Основные случаи:
-
-```text
-ошибка thumbnail upload
-→ удалять нечего
-
-thumbnail загружен, full не загружен
-→ удалить thumbnail
-
-thumbnail и full загружены, Firestore write не выполнен
-→ удалить thumbnail и full
-
-Firestore write выполнен успешно
-→ не удалять активные assets
-```
-
-Remote cleanup выполняется best-effort.
-
-Ошибка удаления orphan-файла:
-
-- не должна скрывать основную ошибку;
-- не должна превращать успешную отправку в неуспешную;
-- должна оставаться доступной для будущей диагностики и retention cleanup.
-
----
-
-## 10. Firestore Rules
-
-Firestore Rules расширены для image messages.
-
-Проверяется:
-
-- пользователь аутентифицирован;
-- senderId соответствует `request.auth.uid`;
-- пользователь является участником чата;
-- message type поддерживается;
-- text message имеет допустимую text-структуру;
-- image message содержит полную image metadata;
-- provider равен `firebase`;
-- MIME type равен `image/jpeg`;
-- version положительна;
-- thumbnail и full paths canonical;
-- paths соответствуют chatId, messageId и version;
-- размеры файлов находятся в лимитах;
-- dimensions находятся в лимитах;
-- thumbnail и full согласованы;
-- first private message создаётся только по разрешённому атомарному сценарию;
-- upload grant нельзя подменить другой версией или другими идентификаторами.
-
-Добавлены отдельные emulator tests:
-
-```text
-image_message_upload_grant_rules.test.mjs
-message_create_rules.test.mjs
-private_chat_first_message_rules.test.mjs
-```
-
-Firestore Rules опубликованы в:
-
-```text
-epistola-434b7
-```
-
----
-
-## 11. Storage Rules
-
-Storage Rules расширены для:
-
-```text
-chat_media/{chatId}/messages/{messageId}/v{version}/thumb.jpg
-chat_media/{chatId}/messages/{messageId}/v{version}/full.jpg
-```
-
-Проверяется:
-
-- пользователь аутентифицирован;
-- MIME type `image/jpeg`;
-- canonical path;
-- variant соответствует имени файла;
-- metadata соответствует пути;
-- uploader соответствует текущему пользователю;
-- размеры находятся в лимитах;
-- существующий чат разрешает upload только участнику;
-- первая фотография нового private chat требует валидный server-side grant;
-- grant должен совпадать по uploader, peer, chatId, messageId и version;
-- нельзя использовать grant другой версии;
-- нельзя загружать произвольный третий файл;
-- удаление разрешается только для canonical image assets в рамках установленной политики.
-
-Добавлен крупный набор Storage Rules emulator tests:
-
-```text
-test/rules/storage/image_message_storage_rules.test.mjs
-```
-
-Storage Rules опубликованы в:
-
-```text
-epistola-434b7
-```
-
----
-
-## 12. Push и preview
-
-Доменные resolvers:
-
-```text
-MessagePreviewResolver
-MessagePushResolver
-```
-
-Для text message:
-
-```text
-preview → текст сообщения
-push → текст сообщения
-```
-
-Для image message:
-
-```text
-preview → Фотография
-push → Фотография
-```
-
-Cloud Function push не должна выводить внутренний Storage path или техническую metadata.
-
-Существующая Cloud Function:
-
-```text
-sendMessageNotification
-```
-
-сохраняет поддержку:
-
-- личных чатов;
-- групповых чатов;
-- cleanup невалидных device tokens;
-- региона `europe-west1`.
-
-Известное ограничение push:
-
-```text
-нажатие на уведомление открывает приложение,
-но пока не переводит непосредственно в нужный чат
-```
-
----
-
-## 13. Совместимость с удалением сообщений
-
-Image message использует существующую логическую модель удаления.
-
-Удаление «у себя»:
-
-```text
-сообщение скрывается только для текущего пользователя
-Storage assets сохраняются для других участников
-```
-
-Удаление «у всех»:
-
-```text
-сообщение логически помечается deletedForEveryone
-Storage assets не удаляются немедленно
-```
-
-Текущая политика:
-
-```text
-shouldDeleteStorageImmediately == false
-```
-
-Причина:
-
-- другие участники могут ещё иметь доступ при delete-for-self;
-- немедленное физическое удаление может конфликтовать с realtime и cache;
-- нужен отдельный retention cleanup;
-- логическое удаление уже является источником пользовательской видимости.
-
-Будущий cleanup удалённых image assets должен проектироваться отдельно и не должен ломать историю, rollback и права доступа.
-
----
-
-## 14. Интеграция в UI
-
-### 14.1 Меню вложений
-
-По нажатию на кнопку `+` открывается bottom sheet.
-
-Текущие пункты:
-
-```text
-Галерея
-Камера
-Файл
-Голосовое
-```
-
-Работают:
-
-```text
-Галерея
-Камера
-```
-
-Пункты:
-
-```text
-Файл
-Голосовое
-```
-
-пока показывают информационное уведомление о будущей версии.
-
-Временно удалены из интерфейса:
-
-```text
-Геопозиция
-Контакт
-```
-
-Они будут возвращаться только после отдельного проектирования.
-
-### 14.2 Экран «Новое сообщение»
-
-На экране оставлены:
-
-```text
-Найти пользователя
-Создать группу
-```
-
-Удалён пункт:
-
-```text
-Создать пространство
-```
-
-Spaces не должны проектироваться как обычный тип чата.
-
-Будущее направление:
-
-```text
-Spaces → внутренние приложения Epistola
-```
-
-### 14.3 Состояние отправки
-
-Во время подготовки и загрузки:
-
-- отображается индикатор;
-- повторное нажатие блокируется;
-- текстовая отправка не должна запускать конфликтующую image-операцию;
-- ошибка возвращает интерфейс в доступное состояние;
-- отмена не считается ошибкой.
-
-### 14.4 Message presentation
-
-`MessagePresentation` расширен без переноса Firebase logic в UI.
-
-Image message содержит:
-
-```text
-isImageMessage
-imageMetadata
-```
-
-Основная цепочка отображения:
-
-```text
-Firestore snapshot
-→ message mappers
-→ MessagePresentation
-→ MessageItem
-→ MessageBubble
-→ ImageMessageThumbnail
-```
-
----
-
-## 15. Thumbnail в ленте
-
-Компонент:
-
-```text
-ImageMessageThumbnail
-```
-
-Поведение:
-
-- использует thumbnail Storage path;
-- получает download URL через `MediaStorageService`;
-- использует versioned cache key;
-- сохраняет пропорции изображения;
-- отображает progress;
-- отображает retry при ошибке;
-- открывает full viewer по нажатию.
-
-Thumbnail отображается внутри обычного message bubble.
-
-Время сообщения остаётся видимым.
-
-Изображение корректно загружается снова после перезапуска приложения.
-
----
-
-## 16. Полноэкранный просмотр
-
-Экран:
-
-```text
-ImageMessageViewerScreen
-```
-
-Используется:
-
-```text
-fullStoragePath
-fullCacheKey
-```
-
-Поддерживается:
-
-- чёрный фон;
-- AppBar;
-- загрузка full-варианта;
-- progress;
-- retry;
-- pinch-to-zoom;
-- перемещение увеличенного изображения;
-- максимальное увеличение до `5x`;
-- двойное нажатие для увеличения;
-- повторное двойное нажатие для сброса;
-- стрелка AppBar;
-- системная Android-кнопка «Назад»;
-- возврат в тот же чат;
-- сохранение текущего положения списка после возврата.
-
-Full-файл не загружается для обычного показа ленты.
-
----
-
-## 17. Автопрокрутка
-
-### 17.1 Проблема крупного изображения
-
-После появления крупного image bubble высота списка могла окончательно измениться уже после первой прокрутки.
-
-Результат:
-
-```text
-следующее текстовое сообщение
-могло появиться ниже видимой области
-```
-
-Исправление:
-
-- первая прокрутка после изменения списка;
-- повторная корректирующая прокрутка после layout;
-- таймер корректировки отменяется в `dispose`;
-- принудительный scroll выполняется только если пользователь был возле низа.
-
-### 17.2 Виртуальная клавиатура
-
-На физическом телефоне клавиатура уменьшает доступную высоту чата.
-
-Добавлен учёт:
-
-```text
-MediaQuery.viewInsets.bottom
-```
-
-`MessagesList` получает изменение keyboard inset и корректирует нижнюю позицию после перестройки layout.
-
-Проверено:
-
-- отправка фотографии;
-- открытие клавиатуры;
-- отправка текста;
-- новое сообщение полностью видно над клавиатурой;
-- второе последовательное сообщение также прокручивается;
-- чтение старой истории выше не прерывается принудительным переходом вниз.
-
----
-
-## 18. Проверенные Android-сценарии
-
-### 18.1 Существующий private chat
-
-Проверено:
-
-- открытие меню вложений;
-- выбор фотографии из галереи;
-- съёмка камерой;
-- стандартное подтверждение снимка камеры;
-- открытие редактора;
-- crop;
-- изменение пропорций;
-- подтверждение редактора;
-- отмена редактора;
-- индикатор подготовки;
-- индикатор загрузки;
-- блокировка повторной отправки;
-- появление фотографии в ленте;
-- правильные пропорции;
-- правильное время;
-- получение фотографии собеседником;
-- повторная загрузка после перезапуска;
-- preview `Фотография` в списке чатов.
-
-### 18.2 Первая фотография новому контакту
-
-Проверено:
-
-```text
-Новое сообщение
-→ Найти пользователя
-→ открыть пользователя
-→ не отправлять текст
-→ выбрать фотографию
-```
-
-Результат:
-
-- создаётся private chat;
-- первая фотография видна отправителю;
-- первая фотография видна собеседнику;
-- чат появляется в общем списке;
-- preview показывает `Фотография`;
-- пустой чат до отправки не создаётся.
-
-### 18.3 Viewer
-
-Проверено:
-
-- открытие фотографии по нажатию;
-- загрузка full;
-- zoom;
-- перемещение;
-- двойное нажатие;
-- возврат стрелкой AppBar;
-- возврат системной Android-кнопкой;
-- возврат в чат без потери позиции.
-
-### 18.4 Редактор
-
-Проверено:
-
-- редактор после галереи;
-- редактор после камеры;
-- crop применяется;
-- отмена не отправляет сообщение;
-- отправляется отредактированная версия;
-- редактор работает на физическом Android-телефоне.
-
-Отображение crop UI на эмуляторе может выглядеть необычно из-за размера и конфигурации виртуального экрана. Финальная функциональная проверка выполнена на телефоне.
-
-### 18.5 Автоскролл
-
-Проверено:
-
-- сообщение после фотографии прокручивается вниз;
-- последовательные сообщения остаются видимыми;
-- исправление работает с открытой виртуальной клавиатурой на телефоне;
-- ручное чтение старых сообщений не должно принудительно прерываться.
-
----
-
-## 19. Проверки текущей ветки
-
-Последние итоговые проверки:
+Итоговые проверки:
 
 ```text
 flutter.bat analyze
 → No issues found
-```
 
-Полный Flutter test suite:
-
-```text
 flutter.bat test
-→ 386 tests passed
-```
+→ 409 tests passed
 
-Cloud Functions TypeScript build:
+flutter.bat build apk --release
+→ успешно, 55.3 MB
 
-```text
-npm.cmd --prefix functions run build
-→ tsc успешно
-```
-
-Cloud Functions lint:
-
-```text
-npm.cmd --prefix functions run lint
-→ успешно
-```
-
-Известное предупреждение lint:
-
-```text
-SUPPORTED TYPESCRIPT VERSIONS: >=3.3.1 <5.2.0
-YOUR TYPESCRIPT VERSION: 6.0.3
-```
-
-Оно не остановило build или lint.
-
-`git.exe diff --check` после восстановления generated-файлов:
-
-```text
-пустой вывод
+git.exe diff --check
+→ без вывода
 ```
 
 Release APK:
@@ -1112,577 +83,460 @@ Release APK:
 build\app\outputs\flutter-apk\app-release.apk
 ```
 
-APK установлен и проверен на физическом Android-телефоне.
+Cloud Functions, Firestore Rules и Storage Rules на текущем этапе не менялись. Firebase deploy для `v0.7.1` не требуется.
 
-Диагностические тестовые строки:
+Рабочее дерево до обновления документации содержит только Push Deep Link Foundation:
+
+```text
+M  lib/main.dart
+M  lib/services/notification_service.dart
+?? lib/domain/models/push_deep_link_request.dart
+?? lib/services/push/
+?? test/domain/models/push_deep_link_request_test.dart
+?? test/services/push/
+```
+
+Generated plugin files восстановлены и не должны входить в feature commit.
+
+## 2. Цель этапа
+
+После нажатия на notification открыть именно тот private или group chat, к которому относится сообщение.
+
+До `v0.7.1`:
+
+```text
+notification tap
+→ приложение открывается
+→ пользователь остаётся на главном экране
+```
+
+После `v0.7.1`:
+
+```text
+notification tap
+→ payload validation
+→ auth + membership validation
+→ destination resolution
+→ ChatScreen
+```
+
+Требования:
+
+- foreground, background, terminated и cold start;
+- private и group chats;
+- чужой или удалённый chat не открывается;
+- приложение не падает;
+- один tap не создаёт duplicate route;
+- тот же chat можно открыть снова после закрытия route;
+- без постоянных Firestore listeners;
+- без ненужного изменения server contract.
+
+## 3. Серверный контракт
+
+Cloud Function `sendMessageNotification` уже передавала:
+
+```text
+data: {
+  chatId
+}
+```
+
+Принятое решение:
+
+```text
+не менять functions/src/index.ts
+не выполнять Firebase deploy
+использовать существующий data.chatId
+```
+
+## 4. PushDeepLinkRequest
+
+Файл:
+
+```text
+lib/domain/models/push_deep_link_request.dart
+```
+
+Ответственность:
+
+- `chatId` из `RemoteMessage.data`;
+- `chatId` из local payload;
+- только String;
+- `trim()`;
+- reject empty;
+- reject `/`;
+- value equality;
+- отсутствие зависимостей Flutter/Firebase.
+
+Методы:
+
+```text
+fromRemoteData
+fromLocalPayload
+tryParseChatId
+```
+
+Тесты:
+
+```text
+test/domain/models/push_deep_link_request_test.dart
+8 tests
+```
+
+Проверены valid remote/local, whitespace, missing, non-string, empty, slash, equality и `toString`.
+
+## 5. PushDeepLinkResolver
+
+Файл:
+
+```text
+lib/services/push/push_deep_link_resolver.dart
+```
+
+Injected dependencies:
+
+```text
+currentUserIdProvider
+loadChat
+loadUser
+```
+
+Firebase factory:
+
+```text
+PushDeepLinkResolver.firebase()
+```
+
+Алгоритм:
+
+```text
+current UID
+→ chats/{chatId}
+→ memberIds
+→ type
+→ private: ChatPeerResolver + AppUser
+→ group: name
+→ PushDeepLinkDestination
+```
+
+Поддерживаются:
+
+```text
+private
+group
+```
+
+Возвращает `null`, если:
+
+- нет auth;
+- chat отсутствует;
+- `memberIds` некорректен;
+- current user не member;
+- type неизвестен;
+- private chat не содержит peer.
+
+Private title:
+
+```text
+peer.name
+→ peer.email
+→ stored chat name
+→ Личный чат
+```
+
+Group fallback:
+
+```text
+Без названия
+```
+
+Тесты:
+
+```text
+test/services/push/push_deep_link_resolver_test.dart
+9 tests
+```
+
+## 6. PushDeepLinkCoordinator
+
+Файл:
+
+```text
+lib/services/push/push_deep_link_coordinator.dart
+```
+
+Coordinator не зависит от Flutter Navigator.
+
+Ответственность:
+
+- pending queue;
+- navigation readiness;
+- queue deduplication;
+- sequential resolve;
+- destination opener;
+- unavailable/error callbacks;
+- duplicate route protection;
+- retry после ошибки;
+- повторное открытие после закрытия route.
+
+Структуры:
+
+```text
+Queue<PushDeepLinkRequest> _pendingRequests
+Set<String> _queuedChatIds
+Set<String> _openedChatIds
+```
+
+Методы:
+
+```text
+handle
+flush
+clearPending
+```
+
+Cold-start guarantee:
+
+```text
+request до Navigator
+→ queue
+→ markNavigationReady
+→ flush
+→ resolver
+→ route
+```
+
+Тесты:
+
+```text
+test/services/push/push_deep_link_coordinator_test.dart
+6 tests
+```
+
+## 7. PushDeepLinkNavigation
+
+Файл:
+
+```text
+lib/services/push/push_deep_link_navigation.dart
+```
+
+Flutter adapter содержит:
+
+```text
+GlobalKey<NavigatorState>
+PushDeepLinkResolver
+PushDeepLinkCoordinator
+```
+
+Lifecycle:
+
+```text
+markNavigationReady()
+markNavigationUnavailable()
+```
+
+Open flow:
+
+```text
+Navigator.push<void>
+→ MaterialPageRoute<void>
+→ ChatScreen
+```
+
+Private destination передаёт `peerUser`. Group destination передаёт `peerUser: null`.
+
+Unavailable chat не открывает route. Errors логируются только в debug.
+
+## 8. main.dart integration
+
+Изменён:
+
+```text
+lib/main.dart
+```
+
+Startup:
+
+```text
+WidgetsFlutterBinding.ensureInitialized
+→ Firebase.initializeApp
+→ background handler
+→ PushDeepLinkNavigation
+→ NotificationService.initialize(coordinator)
+→ AppSettings.loadThemeMode
+→ runApp
+→ NotificationService.startMessaging
+```
+
+`MaterialApp` получает `navigatorKey`.
+
+После первого frame вызывается `markNavigationReady()`. При dispose — `markNavigationUnavailable()`.
+
+## 9. NotificationService integration
+
+Изменён:
+
+```text
+lib/services/notification_service.dart
+```
+
+Initialize contract:
+
+```text
+NotificationService.initialize(
+  deepLinkCoordinator: ...
+)
+```
+
+Remote tap:
+
+```text
+FirebaseMessaging.onMessageOpenedApp
+→ PushDeepLinkRequest.fromRemoteData
+→ coordinator.handle
+```
+
+Cold start:
+
+```text
+FirebaseMessaging.getInitialMessage
+→ request
+→ coordinator.handle
+```
+
+Foreground:
+
+```text
+FirebaseMessaging.onMessage
+→ local notification
+→ payload: request.chatId
+```
+
+Local tap:
+
+```text
+NotificationResponse.payload
+→ PushDeepLinkRequest.fromLocalPayload
+→ coordinator.handle
+```
+
+NotificationService не читает chat document, не проверяет membership и не создаёт `ChatScreen` напрямую.
+
+## 10. Ручные проверки
+
+Физический телефон — получатель. Android Emulator — отправитель.
+
+### 10.1 Private background
+
+```text
+app свёрнуто
+→ private push
+→ правильные title/body
+→ tap
+→ нужный private chat
+→ duplicate route отсутствует
+```
+
+### 10.2 Private terminated / cold start
+
+```text
+app удалено из recent tasks
+→ push
+→ tap
+→ app запускается
+→ нужный private chat открывается
+```
+
+### 10.3 Group chat
+
+```text
+group push
+→ tap
+→ нужный group chat
+```
+
+### 10.4 Foreground local notification
+
+```text
+app открыто
+→ message
+→ local notification
+→ tap
+→ нужный chat
+```
+
+### 10.5 Из другого chat screen
+
+```text
+открыт chat A
+→ push chat B
+→ tap
+→ chat B
+→ back возвращает назад
+```
+
+### 10.6 Delayed tap
+
+```text
+notification получено
+→ прошло время
+→ tap
+→ нужный chat открывается
+```
+
+Итог пользователя:
+
+```text
+уведомление пришло: да
+имя и текст правильные: да
+нужный чат открылся: да
+двойного открытия нет: да
+```
+
+## 11. Автоматические проверки
+
+Профильная серия:
+
+```powershell
+flutter.bat test `
+  test/domain/models/push_deep_link_request_test.dart `
+  test/services/push/push_deep_link_resolver_test.dart `
+  test/services/push/push_deep_link_coordinator_test.dart
+```
+
+```text
+23 tests passed
+```
+
+Полная серия:
+
+```text
+flutter.bat analyze → No issues found
+flutter.bat test → 409 tests passed
+flutter.bat build apk --release → 55.3 MB
+```
+
+Ожидаемый диагностический вывод image tests:
 
 ```text
 Corrupt JPEG data: 2 extraneous bytes before marker 0xd9
-JPEG datastream contains no image
+Shell: JPEG datastream contains no image
 ```
 
-появляются из-за намеренно некорректных JPEG-данных в тестах и не являются падением тестов.
+Это не падение suite, а проверка повреждённых JPEG.
 
----
+## 12. Generated files
 
-## 20. Cloud deployments
-
-Успешно опубликована Cloud Function:
+Flutter меняет:
 
 ```text
-createFirstPrivateImageUploadGrant
+linux/flutter/generated_plugins.cmake
+macos/Flutter/GeneratedPluginRegistrant.swift
+windows/flutter/generated_plugins.cmake
 ```
 
-Регион:
-
-```text
-europe-west1
-```
-
-Также продолжает работать:
-
-```text
-sendMessageNotification
-```
-
-Firestore Rules опубликованы:
-
-```text
-firebase.cmd deploy --only firestore
-```
-
-Storage Rules опубликованы:
-
-```text
-firebase.cmd deploy --only storage
-```
-
-Firebase project:
-
-```text
-epistola-434b7
-```
-
-Firebase CLI может показывать уведомление о новой версии. Это не является ошибкой deploy.
-
----
-
-## 21. Завершённые стабильные этапы
-
-### `v0.6.2` — Media Foundation
-
-Реализовано:
-
-- `MediaAsset`;
-- `MediaStorageProvider`;
-- `FirebaseMediaStorageProvider`;
-- `MediaStorageService`;
-- `MediaPaths`;
-- Firebase Storage foundation;
-- базовые Storage Rules.
-
-### `v0.6.2.1` — Security Foundation
-
-Реализовано:
-
-- private chat создаётся только после первого сообщения;
-- отсутствие пустых private chats;
-- pagination по 20 сообщений;
-- realtime merge без потери загруженной истории;
-- атомарное message + chat metadata;
-- персональная очистка private chat;
-- усиленные Firestore Rules;
-- роли и membership guarantees.
-
-### `v0.6.3` — Push Notification Foundation
-
-Реализовано:
-
-- FCM;
-- foreground notifications;
-- background notifications;
-- terminated-state notifications;
-- device tokens;
-- Cloud Function `sendMessageNotification`;
-- регион `europe-west1`;
-- удаление невалидных токенов;
-- push для личных и групповых сообщений.
-
-### `v0.6.4` — Message Deletion Foundation
-
-Реализовано:
-
-- удалить сообщение «у себя»;
-- удалить собственное сообщение «у всех»;
-- логическое удаление;
-- `hiddenFor`;
-- `deletedForEveryone`;
-- presentation layer;
-- предыдущий видимый message preview;
-- защита удаления «у всех» только для sender.
-
-### `v0.6.5` — Avatar Foundation
-
-Реализовано:
-
-- пользовательские аватары;
-- групповые аватары;
-- галерея;
-- камера;
-- квадратный crop;
-- thumbnail и full;
-- versioned Storage paths;
-- атомарная замена;
-- rollback;
-- cleanup старой версии;
-- path-first loading;
-- cache key `path@version`;
-- fallback на инициалы;
-- fallback группы;
-- отображение на основных экранах.
-
-### `v0.6.6` — Android Toolchain Foundation
-
-Стабильная конфигурация:
-
-```text
-Flutter: 3.44.1
-Dart: 3.12.1
-Java: 21.0.10
-Gradle: 9.1.0
-Android Gradle Plugin: 9.0.1
-Kotlin Gradle Plugin: 2.3.20
-```
-
-Технический релиз не добавлял пользовательских функций.
-
-Известное предупреждение Built-in Kotlin связано с внутренней конфигурацией плагинов:
-
-```text
-firebase_storage
-flutter_image_compress_common
-```
-
-Предупреждение не блокирует release build.
-
----
-
-## 22. Avatar Foundation — действующие гарантии
-
-### 22.1 User avatars
-
-Storage paths:
-
-```text
-user_avatars/{uid}/v{version}/thumb.jpg
-user_avatars/{uid}/v{version}/full.jpg
-```
-
-Metadata:
-
-```text
-avatarProvider
-avatarThumbStoragePath
-avatarFullStoragePath
-avatarThumbSizeBytes
-avatarFullSizeBytes
-avatarVersion
-avatarUpdatedAt
-```
-
-Порядок замены:
-
-```text
-подготовка
-→ upload новой версии
-→ transaction metadata
-→ best-effort cleanup старой версии
-```
-
-При ошибке старый активный аватар сохраняется.
-
-### 22.2 Group avatars
-
-Storage paths:
-
-```text
-group_avatars/{chatId}/v{version}/thumb.jpg
-group_avatars/{chatId}/v{version}/full.jpg
-```
-
-Изменять групповой аватар могут:
-
-```text
-owner
-admin
-```
-
-Metadata хранится в:
-
-```text
-chats/{chatId}
-```
-
-### 22.3 Отображение
-
-Пользовательские аватары отображаются:
-
-- в профиле;
-- в списке личных чатов;
-- в поиске;
-- в контактах;
-- в заголовке private chat;
-- до отправки первого сообщения;
-- у участников группы.
-
-Групповые аватары отображаются:
-
-- в информации о группе;
-- в основном списке групп;
-- в поиске;
-- в заголовке group chat.
-
----
-
-## 23. Архитектурные границы
-
-Основная цепочка:
-
-```text
-Flutter UI
-→ controllers / presentation
-→ application services
-→ domain models and contracts
-→ Firebase gateways / adapters
-```
-
-Для image messages:
-
-```text
-MessageInput / MessageInputArea
-→ image preparation
-→ image upload service
-→ existing or first-private send service
-→ writer
-→ Firebase adapters
-```
-
-Обратный путь отображения:
-
-```text
-Firestore
-→ mappers
-→ MessagePresentation
-→ MessageBubble
-→ ImageMessageThumbnail
-→ ImageMessageViewerScreen
-```
-
-### 23.1 UI не должен
-
-UI не должен содержать:
-
-- прямой Firebase Storage upload;
-- Firestore transaction logic;
-- upload grant security;
-- rollback;
-- remote cleanup;
-- подготовку thumbnail/full;
-- правила доступа;
-- canonical path validation.
-
-### 23.2 Services отвечают за
-
-Services отвечают за:
-
-- подготовку;
-- crop integration;
-- compression;
-- upload;
-- orchestration;
-- atomic write;
-- rollback;
-- cleanup;
-- mapping;
-- preview;
-- push representation.
-
-### 23.3 Domain отвечает за
-
-Domain отвечает за:
-
-- типы сообщений;
-- image metadata;
-- лимиты;
-- invariants;
-- send states;
-- deletion policy;
-- независимые от UI решения.
-
-### 23.4 Firebase adapters отвечают за
-
-Firebase adapters отвечают только за:
-
-- Storage upload/delete/download;
-- callable Cloud Functions;
-- Firestore transaction;
-- чтение и запись metadata.
-
----
-
-## 24. Неприкосновенные функции
-
-Нельзя ломать:
-
-- соответствие Firebase Auth UID документу `users/{uid}`;
-- личные текстовые сообщения;
-- групповые текстовые сообщения;
-- создание private chat только после первого сообщения;
-- отсутствие пустых private chats;
-- атомарное первое сообщение;
-- атомарное обновление `lastMessage`;
-- pagination по 20 сообщений;
-- сохранение старых страниц при realtime updates;
-- корректную прокрутку;
-- персональную очистку private chat;
-- удаление сообщения «у себя»;
-- удаление собственного сообщения «у всех»;
-- logical deletion;
-- поиск пользователей;
-- контакты;
-- поиск чатов;
-- private chat search по peer identity;
-- роли;
-- mute;
-- ban;
-- permissions;
-- добавление участников;
-- защиту последнего администратора;
-- передачу прав;
-- безопасный выход из группы;
-- push-уведомления;
-- Media Foundation abstractions;
-- пользовательские аватары;
-- групповые аватары;
-- versioned Storage paths;
-- rollback аватаров;
-- image message metadata invariants;
-- image message rollback;
-- server-side first-image grant;
-- thumbnail/full separation;
-- preview `Фотография`;
-- загрузку full только после открытия;
-- совместимость image messages с logical deletion;
-- fallback UI;
-- будущую роль `owner` максимального приоритета.
-
----
-
-## 25. Известный технический долг
-
-### Высокий и средний приоритет
-
-- Push-нажатие пока не открывает конкретный чат.
-- Отправка image messages в групповые чаты не заявлена завершённой.
-- Нужны дополнительные реальные тесты конкурентной отправки изображения с двух устройств.
-- Нужен будущий retention cleanup для Storage assets логически удалённых image messages.
-- Нельзя немедленно физически удалять image assets при delete-for-everyone без отдельной политики.
-- Path-first avatar cache пока преимущественно in-memory.
-- Необходимо продолжать контролировать Firebase Storage usage.
-- Firestore reads требуют дальнейшей оптимизации по мере роста приложения.
-- App Check пока не является завершённым production-hardening этапом.
-- Release APK пока использует текущую signing-конфигурацию; перед внешним production-релизом нужна отдельная release signing setup.
-- Firestore и Storage Rules emulator tests нужно расширять при каждом новом media type.
-- `ARCHITECTURE.md` со временем желательно разделить на несколько тематических документов.
-- `PROJECT_CONTEXT.md` следует сохранять как handoff, а не превращать в полный reference manual.
-
-### Android toolchain
-
-Compatibility flags пока необходимы:
-
-```properties
-android.newDsl=false
-android.builtInKotlin=false
-```
-
-Не редактировать плагины внутри Pub Cache.
-
-Не менять Gradle, AGP или Kotlin без отдельного контролируемого аудита.
-
-### Отложенные вложения
-
-Пока не реализованы:
-
-```text
-файлы
-голосовые сообщения
-геопозиция
-контакты
-```
-
-### Spaces
-
-Spaces не должны возвращаться как обычная карточка создания чата.
-
-Планируемое направление:
-
-```text
-внутренние приложения Epistola
-```
-
----
-
-## 26. Будущие UI-возможности
-
-Архитектура должна позволять менять без переписывания Firebase business logic:
-
-- темы;
-- светлый и тёмный режим;
-- фон чатов;
-- форму пузырей;
-- размер пузырей;
-- цвета;
-- размеры шрифтов;
-- семейства шрифтов;
-- оформление image preview;
-- анимации отправки;
-- анимации удаления;
-- progress UI;
-- retry UI;
-- галерею нескольких изображений;
-- свайп между изображениями;
-- подписи к фотографиям;
-- реакцию на изображения;
-- анимацию открытия viewer.
-
----
-
-## 27. Следующий порядок действий
-
-Текущая функциональность уже закоммичена и отправлена до commit:
-
-```text
-7b7189c
-```
-
-Далее:
-
-1. Полностью заменить `PROJECT_CONTEXT.md` этой актуальной версией.
-2. Сохранить файл.
-3. Выполнить:
-
-```powershell
-git.exe diff -- PROJECT_CONTEXT.md
-git.exe diff --check
-git.exe status --short
-```
-
-4. Обновить `ARCHITECTURE.md`.
-5. Обновить `README.md`.
-6. Проверить документацию:
-
-```powershell
-git.exe diff --check
-git.exe status --short
-```
-
-7. Создать отдельный documentation commit.
-8. Отправить ветку в GitHub.
-9. Убедиться, что рабочее дерево чистое.
-10. Слить:
-
-```text
-feat/v0.7.0-image-message-foundation
-→ main
-```
-
-11. На `main` повторить:
-
-```powershell
-flutter.bat analyze
-flutter.bat test
-npm.cmd --prefix functions run build
-npm.cmd --prefix functions run lint
-flutter.bat build apk --release
-```
-
-12. После Flutter-проверок восстановить generated plugin files, если они снова изменились.
-13. Проверить:
-
-```powershell
-git.exe diff --check
-git.exe status --short
-```
-
-14. Создать tag:
-
-```text
-v0.7.0
-```
-
-15. Отправить `main` и tag.
-16. Зафиксировать новую стабильную точку в следующем handoff.
-
-Не коммитить документацию до её просмотра.
-
----
-
-## 28. Команды Windows
-
-Использовать PowerShell и явные executable-имена.
-
-### Flutter
-
-```powershell
-flutter.bat --version
-flutter.bat doctor -v
-flutter.bat pub get
-flutter.bat pub outdated
-flutter.bat analyze
-flutter.bat test
-flutter.bat build apk --release
-flutter.bat run
-```
-
-### Node и Cloud Functions
-
-```powershell
-node.exe --version
-npm.cmd --version
-npm.cmd --prefix functions run build
-npm.cmd --prefix functions run lint
-```
-
-### Firebase
-
-```powershell
-firebase.cmd --version
-firebase.cmd deploy --only functions
-firebase.cmd deploy --only firestore
-firebase.cmd deploy --only storage
-```
-
-При необходимости deploy одной функции:
-
-```powershell
-firebase.cmd deploy --only functions:createFirstPrivateImageUploadGrant
-```
-
-### Git
-
-```powershell
-git.exe branch --show-current
-git.exe status --short
-git.exe diff
-git.exe diff --check
-git.exe diff --cached --stat
-git.exe log -1 --oneline --decorate
-git.exe add
-git.exe commit
-git.exe push
-```
-
-Восстановление generated plugin files:
+Они восстановлены:
 
 ```powershell
 git.exe restore -- `
@@ -1691,189 +545,148 @@ git.exe restore -- `
   windows/flutter/generated_plugins.cmake
 ```
 
-Generated plugin files восстанавливать в конце серии Flutter-проверок, а не после каждой отдельной команды.
+После восстановления `git.exe diff --check` не вывел ошибок.
 
-### Release APK
+## 13. Deploy state
 
-Путь:
-
-```text
-E:\Dev\Projects\epistola\build\app\outputs\flutter-apk\app-release.apk
-```
-
----
-
-## 29. Окружение разработки
-
-Основная ОС:
+Не изменялись:
 
 ```text
-Windows
+functions/src/index.ts
+firestore.rules
+storage.rules
 ```
 
-IDE:
+Не выполнять Firebase deploy для `v0.7.1`, если до commit не появятся server-side изменения.
+
+## 14. Стоимость
+
+После явного tap:
 
 ```text
-Visual Studio Code
+1 read chat document
++ private chat: до 1 read peer user document
 ```
 
-Android-проверки:
+Не добавлены polling, background listener, новая Function, дополнительный push или Storage operations.
+
+## 15. Security
+
+`chatId` из push недоверенный.
+
+Client resolver проверяет:
 
 ```text
-Android Emulator
-физический Android-телефон Poco
+auth
+chat existence
+memberIds
+supported type
+private peer
 ```
 
-Flutter:
+Client validation не заменяет Firestore Rules.
+
+Подменённый payload не должен открыть чужой chat. Недоступный chat не создаёт route и не вызывает crash.
+
+## 16. Сохранённые invariants
+
+Не сломаны:
+
+- Auth UID == users/{uid};
+- deterministic private chat ID;
+- отсутствие пустых private chats;
+- atomic first message;
+- pagination по 20;
+- realtime merge;
+- scroll position;
+- logical deletion;
+- sender-only delete for everyone;
+- private clear only for current user;
+- roles и permissions;
+- last admin protection;
+- push sender exclusion;
+- image metadata и upload grant;
+- rollback;
+- avatar paths;
+- Firebase free-tier controls.
+
+Добавлены:
+
+- payload validation;
+- membership validation до route;
+- cold-start queue;
+- duplicate route protection;
+- centralized private/group destination resolution.
+
+## 17. Git-план завершения
+
+Сначала заменить три документа и проверить:
+
+```powershell
+git.exe status --short
+git.exe diff --check
+git.exe diff --stat
+```
+
+Затем commit feature branch:
+
+```powershell
+git.exe add .
+git.exe commit -m "feat(push): add notification deep links"
+git.exe push -u origin feat/v0.7.1-push-deep-link-foundation
+```
+
+После проверки branch:
+
+```powershell
+git.exe switch main
+git.exe pull --ff-only
+git.exe merge --no-ff feat/v0.7.1-push-deep-link-foundation `
+  -m "merge: release v0.7.1 Push Deep Link Foundation"
+git.exe tag -a v0.7.1 -m "v0.7.1 Push Deep Link Foundation"
+git.exe push origin main
+git.exe push origin v0.7.1
+```
+
+Перед командами обязательно посмотреть реальный commit hash и working tree.
+
+## 18. Следующий этап
+
+После выпуска `v0.7.1`:
 
 ```text
-3.44.1 stable
+Group Image Message Foundation
 ```
 
-Dart:
+Перед началом:
+
+- `main` синхронизирован;
+- tag `v0.7.1` существует;
+- working tree чистый;
+- новая branch от `main`;
+- group image scope проектируется отдельно.
+
+Дальше:
 
 ```text
-3.12.1
+File Message Foundation
+Voice Message Foundation
+Media Retention Cleanup Foundation
+App Check / Production Hardening
+Release Signing
+UI Customization Foundation
 ```
 
-Java:
+## 19. Правила работы
 
-```text
-OpenJDK 21.0.10
-Android Studio bundled JBR
-```
-
-Gradle:
-
-```text
-9.1.0
-```
-
-Android Gradle Plugin:
-
-```text
-9.0.1
-```
-
-Kotlin Gradle Plugin:
-
-```text
-2.3.20
-```
-
-Firebase CLI:
-
-```text
-15.19.1
-```
-
-Node:
-
-```text
-22.17.1
-```
-
-npm:
-
-```text
-10.9.2
-```
-
-NVM root:
-
-```text
-C:\nvm
-```
-
-Node symlink:
-
-```text
-C:\nodejs
-```
-
----
-
-## 30. Рабочий стиль
-
-- Общение и координация — на русском языке.
-- Работать маленькими проверяемыми шагами.
-- После каждого шага ждать результат или скриншот.
-- Не давать много независимых изменений одновременно.
-- Перед заменой файла указывать точный путь.
-- Для больших изменений предпочтительно давать файл целиком.
-- Код давать в блоке с кнопкой копирования.
-- Пользователь сохраняет через `Ctrl+S`.
-- VS Code автоматически форматирует Dart при сохранении.
-- Не требовать `Shift+Alt+F`, если автоформатирование уже работает.
-- Не использовать несуществующую команду `flutter.bat format`.
-- Команды Windows давать с явными executable-именами:
-  - `flutter.bat`
-  - `firebase.cmd`
-  - `npm.cmd`
-  - `git.exe`
-- Не коммитить изменённый пользовательский сценарий до ручной проверки, если пользователь явно не подтвердил обратное.
-- После этапа выполнять analyze, test и release build.
-- Для Cloud Functions выполнять build и lint.
-- Generated plugin files не восстанавливать после каждой проверки.
-- Восстанавливать generated plugin files один раз в конце серии проверок.
-- Учитывать Firebase free-tier и пилотную группу 40–50 пользователей.
-- Не загружать оригиналы изображений без необходимости.
-- Не смешивать toolchain-обновления с feature-разработкой.
-- Сохранять границы между UI, domain, services и Firebase adapters.
-- При недостатке контекста заранее просить обновлённый `PROJECT_CONTEXT.md`.
-
----
-
-## 31. Краткий handoff для следующей сессии
-
-```text
-Проект: Epistola
-Репозиторий: MikhailBerezkin/epistola
-
-Стабильный main:
-e0a966c
-tag v0.6.6
-
-Рабочая ветка:
-feat/v0.7.0-image-message-foundation
-
-Последний функциональный HEAD:
-7b7189c
-
-Текущий этап:
-v0.7.0 Image Message Foundation
-
-Состояние:
-функциональность реализована;
-Cloud Function опубликована;
-Firestore Rules опубликованы;
-Storage Rules опубликованы;
-386 Flutter tests passed;
-analyze clean;
-functions build clean;
-functions lint completed;
-release APK проверен на физическом телефоне.
-
-Работает:
-галерея;
-камера;
-crop;
-thumbnail/full;
-first private image message;
-existing private image message;
-preview Фотография;
-полноэкранный viewer;
-zoom;
-системный back;
-автоскролл;
-автоскролл с виртуальной клавиатурой.
-
-Сейчас:
-обновить PROJECT_CONTEXT.md;
-обновить ARCHITECTURE.md;
-обновить README.md;
-закоммитить документацию;
-слить ветку в main;
-повторить проверки;
-создать tag v0.7.0.
-```
+- Русский язык.
+- PowerShell.
+- Явные executable: `flutter.bat`, `dart.bat`, `firebase.cmd`, `npm.cmd`, `git.exe`.
+- Маленькие проверяемые шаги.
+- После каждого шага ждать результат.
+- Большие изменения давать полным файлом.
+- Не commit пользовательский сценарий до ручной проверки.
+- После этапа: analyze, tests, release APK.
+- Generated plugin files восстанавливать один раз в конце.
+- Учитывать Firebase free-tier и 40–50 пользователей.
+- Не смешивать feature work и toolchain work.

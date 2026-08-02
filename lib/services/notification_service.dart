@@ -1,7 +1,12 @@
+import 'dart:async';
+
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:vibration/vibration.dart';
+
+import '../domain/models/push_deep_link_request.dart';
+import 'push/push_deep_link_coordinator.dart';
 import 'push_token_service.dart';
 
 class NotificationService {
@@ -18,7 +23,13 @@ class NotificationService {
   static final FlutterLocalNotificationsPlugin _localNotifications =
       FlutterLocalNotificationsPlugin();
 
-  static Future<void> initialize() async {
+  static PushDeepLinkCoordinator? _deepLinkCoordinator;
+
+  static Future<void> initialize({
+    required PushDeepLinkCoordinator deepLinkCoordinator,
+  }) async {
+    _deepLinkCoordinator = deepLinkCoordinator;
+
     const initializationSettings = InitializationSettings(
       android: AndroidInitializationSettings('@mipmap/ic_launcher'),
     );
@@ -47,6 +58,7 @@ class NotificationService {
         provisional: false,
         sound: true,
       );
+
       await PushTokenService.initialize();
 
       if (kDebugMode) {
@@ -76,7 +88,7 @@ class NotificationService {
           .getInitialMessage();
 
       if (initialMessage != null) {
-        _handleRemoteMessageTap(initialMessage);
+        await _handleRemoteMessageTap(initialMessage);
       }
     } catch (error, stackTrace) {
       if (kDebugMode) {
@@ -94,6 +106,8 @@ class NotificationService {
       return;
     }
 
+    final request = PushDeepLinkRequest.fromRemoteData(message.data);
+
     await _localNotifications.show(
       id: message.messageId.hashCode & 0x7fffffff,
       title: notification.title ?? 'Epistola',
@@ -108,16 +122,59 @@ class NotificationService {
           icon: '@mipmap/ic_launcher',
         ),
       ),
-      payload: message.data['chatId'] as String?,
+      payload: request?.chatId,
     );
   }
 
-  static void _handleRemoteMessageTap(RemoteMessage message) {
-    debugPrint('Notification opened: chatId=${message.data['chatId']}');
+  static Future<void> _handleRemoteMessageTap(RemoteMessage message) async {
+    final request = PushDeepLinkRequest.fromRemoteData(message.data);
+
+    if (request == null) {
+      if (kDebugMode) {
+        debugPrint('Remote notification has no valid chatId');
+      }
+
+      return;
+    }
+
+    await _handleDeepLinkRequest(request);
   }
 
   static void _handleLocalNotificationTap(NotificationResponse response) {
-    debugPrint('Local notification opened: chatId=${response.payload}');
+    final request = PushDeepLinkRequest.fromLocalPayload(response.payload);
+
+    if (request == null) {
+      if (kDebugMode) {
+        debugPrint('Local notification has no valid chatId');
+      }
+
+      return;
+    }
+
+    unawaited(_handleDeepLinkRequest(request));
+  }
+
+  static Future<void> _handleDeepLinkRequest(
+    PushDeepLinkRequest request,
+  ) async {
+    final coordinator = _deepLinkCoordinator;
+
+    if (coordinator == null) {
+      if (kDebugMode) {
+        debugPrint(
+          'Push deep link coordinator is unavailable: '
+          'chatId=${request.chatId}',
+        );
+      }
+
+      return;
+    }
+
+    if (kDebugMode) {
+      debugPrint('Opening notification chat: chatId=${request.chatId}');
+    }
+
+    await coordinator.handle(request);
   }
 
   static Future<void> vibrate() async {
