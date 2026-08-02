@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -9,7 +11,7 @@ import 'screens/home_screen.dart';
 import 'screens/welcome_screen.dart';
 import 'services/app_settings.dart';
 import 'services/notification_service.dart';
-import 'dart:async';
+import 'services/push/push_deep_link_navigation.dart';
 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -18,6 +20,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
@@ -31,18 +34,50 @@ Future<void> main() async {
   );
 
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
   FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
-  await NotificationService.initialize();
+  final pushDeepLinkNavigation = PushDeepLinkNavigation();
+
+  await NotificationService.initialize(
+    deepLinkCoordinator: pushDeepLinkNavigation.coordinator,
+  );
+
   await AppSettings.loadThemeMode();
 
-  runApp(const EpistolaApp());
+  runApp(EpistolaApp(pushDeepLinkNavigation: pushDeepLinkNavigation));
 
   unawaited(NotificationService.startMessaging());
 }
 
-class EpistolaApp extends StatelessWidget {
-  const EpistolaApp({super.key});
+class EpistolaApp extends StatefulWidget {
+  const EpistolaApp({super.key, required this.pushDeepLinkNavigation});
+
+  final PushDeepLinkNavigation pushDeepLinkNavigation;
+
+  @override
+  State<EpistolaApp> createState() => _EpistolaAppState();
+}
+
+class _EpistolaAppState extends State<EpistolaApp> {
+  @override
+  void initState() {
+    super.initState();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+
+      widget.pushDeepLinkNavigation.markNavigationReady();
+    });
+  }
+
+  @override
+  void dispose() {
+    widget.pushDeepLinkNavigation.markNavigationUnavailable();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -50,6 +85,7 @@ class EpistolaApp extends StatelessWidget {
       valueListenable: AppSettings.themeModeNotifier,
       builder: (context, themeMode, _) {
         return MaterialApp(
+          navigatorKey: widget.pushDeepLinkNavigation.navigatorKey,
           title: 'Epistola',
           debugShowCheckedModeBanner: false,
           themeMode: themeMode,
