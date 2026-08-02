@@ -116,6 +116,8 @@ class _MessageItemState extends State<MessageItem> {
                       senderRole: widget.senderRole,
                       timeText: widget.timeText,
                       isMe: widget.isMe,
+                      isImageMessage: widget.message.isImageMessage,
+                      imageMetadata: widget.message.imageMetadata,
                     ),
                   ),
                 ),

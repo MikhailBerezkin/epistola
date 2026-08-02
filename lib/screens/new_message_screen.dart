@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show HapticFeedback;
 
-import 'user_search_screen.dart';
 import 'create_group_screen.dart';
+import 'user_search_screen.dart';
 
 class NewMessageScreen extends StatelessWidget {
   const NewMessageScreen({super.key});
@@ -13,6 +13,15 @@ class NewMessageScreen extends StatelessWidget {
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const UserSearchScreen()),
+    );
+  }
+
+  void openGroupCreation(BuildContext context) {
+    HapticFeedback.lightImpact();
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const CreateGroupScreen()),
     );
   }
 
@@ -29,7 +38,9 @@ class NewMessageScreen extends StatelessWidget {
               title: const Text('Найти пользователя'),
               subtitle: const Text('По email или телефону'),
               trailing: const Icon(Icons.chevron_right),
-              onTap: () => openUserSearch(context),
+              onTap: () {
+                openUserSearch(context);
+              },
             ),
           ),
           const SizedBox(height: 8),
@@ -40,25 +51,7 @@ class NewMessageScreen extends StatelessWidget {
               subtitle: const Text('Добавить нескольких участников'),
               trailing: const Icon(Icons.chevron_right),
               onTap: () {
-                HapticFeedback.lightImpact();
-
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const CreateGroupScreen()),
-                );
-              },
-            ),
-          ),
-          const SizedBox(height: 8),
-          Card(
-            child: ListTile(
-              leading: const CircleAvatar(child: Icon(Icons.hub)),
-              title: const Text('Создать пространство'),
-              subtitle: const Text('Для команд и отделов'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () {
-                HapticFeedback.selectionClick();
-                debugPrint('Создать пространство');
+                openGroupCreation(context);
               },
             ),
           ),
