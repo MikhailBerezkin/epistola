@@ -1,12 +1,9 @@
 import 'package:flutter/material.dart';
 
-class MessageBubble extends StatelessWidget {
-  final String text;
-  final String senderName;
-  final String senderRole;
-  final String timeText;
-  final bool isMe;
+import '../domain/models/image_message_metadata.dart';
+import 'image_message_thumbnail.dart';
 
+class MessageBubble extends StatelessWidget {
   const MessageBubble({
     super.key,
     required this.text,
@@ -14,7 +11,18 @@ class MessageBubble extends StatelessWidget {
     required this.senderRole,
     required this.timeText,
     required this.isMe,
+    this.isImageMessage = false,
+    this.imageMetadata,
   });
+
+  final String text;
+  final String senderName;
+  final String senderRole;
+  final String timeText;
+  final bool isMe;
+
+  final bool isImageMessage;
+  final ImageMessageMetadata? imageMetadata;
 
   Color getSenderNameColor(BuildContext context) {
     switch (senderRole) {
@@ -29,6 +37,8 @@ class MessageBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final metadata = imageMetadata;
+
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
@@ -57,7 +67,15 @@ class MessageBubble extends StatelessWidget {
               ),
               const SizedBox(height: 4),
             ],
-            Text(text, style: const TextStyle(fontSize: 16)),
+            if (isImageMessage) ...[
+              if (metadata != null)
+                ImageMessageThumbnail(metadata: metadata)
+              else
+                const _UnavailableImage(),
+              if (text.isNotEmpty) const SizedBox(height: 8),
+            ],
+            if (text.isNotEmpty)
+              Text(text, style: const TextStyle(fontSize: 16)),
             if (timeText.isNotEmpty) ...[
               const SizedBox(height: 4),
               Align(
@@ -71,6 +89,31 @@ class MessageBubble extends StatelessWidget {
                 ),
               ),
             ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _UnavailableImage extends StatelessWidget {
+  const _UnavailableImage();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 140,
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainer,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: const Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.broken_image_outlined),
+            SizedBox(height: 6),
+            Text('Фотография недоступна'),
           ],
         ),
       ),

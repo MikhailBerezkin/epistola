@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../services/chat_service.dart';
+import '../services/chat/image_message_metadata_mapper.dart';
 import '../models/message_presentation.dart';
 import 'message_item.dart';
 
@@ -14,11 +15,13 @@ class MessagesList extends StatefulWidget {
   final String chatId;
   final Map<String, dynamic> memberRoles;
   final Timestamp? visibleAfter;
+  final double keyboardInset;
 
   const MessagesList({
     super.key,
     required this.chatId,
     required this.memberRoles,
+    required this.keyboardInset,
     this.visibleAfter,
   });
 
@@ -37,6 +40,7 @@ class _MessagesListState extends State<MessagesList> {
 
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>?
   _latestMessagesSubscription;
+  Timer? _bottomCorrectionTimer;
   QueryDocumentSnapshot<Map<String, dynamic>>? _oldestLoadedDocument;
 
   bool _isInitialLoading = true;
@@ -56,9 +60,20 @@ class _MessagesListState extends State<MessagesList> {
   void didUpdateWidget(covariant MessagesList oldWidget) {
     super.didUpdateWidget(oldWidget);
 
-    if (oldWidget.chatId != widget.chatId ||
-        oldWidget.visibleAfter != widget.visibleAfter) {
+    final conversationChanged =
+        oldWidget.chatId != widget.chatId ||
+        oldWidget.visibleAfter != widget.visibleAfter;
+
+    if (conversationChanged) {
       unawaited(_restartSubscription());
+      return;
+    }
+
+    final keyboardInsetChanged =
+        (oldWidget.keyboardInset - widget.keyboardInset).abs() > 0.5;
+
+    if (keyboardInsetChanged && _isNearBottom) {
+      _scrollToBottom(animated: false, correctAfterLayout: true);
     }
   }
 
@@ -127,9 +142,9 @@ class _MessagesListState extends State<MessagesList> {
     });
 
     if (wasInitialLoad) {
-      _scrollToBottom(animated: false);
+      _scrollToBottom(animated: false, correctAfterLayout: true);
     } else if (addedMessage && wasNearBottom) {
-      _scrollToBottom();
+      _scrollToBottom(correctAfterLayout: true);
     }
   }
 
@@ -357,27 +372,57 @@ class _MessagesListState extends State<MessagesList> {
     return '$hour:$minute';
   }
 
-  void _scrollToBottom({bool animated = true}) {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!scrollController.hasClients) return;
+  void _scrollToBottom({
+    bool animated = true,
+    bool correctAfterLayout = false,
+  }) {
+    _bottomCorrectionTimer?.cancel();
 
-      final bottom = scrollController.position.maxScrollExtent;
+    void performScroll({required bool useAnimation}) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !scrollController.hasClients) {
+          return;
+        }
 
-      if (animated) {
-        scrollController.animateTo(
-          bottom,
-          duration: const Duration(milliseconds: 250),
-          curve: Curves.easeOut,
-        );
-      } else {
-        scrollController.jumpTo(bottom);
+        final position = scrollController.position;
+        final bottom = position.maxScrollExtent;
+        final distance = bottom - position.pixels;
+
+        if (distance.abs() < 1) {
+          return;
+        }
+
+        if (useAnimation) {
+          scrollController.animateTo(
+            bottom,
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.easeOut,
+          );
+        } else {
+          scrollController.jumpTo(bottom);
+        }
+      });
+    }
+
+    performScroll(useAnimation: animated);
+
+    if (!correctAfterLayout) {
+      return;
+    }
+
+    _bottomCorrectionTimer = Timer(const Duration(milliseconds: 450), () {
+      if (!mounted) {
+        return;
       }
+
+      performScroll(useAnimation: true);
     });
   }
 
   @override
   void dispose() {
     _latestMessagesSubscription?.cancel();
+    _bottomCorrectionTimer?.cancel();
     scrollController.removeListener(_handleScroll);
     scrollController.dispose();
     super.dispose();
@@ -411,6 +456,22 @@ class _MessagesListState extends State<MessagesList> {
             final data = message.data();
 
             final text = data['text'] is String ? data['text'] as String : '';
+
+            final messageType = data['messageType'] is String
+                ? data['messageType'] as String
+                : 'text';
+
+            final imageData = data['image'];
+
+            final imageMetadata =
+                messageType == 'image' && imageData is Map<String, dynamic>
+                ? ImageMessageMetadataMapper.fromMap(
+                    data: imageData,
+                    chatId: widget.chatId,
+                    messageId: message.id,
+                  )
+                : null;
+
             final senderId = data['senderId'] is String
                 ? data['senderId'] as String
                 : '';
@@ -444,6 +505,8 @@ class _MessagesListState extends State<MessagesList> {
               senderName: senderName,
               createdAt: createdAt is Timestamp ? createdAt.toDate() : null,
               visibility: visibility,
+              isImageMessage: messageType == 'image',
+              imageMetadata: imageMetadata,
             );
 
             return MessageItem(

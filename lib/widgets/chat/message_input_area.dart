@@ -8,16 +8,24 @@ import '../../services/chat_service.dart';
 import '../message_input.dart';
 
 class MessageInputArea extends StatefulWidget {
-  final String chatId;
-  final TextEditingController controller;
-  final VoidCallback onSend;
-
   const MessageInputArea({
     super.key,
     required this.chatId,
     required this.controller,
     required this.onSend,
+    this.onPickFromGallery,
+    this.onTakePhoto,
+    this.isBusy = false,
   });
+
+  final String chatId;
+  final TextEditingController controller;
+  final VoidCallback onSend;
+
+  final MessageAttachmentAction? onPickFromGallery;
+  final MessageAttachmentAction? onTakePhoto;
+
+  final bool isBusy;
 
   @override
   State<MessageInputArea> createState() => _MessageInputAreaState();
@@ -26,6 +34,7 @@ class MessageInputArea extends StatefulWidget {
 class _MessageInputAreaState extends State<MessageInputArea> {
   Timer? hideRestrictionTimer;
   Timer? statusExpirationTimer;
+
   bool showRestriction = true;
 
   @override
@@ -54,15 +63,19 @@ class _MessageInputAreaState extends State<MessageInputArea> {
 
     statusExpirationTimer?.cancel();
 
-    if (permanent || expiresAt is! Timestamp) return;
+    if (permanent || expiresAt is! Timestamp) {
+      return;
+    }
 
     final duration = expiresAt.toDate().difference(DateTime.now());
 
     if (duration.isNegative || duration == Duration.zero) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
+
         setState(() {});
       });
+
       return;
     }
 
@@ -70,6 +83,7 @@ class _MessageInputAreaState extends State<MessageInputArea> {
       duration + const Duration(milliseconds: 200),
       () {
         if (!mounted) return;
+
         setState(() {});
       },
     );
@@ -78,6 +92,7 @@ class _MessageInputAreaState extends State<MessageInputArea> {
   @override
   Widget build(BuildContext context) {
     final currentUser = FirebaseAuth.instance.currentUser;
+
     final chatService = ChatService();
 
     return StreamBuilder<DocumentSnapshot>(
@@ -93,14 +108,18 @@ class _MessageInputAreaState extends State<MessageInputArea> {
         }
 
         final chatType = data['type'] ?? 'private';
+
         final memberRoles =
             (data['memberRoles'] as Map<String, dynamic>?) ?? {};
+
         final memberStatus =
             (data['memberStatus'] as Map<String, dynamic>?) ?? {};
+
         final groupSettings =
             (data['groupSettings'] as Map<String, dynamic>?) ?? {};
 
         final isGroup = chatType == 'group';
+
         final currentUserRole = memberRoles[currentUser?.uid] ?? 'member';
 
         final statusData =
@@ -110,6 +129,7 @@ class _MessageInputAreaState extends State<MessageInputArea> {
         scheduleStatusExpirationRebuild(statusData);
 
         final status = statusData['status'] ?? 'normal';
+
         final statusIsActive = _isStatusActive(statusData);
 
         final canClearExpiredStatus =
@@ -127,7 +147,9 @@ class _MessageInputAreaState extends State<MessageInputArea> {
         }
 
         final isGuest = isGroup && currentUserRole == 'guest';
+
         final isMuted = isGroup && status == 'muted' && statusIsActive;
+
         final isBanned = isGroup && status == 'banned' && statusIsActive;
 
         final messagePermission = groupSettings['messagePermission'] ?? 'all';
@@ -149,6 +171,9 @@ class _MessageInputAreaState extends State<MessageInputArea> {
           return MessageInput(
             controller: widget.controller,
             onSend: widget.onSend,
+            onPickFromGallery: widget.onPickFromGallery,
+            onTakePhoto: widget.onTakePhoto,
+            isBusy: widget.isBusy,
           );
         }
 
@@ -217,9 +242,12 @@ class _MessageInputAreaState extends State<MessageInputArea> {
 
 bool _isStatusActive(Map<String, dynamic> statusData) {
   final permanent = statusData['permanent'] == true;
+
   final expiresAt = statusData['expiresAt'];
 
-  if (permanent) return true;
+  if (permanent) {
+    return true;
+  }
 
   if (expiresAt is Timestamp) {
     return expiresAt.toDate().isAfter(DateTime.now());
@@ -234,9 +262,18 @@ IconData _getRestrictionIcon({
   required bool isBanned,
   required String messagePermission,
 }) {
-  if (isBanned) return Icons.block;
-  if (isMuted) return Icons.volume_off;
-  if (isGuest) return Icons.visibility;
+  if (isBanned) {
+    return Icons.block;
+  }
+
+  if (isMuted) {
+    return Icons.volume_off;
+  }
+
+  if (isGuest) {
+    return Icons.visibility;
+  }
+
   return Icons.lock_outline;
 }
 
@@ -246,9 +283,17 @@ String _getRestrictionTitle({
   required bool isBanned,
   required String messagePermission,
 }) {
-  if (isBanned) return 'Доступ к группе ограничен';
-  if (isMuted) return 'Вы временно не можете писать';
-  if (isGuest) return 'Режим гостя';
+  if (isBanned) {
+    return 'Доступ к группе ограничен';
+  }
+
+  if (isMuted) {
+    return 'Вы временно не можете писать';
+  }
+
+  if (isGuest) {
+    return 'Режим гостя';
+  }
 
   if (messagePermission == 'admins') {
     return 'Писать могут только администраторы';
@@ -269,7 +314,8 @@ String _getRestrictionText({
   required Map<String, dynamic> statusData,
 }) {
   if (isGuest) {
-    return 'Вы можете читать сообщения, но не можете отправлять свои.';
+    return 'Вы можете читать сообщения, '
+        'но не можете отправлять свои.';
   }
 
   if (isMuted || isBanned) {
@@ -277,19 +323,27 @@ String _getRestrictionText({
 
     if (details.isEmpty) {
       return isMuted
-          ? 'Модератор временно ограничил отправку сообщений.'
-          : 'Администратор ограничил вам доступ к этой группе.';
+          ? 'Модератор временно ограничил '
+                'отправку сообщений.'
+          : 'Администратор ограничил вам '
+                'доступ к этой группе.';
     }
 
     return details;
   }
 
   if (messagePermission == 'admins') {
-    return 'Эта группа находится в режиме ограниченной записи. Вы можете читать сообщения, но писать могут только администраторы.';
+    return 'Эта группа находится в режиме '
+        'ограниченной записи. Вы можете читать '
+        'сообщения, но писать могут только '
+        'администраторы.';
   }
 
   if (messagePermission == 'moderators') {
-    return 'Эта группа находится в режиме ограниченной записи. Вы можете читать сообщения, но писать могут только модераторы и администраторы.';
+    return 'Эта группа находится в режиме '
+        'ограниченной записи. Вы можете читать '
+        'сообщения, но писать могут только '
+        'модераторы и администраторы.';
   }
 
   return 'Отправка сообщений сейчас недоступна.';
@@ -310,10 +364,15 @@ String _formatStatusDetails(Map<String, dynamic> statusData) {
     parts.add('Срок: навсегда');
   } else if (expiresAt is Timestamp) {
     final dateTime = expiresAt.toDate();
+
     final day = dateTime.day.toString().padLeft(2, '0');
+
     final month = dateTime.month.toString().padLeft(2, '0');
+
     final year = dateTime.year.toString();
+
     final hour = dateTime.hour.toString().padLeft(2, '0');
+
     final minute = dateTime.minute.toString().padLeft(2, '0');
 
     parts.add('До: $day.$month.$year $hour:$minute');

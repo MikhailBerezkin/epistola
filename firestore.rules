@@ -17,45 +17,171 @@ service cloud.firestore {
       );
     }
 
-    function hasValidMessageFields(message) {
-  return message.keys().hasAll([
-        'text',
-        'senderId',
-        'senderEmail',
-        'senderName',
-        'createdAt'
-      ])
-      && message.keys().hasOnly([
-        'text',
-        'senderId',
-        'senderEmail',
-        'senderName',
-        'createdAt'
-      ]);
-}
+        function hasValidMessageFields(message) {
+      return message.keys().hasAll([
+            'text',
+            'senderId',
+            'senderEmail',
+            'senderName',
+            'createdAt'
+          ])
+          && message.keys().hasOnly([
+            'messageType',
+            'text',
+            'image',
+            'senderId',
+            'senderEmail',
+            'senderName',
+            'createdAt'
+          ]);
+    }
 
-function isValidMessageData(message) {
-  let profile = currentUserDoc().data;
+    function hasValidTextValue(text) {
+      return text is string
+          && text == text.trim()
+          && text.size() > 0
+          && text.size() <= 4096;
+    }
 
-  return signedIn()
-      && hasValidMessageFields(message)
-      && message.text is string
-      && message.text == message.text.trim()
-      && message.text.size() > 0
-      && message.text.size() <= 4096
-      && message.senderId is string
-      && message.senderId == request.auth.uid
-      && message.senderEmail is string
-      && message.senderEmail == request.auth.token.email
-      && message.senderName is string
-      && message.senderName == profile.get('name', '')
-      && message.createdAt is timestamp
-      && message.createdAt == request.time;
-}
+    function isLegacyTextMessage(message) {
+      return !message.keys().hasAny([
+            'messageType',
+            'image'
+          ])
+          && hasValidTextValue(message.text);
+    }
 
-function isValidNewMessage() {
-  return isValidMessageData(request.resource.data);
-}
+    function isExplicitTextMessage(message) {
+      return message.get('messageType', '') == 'text'
+          && !message.keys().hasAny(['image'])
+          && hasValidTextValue(message.text);
+    }
+
+    function isValidImageMessage(chatId, messageId, message) {
+      let image = message.get('image', {});
+      let version = image.get('version', 0);
+
+      return message.get('messageType', '') == 'image'
+          && message.text is string
+          && message.text == ''
+
+          && image is map
+          && image.keys().hasAll([
+            'provider',
+            'thumbStoragePath',
+            'fullStoragePath',
+            'thumbSizeBytes',
+            'fullSizeBytes',
+            'thumbWidth',
+            'thumbHeight',
+            'fullWidth',
+            'fullHeight',
+            'mimeType',
+            'version'
+          ])
+          && image.keys().hasOnly([
+            'provider',
+            'thumbStoragePath',
+            'fullStoragePath',
+            'thumbSizeBytes',
+            'fullSizeBytes',
+            'thumbWidth',
+            'thumbHeight',
+            'fullWidth',
+            'fullHeight',
+            'mimeType',
+            'version'
+          ])
+
+          && image.provider is string
+          && image.provider == 'firebase'
+
+          && version is int
+          && version > 0
+
+          && image.thumbStoragePath is string
+          && image.thumbStoragePath
+              == 'chat_media/' + chatId
+                  + '/messages/' + messageId
+                  + '/v' + string(version)
+                  + '/thumb.jpg'
+
+          && image.fullStoragePath is string
+          && image.fullStoragePath
+              == 'chat_media/' + chatId
+                  + '/messages/' + messageId
+                  + '/v' + string(version)
+                  + '/full.jpg'
+
+          && image.thumbStoragePath != image.fullStoragePath
+
+          && image.thumbSizeBytes is int
+          && image.thumbSizeBytes > 0
+          && image.thumbSizeBytes <= 128 * 1024
+
+          && image.fullSizeBytes is int
+          && image.fullSizeBytes > 0
+          && image.fullSizeBytes <= 1024 * 1024
+
+          && image.thumbWidth is int
+          && image.thumbWidth > 0
+          && image.thumbWidth <= 480
+
+          && image.thumbHeight is int
+          && image.thumbHeight > 0
+          && image.thumbHeight <= 480
+
+          && image.fullWidth is int
+          && image.fullWidth >= image.thumbWidth
+          && image.fullWidth <= 1920
+
+          && image.fullHeight is int
+          && image.fullHeight >= image.thumbHeight
+          && image.fullHeight <= 1920
+
+          && image.mimeType is string
+          && image.mimeType == 'image/jpeg';
+    }
+
+    function messagePreview(message) {
+      return message.get('messageType', 'text') == 'image'
+          ? 'Фотография'
+          : message.text;
+    }
+
+    function isValidMessageData(chatId, messageId, message) {
+      let profile = currentUserDoc().data;
+
+      return signedIn()
+          && hasValidMessageFields(message)
+
+          && message.senderId is string
+          && message.senderId == request.auth.uid
+
+          && message.senderEmail is string
+          && message.senderEmail == request.auth.token.email
+
+          && message.senderName is string
+          && message.senderName == profile.get('name', '')
+
+          && message.createdAt is timestamp
+          && message.createdAt == request.time
+
+          && (
+            isLegacyTextMessage(message)
+            || isExplicitTextMessage(message)
+            || isValidImageMessage(chatId, messageId, message)
+          );
+    }
+
+    function isValidNewMessage(chatId, messageId) {
+      return isValidMessageData(
+        chatId,
+        messageId,
+        request.resource.data
+      );
+    }
+
     function hasValidPrivateChatFields() {
   return request.resource.data.keys().hasAll([
         'name',
@@ -175,8 +301,10 @@ function isValidPrivateChatCreate(chatId) {
       && chat.firstMessageId.size() > 0
       && chat.lastMessageId == chat.firstMessageId
 
-      && isValidMessageData(firstMessage)
-      && firstMessage.text == chat.lastMessage
+      // Полное содержимое первого сообщения проверяется отдельно
+      // в allow create вложенного документа messages/{messageId}.
+      && messagePreview(firstMessage) == chat.lastMessage
+      && firstMessage.createdAt is timestamp
       && firstMessage.createdAt == chat.lastMessageAt;
 }
 
@@ -207,7 +335,8 @@ function isFirstMessageForNewPrivateChat(chatId, messageId) {
       && chatAfter.memberIds is list
       && chatAfter.memberIds.size() == 2
       && request.auth.uid in chatAfter.memberIds
-      && chatAfter.lastMessage == request.resource.data.text
+            && chatAfter.lastMessage
+          == messagePreview(request.resource.data)
       && chatAfter.lastMessageAt == request.time
       && chatAfter.createdAt == request.time;
 }
@@ -218,7 +347,8 @@ function isMessageLinkedToExistingChatUpdate(chatId, messageId) {
   ).data;
 
   return chatAfter.lastMessageId == messageId
-      && chatAfter.lastMessage == request.resource.data.text
+            && chatAfter.lastMessage
+          == messagePreview(request.resource.data)
       && chatAfter.lastMessageAt == request.time;
 }
 
@@ -638,8 +768,7 @@ function isDeleteMessageForEveryoneUpdate(chatId, messageId) {
       && request.resource.data
           .diff(resource.data)
           .affectedKeys()
-          .hasAll([
-            'text',
+                    .hasAll([
             'deletedForEveryone',
             'deletedBy',
             'deletedAt'
@@ -728,7 +857,8 @@ function isDeleteLastMessageForEveryoneUpdate(chatId) {
           && !exists(messagePath)
           && existsAfter(messagePath)
           && messageAfter.senderId == request.auth.uid
-          && messageAfter.text == request.resource.data.lastMessage
+                    && messagePreview(messageAfter)
+              == request.resource.data.lastMessage
           && messageAfter.createdAt == request.resource.data.lastMessageAt;
     }
 
@@ -948,7 +1078,7 @@ function isDeleteLastMessageForEveryoneUpdate(chatId) {
 }
     }
 
-    match /chats/{chatId} {
+        match /chats/{chatId} {
       allow get: if signedIn()
           && (
             isPrivateChatIdParticipant(chatId)
@@ -960,44 +1090,85 @@ function isDeleteLastMessageForEveryoneUpdate(chatId) {
 
       allow create: if isValidChatCreate(chatId);
 
-      allow update: if (
-      isCurrentAdminOrOwner()
-      && !changesLastMessageMetadata()
-      && !changedKeys().hasAny(groupAvatarControlledKeys())
-    )
-    || isGroupAvatarMetadataUpdate(chatId)
-    || (isCurrentMemberInChat() && isOnlyLastReadUpdate())
-    || (canWrite(chatId) && isAtomicLastMessageUpdate(chatId))
-    || isAdminRightsTransferLastMessageUpdate()
-    || isDissolveGroupLastMessageUpdate()
-    || (canAddMembersByPermission() && isAddMembersUpdate())
-    || (canUpdateMemberStatus() && isOnlyMemberStatusUpdate())
-    || isLeaveGroupUpdate()
-    || isClearPrivateChatForCurrentUserUpdate()
-    || isPrivateChatSelfRepair()
-    || isHideLastMessageForCurrentUserUpdate(chatId)
-    || isDeleteLastMessageForEveryoneUpdate(chatId);
+      allow update: if
+        changedKeys().hasOnly([
+          'lastMessage',
+          'lastMessageAt',
+          'lastMessageId'
+        ])
+        ? (
+          canWrite(chatId)
+          && isAtomicLastMessageUpdate(chatId)
+        )
+        : (
+          (
+            isCurrentAdminOrOwner()
+            && !changesLastMessageMetadata()
+            && !changedKeys().hasAny(
+              groupAvatarControlledKeys()
+            )
+          )
+          || isGroupAvatarMetadataUpdate(chatId)
+          || (
+            isCurrentMemberInChat()
+            && isOnlyLastReadUpdate()
+          )
+          || isAdminRightsTransferLastMessageUpdate()
+          || isDissolveGroupLastMessageUpdate()
+          || (
+            canAddMembersByPermission()
+            && isAddMembersUpdate()
+          )
+          || (
+            canUpdateMemberStatus()
+            && isOnlyMemberStatusUpdate()
+          )
+          || isLeaveGroupUpdate()
+          || isClearPrivateChatForCurrentUserUpdate()
+          || isPrivateChatSelfRepair()
+          || isHideLastMessageForCurrentUserUpdate(chatId)
+          || isDeleteLastMessageForEveryoneUpdate(chatId)
+        );
 
-      allow delete: if false;
+            allow delete: if false;
 
-      match /messages/{messageId} {
+           match /messages/{messageId} {
         allow read: if isChatMember(chatId);
 
-        allow create: if isValidNewMessage()
-    && (
-      isFirstMessageForNewPrivateChat(chatId, messageId)
-      || (
-        canWrite(chatId)
-        && isMessageLinkedToExistingChatUpdate(chatId, messageId)
-      )
-    );
+        allow create: if
+          isValidNewMessage(chatId, messageId)
+          && (
+            isFirstMessageForNewPrivateChat(
+              chatId,
+              messageId
+            )
+            || (
+              canWrite(chatId)
+              && isMessageLinkedToExistingChatUpdate(
+                chatId,
+                messageId
+              )
+            )
+          );
 
         allow update: if
-    isHideMessageForCurrentUserUpdate(chatId, messageId)
-    || isDeleteMessageForEveryoneUpdate(chatId, messageId);
+          isHideMessageForCurrentUserUpdate(
+            chatId,
+            messageId
+          )
+          || isDeleteMessageForEveryoneUpdate(
+            chatId,
+            messageId
+          );
 
-allow delete: if false;
+        allow delete: if false;
       }
+    }
+
+    // Grants are issued only by trusted server code through Admin SDK.
+    // Client applications must never access this collection directly.
+    match /imageMessageUploadGrants/{grantId} {
+      allow read, write: if false;
     }
 
     match /{document=**} {

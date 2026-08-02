@@ -1,9 +1,10 @@
 import {getApps, initializeApp} from "firebase-admin/app";
-import {getFirestore} from "firebase-admin/firestore";
+import {getFirestore, Timestamp} from "firebase-admin/firestore";
 import {getMessaging} from "firebase-admin/messaging";
 import {logger} from "firebase-functions";
 import {setGlobalOptions} from "firebase-functions/v2";
 import {onDocumentCreated} from "firebase-functions/v2/firestore";
+import {HttpsError, onCall} from "firebase-functions/v2/https";
 
 setGlobalOptions({
   region: "europe-west1",
@@ -13,7 +14,35 @@ setGlobalOptions({
 if (getApps().length === 0) {
   initializeApp();
 }
+
 const PUSH_PREVIEW_MAX_CHARACTERS = 180;
+const FIRST_PRIVATE_IMAGE_GRANT_TYPE = "first_private_image";
+const IMAGE_GRANTS_COLLECTION = "imageMessageUploadGrants";
+const GRANT_DURATION_MILLISECONDS = 5 * 60 * 1000;
+const MAX_GRANT_DURATION_MILLISECONDS = 10 * 60 * 1000;
+const GRANT_REQUEST_FIELDS = [
+  "peerId",
+  "chatId",
+  "messageId",
+  "version",
+] as const;
+const GRANT_DOCUMENT_FIELDS = [
+  "grantType",
+  "uploaderId",
+  "peerId",
+  "chatId",
+  "messageId",
+  "version",
+  "createdAt",
+  "expiresAt",
+] as const;
+
+interface FirstPrivateImageGrantRequest {
+  peerId: string;
+  chatId: string;
+  messageId: string;
+  version: string;
+}
 
 /**
  * Builds a shortened push notification preview.
@@ -32,6 +61,276 @@ function buildPushPreview(text: string): string {
     "…",
   ].join("");
 }
+
+/**
+ * Reads a strict non-empty callable string field.
+ * @param {Record<string, unknown>} data Callable request data.
+ * @param {string} field Field name.
+ * @return {string} Validated value.
+ */
+function readGrantString(
+  data: Record<string, unknown>,
+  field: keyof FirstPrivateImageGrantRequest,
+): string {
+  const value = data[field];
+
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value !== value.trim()
+  ) {
+    throw new HttpsError(
+      "invalid-argument",
+      `Field ${field} must be a non-empty string.`,
+    );
+  }
+
+  return value;
+}
+
+/**
+ * Parses and validates callable grant request data.
+ * @param {unknown} data Callable request data.
+ * @return {FirstPrivateImageGrantRequest} Validated request.
+ */
+function parseGrantRequest(data: unknown): FirstPrivateImageGrantRequest {
+  if (typeof data !== "object" || data === null || Array.isArray(data)) {
+    throw new HttpsError(
+      "invalid-argument",
+      "Request data must be an object.",
+    );
+  }
+
+  const record = data as Record<string, unknown>;
+  const keys = Object.keys(record);
+  const hasExactFields =
+    keys.length === GRANT_REQUEST_FIELDS.length &&
+    GRANT_REQUEST_FIELDS.every((field) =>
+      Object.prototype.hasOwnProperty.call(record, field),
+    );
+
+  if (!hasExactFields) {
+    throw new HttpsError(
+      "invalid-argument",
+      "Request data contains missing or unknown fields.",
+    );
+  }
+
+  const request = {
+    peerId: readGrantString(record, "peerId"),
+    chatId: readGrantString(record, "chatId"),
+    messageId: readGrantString(record, "messageId"),
+    version: readGrantString(record, "version"),
+  };
+
+  if (
+    request.peerId.includes("/") ||
+    request.chatId.includes("/") ||
+    request.messageId.includes("/")
+  ) {
+    throw new HttpsError(
+      "invalid-argument",
+      "Firestore identifiers must not contain a slash.",
+    );
+  }
+
+  if (!/^v[1-9][0-9]*$/.test(request.version)) {
+    throw new HttpsError(
+      "invalid-argument",
+      "Field version must match v[1-9][0-9]*.",
+    );
+  }
+
+  return request;
+}
+
+/**
+ * Checks whether an existing grant can be reused safely.
+ * @param {FirebaseFirestore.DocumentData|undefined} data Existing grant data.
+ * @param {FirstPrivateImageGrantRequest} request Validated request.
+ * @param {string} uploaderId Authenticated uploader ID.
+ * @param {Timestamp} now Current server time.
+ * @return {boolean} Whether the grant is reusable.
+ */
+function isReusableGrant(
+  data: FirebaseFirestore.DocumentData | undefined,
+  request: FirstPrivateImageGrantRequest,
+  uploaderId: string,
+  now: Timestamp,
+): boolean {
+  if (data == null) {
+    return false;
+  }
+
+  const keys = Object.keys(data);
+  const hasExactFields =
+    keys.length === GRANT_DOCUMENT_FIELDS.length &&
+    GRANT_DOCUMENT_FIELDS.every((field) =>
+      Object.prototype.hasOwnProperty.call(data, field),
+    );
+  const createdAt = data.createdAt;
+  const expiresAt = data.expiresAt;
+
+  if (
+    !hasExactFields ||
+    !(createdAt instanceof Timestamp) ||
+    !(expiresAt instanceof Timestamp)
+  ) {
+    return false;
+  }
+
+  const createdAtMilliseconds = createdAt.toMillis();
+  const expiresAtMilliseconds = expiresAt.toMillis();
+  const nowMilliseconds = now.toMillis();
+  const durationMilliseconds =
+    expiresAtMilliseconds - createdAtMilliseconds;
+
+  return (
+    data.grantType === FIRST_PRIVATE_IMAGE_GRANT_TYPE &&
+    data.uploaderId === uploaderId &&
+    data.peerId === request.peerId &&
+    data.chatId === request.chatId &&
+    data.messageId === request.messageId &&
+    data.version === request.version &&
+    createdAtMilliseconds <= nowMilliseconds &&
+    expiresAtMilliseconds > nowMilliseconds &&
+    durationMilliseconds > 0 &&
+    durationMilliseconds <= MAX_GRANT_DURATION_MILLISECONDS
+  );
+}
+
+export const createFirstPrivateImageUploadGrant = onCall<unknown>(
+  async (callableRequest) => {
+    const authenticatedUser = callableRequest.auth;
+
+    if (authenticatedUser == null) {
+      throw new HttpsError(
+        "unauthenticated",
+        "Authentication is required.",
+      );
+    }
+
+    const request = parseGrantRequest(callableRequest.data);
+    const uploaderId = authenticatedUser.uid;
+
+    if (request.peerId === uploaderId) {
+      throw new HttpsError(
+        "invalid-argument",
+        "The peer user must differ from the uploader.",
+      );
+    }
+
+    const hasExpectedChatId =
+      request.chatId === `${uploaderId}_${request.peerId}` ||
+      request.chatId === `${request.peerId}_${uploaderId}`;
+
+    if (!hasExpectedChatId) {
+      throw new HttpsError(
+        "invalid-argument",
+        "The chat ID does not match the private chat participants.",
+      );
+    }
+
+    const firestore = getFirestore();
+    const peerReference = firestore
+      .collection("users")
+      .doc(request.peerId);
+    const chatReference = firestore
+      .collection("chats")
+      .doc(request.chatId);
+    const grantReference = firestore
+      .collection(IMAGE_GRANTS_COLLECTION)
+      .doc(request.messageId);
+
+    try {
+      const status = await firestore.runTransaction(async (transaction) => {
+        const peerSnapshot = await transaction.get(peerReference);
+        const chatSnapshot = await transaction.get(chatReference);
+        const grantSnapshot = await transaction.get(grantReference);
+
+        if (!peerSnapshot.exists) {
+          throw new HttpsError(
+            "not-found",
+            "The peer user does not exist.",
+          );
+        }
+
+        if (chatSnapshot.exists) {
+          throw new HttpsError(
+            "failed-precondition",
+            "The private chat already exists.",
+          );
+        }
+
+        const now = Timestamp.now();
+
+        if (
+          isReusableGrant(
+            grantSnapshot.data(),
+            request,
+            uploaderId,
+            now,
+          )
+        ) {
+          return "reused";
+        }
+
+        if (grantSnapshot.exists) {
+          throw new HttpsError(
+            "already-exists",
+            "A grant for this message ID already exists.",
+          );
+        }
+
+        const expiresAt = Timestamp.fromMillis(
+          now.toMillis() + GRANT_DURATION_MILLISECONDS,
+        );
+
+        transaction.create(grantReference, {
+          grantType: FIRST_PRIVATE_IMAGE_GRANT_TYPE,
+          uploaderId,
+          peerId: request.peerId,
+          chatId: request.chatId,
+          messageId: request.messageId,
+          version: request.version,
+          createdAt: now,
+          expiresAt,
+        });
+
+        return "created";
+      });
+
+      logger.info("First private image upload grant is ready", {
+        status,
+        uploaderId,
+        peerId: request.peerId,
+        chatId: request.chatId,
+        messageId: request.messageId,
+        version: request.version,
+      });
+
+      return {granted: true};
+    } catch (error) {
+      if (error instanceof HttpsError) {
+        throw error;
+      }
+
+      logger.error("Failed to create first private image upload grant", {
+        error,
+        uploaderId,
+        peerId: request.peerId,
+        chatId: request.chatId,
+        messageId: request.messageId,
+        version: request.version,
+      });
+
+      throw new HttpsError(
+        "internal",
+        "Unable to create an image upload grant.",
+      );
+    }
+  },
+);
 
 export const sendMessageNotification = onDocumentCreated(
   "chats/{chatId}/messages/{messageId}",

@@ -1,3 +1,5 @@
+import '../domain/models/image_message_metadata.dart';
+
 enum MessageVisibilityState {
   visible,
   hiddenForCurrentUser,
@@ -12,6 +14,8 @@ class MessagePresentation {
     required this.senderName,
     required this.createdAt,
     required this.visibility,
+    this.isImageMessage = false,
+    this.imageMetadata,
   });
 
   final String id;
@@ -21,5 +25,12 @@ class MessagePresentation {
   final DateTime? createdAt;
   final MessageVisibilityState visibility;
 
+  final bool isImageMessage;
+  final ImageMessageMetadata? imageMetadata;
+
   bool get isVisible => visibility == MessageVisibilityState.visible;
+
+  bool get hasRenderableImage {
+    return isImageMessage && imageMetadata != null;
+  }
 }
