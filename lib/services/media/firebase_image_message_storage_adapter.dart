@@ -5,7 +5,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import '../../domain/models/image_message_limits.dart';
 import '../../domain/models/image_message_metadata.dart';
 import '../../domain/models/media_asset.dart';
-import '../chat/image_message_remote_cleanup_service.dart';
+import 'image_message_storage_gateway.dart';
 import 'media_paths.dart';
 
 typedef ImageMessageStorageUpload =
@@ -19,7 +19,7 @@ typedef ImageMessageStorageUpload =
 typedef ImageMessageStorageDelete = Future<void> Function(String path);
 
 final class FirebaseImageMessageStorageAdapter
-    implements ImageMessageRemoteCleanupGateway {
+    implements ImageMessageStorageGateway {
   FirebaseImageMessageStorageAdapter({
     FirebaseStorage? storage,
     ImageMessageStorageUpload? upload,
@@ -58,6 +58,7 @@ final class FirebaseImageMessageStorageAdapter
   late final ImageMessageStorageUpload _upload;
   late final ImageMessageStorageDelete _delete;
 
+  @override
   Future<MediaAsset> uploadThumbnail({
     required File file,
     required String uploaderId,
@@ -81,6 +82,7 @@ final class FirebaseImageMessageStorageAdapter
     );
   }
 
+  @override
   Future<MediaAsset> uploadFull({
     required File file,
     required String uploaderId,
