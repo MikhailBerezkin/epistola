@@ -172,6 +172,38 @@ void main() {
 
       expect(compressor.sourcePaths, isEmpty);
     });
+    test('returns null when image editing is cancelled', () async {
+      final pickerGateway = _FakePickerGateway(
+        galleryResult: AvatarPickedImage(path: gallerySource.path),
+      );
+
+      final compressor = _FakeCompressor();
+      final cropRequests = <String>[];
+
+      final service = _createService(
+        pickerGateway: pickerGateway,
+        compressor: compressor,
+        sourceDimensions: {
+          gallerySource.path: const ImageMessageImageDimensions(
+            width: 1600,
+            height: 1200,
+          ),
+        },
+        cropImage: (sourcePath) async {
+          cropRequests.add(sourcePath);
+          return null;
+        },
+      );
+
+      final result = await service.prepareFromGallery();
+
+      expect(result, isNull);
+
+      expect(cropRequests, [gallerySource.path]);
+
+      expect(compressor.sourcePaths, isEmpty);
+      expect(await gallerySource.exists(), isTrue);
+    });
 
     test('returns null when Android has no lost image', () async {
       final pickerGateway = _FakePickerGateway();
@@ -196,6 +228,7 @@ ImageMessageImagePreparationService _createService({
   required AvatarImagePickerGateway pickerGateway,
   required AvatarImageCompressorGateway compressor,
   required Map<String, ImageMessageImageDimensions> sourceDimensions,
+  ImageMessageImageCropper? cropImage,
 }) {
   final dimensionsByPath = <String, ImageMessageImageDimensions>{
     ...sourceDimensions,
@@ -227,6 +260,7 @@ ImageMessageImagePreparationService _createService({
   return ImageMessageImagePreparationService(
     picker: AvatarImagePickerService(gateway: pickerGateway),
     processor: processor,
+    cropImage: cropImage ?? (sourcePath) async => sourcePath,
   );
 }
 
