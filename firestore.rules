@@ -621,9 +621,173 @@ function isGroupAvatarMetadataUpdate(chatId) {
           );
     }
 
-    function isOnlyLastReadUpdate() {
-      return changedKeys().hasOnly(['lastRead']);
-    }
+    function isOwnLastReadUpdate() {
+  let oldLastRead =
+      resource.data.get('lastRead', {});
+
+  let newLastRead =
+      request.resource.data.get('lastRead', {});
+
+  return signedIn()
+      && isCurrentMemberInChat()
+
+      && changedKeys().hasOnly([
+        'lastRead'
+      ])
+
+      && oldLastRead is map
+      && newLastRead is map
+
+      && newLastRead.keys().hasAll([
+        request.auth.uid
+      ])
+
+      && newLastRead
+          .diff(oldLastRead)
+          .affectedKeys()
+          .hasOnly([
+            request.auth.uid
+          ])
+
+      && newLastRead[request.auth.uid] is timestamp
+      && newLastRead[request.auth.uid] == request.time;
+}
+
+function isPrivateReadReceiptUpdate(chatId) {
+  let oldLastRead =
+      resource.data.get('lastRead', {});
+
+  let newLastRead =
+      request.resource.data.get('lastRead', {});
+
+  let oldReadState =
+      resource.data.get('privateReadState', {});
+
+  let newReadState =
+      request.resource.data.get('privateReadState', {});
+
+  let oldCursor =
+      oldReadState.get(request.auth.uid, {});
+
+  let newCursor =
+      newReadState.get(request.auth.uid, {});
+
+  let messageId =
+      newCursor.get('messageId', '');
+
+  return signedIn()
+
+      && resource.data.type == 'private'
+      && request.resource.data.type == 'private'
+
+      && isCurrentMemberInChat()
+
+      && request.resource.data.memberIds
+          == resource.data.memberIds
+
+      && changedKeys().hasAll([
+        'lastRead',
+        'privateReadState'
+      ])
+
+      && changedKeys().hasOnly([
+        'lastRead',
+        'privateReadState'
+      ])
+
+      && oldLastRead is map
+      && newLastRead is map
+
+      && newLastRead.keys().hasAll([
+        request.auth.uid
+      ])
+
+      && newLastRead
+          .diff(oldLastRead)
+          .affectedKeys()
+          .hasOnly([
+            request.auth.uid
+          ])
+
+      && newLastRead[request.auth.uid] is timestamp
+      && newLastRead[request.auth.uid] == request.time
+
+      && oldReadState is map
+      && newReadState is map
+
+      && newReadState.keys().hasAll([
+        request.auth.uid
+      ])
+
+      && newReadState
+          .diff(oldReadState)
+          .affectedKeys()
+          .hasOnly([
+            request.auth.uid
+          ])
+
+      && newCursor is map
+
+      && newCursor.keys().hasAll([
+        'messageId',
+        'messageCreatedAt',
+        'readAt'
+      ])
+
+      && newCursor.keys().hasOnly([
+        'messageId',
+        'messageCreatedAt',
+        'readAt'
+      ])
+
+      && messageId is string
+      && messageId.size() > 0
+      && !messageId.matches('.*[/].*')
+
+      && newCursor.messageCreatedAt is timestamp
+
+      && newCursor.readAt is timestamp
+      && newCursor.readAt == request.time
+
+      && exists(
+        /databases/$(database)/documents/chats/$(chatId)/messages/$(messageId)
+      )
+
+      && get(
+        /databases/$(database)/documents/chats/$(chatId)/messages/$(messageId)
+      ).data.createdAt is timestamp
+
+      && get(
+        /databases/$(database)/documents/chats/$(chatId)/messages/$(messageId)
+      ).data.createdAt
+          == newCursor.messageCreatedAt
+
+      && (
+        !oldReadState.keys().hasAny([
+          request.auth.uid
+        ])
+
+        || (
+          oldCursor is map
+
+          && oldCursor.messageId is string
+          && oldCursor.messageCreatedAt is timestamp
+
+          && (
+            newCursor.messageCreatedAt
+                > oldCursor.messageCreatedAt
+
+            || (
+              newCursor.messageCreatedAt
+                  == oldCursor.messageCreatedAt
+
+              && newCursor.messageId
+                  == oldCursor.messageId
+            )
+          )
+        )
+      );
+}
     function isClearPrivateChatForCurrentUserUpdate() {
   let oldClearedAtByUser =
       resource.data.get('clearedAtByUser', {});
@@ -1015,24 +1179,71 @@ function isDeleteLastMessageForEveryoneUpdate(chatId) {
     }
 
     function isPrivateChatSelfRepair() {
-      return signedIn()
-          && resource.data.type == 'private'
-          && request.auth.uid in resource.data.memberIds
-          && request.auth.uid in request.resource.data.memberIds
-          && request.resource.data.type == 'private'
-          && request.resource.data.memberIds == resource.data.memberIds
-          && request.resource.data.diff(resource.data).changedKeys().hasOnly([
-            'name',
-            'type',
-            'memberIds',
-            'memberEmails',
-            'memberRoles',
-            'memberStatus',
-            'groupSettings',
-            'lastRead',
-            'isDissolved'
-          ]);
-    }
+  let oldLastRead =
+      resource.data.get('lastRead', {});
+
+  let newLastRead =
+      request.resource.data.get('lastRead', {});
+
+  let affectedKeys =
+      request.resource.data
+          .diff(resource.data)
+          .affectedKeys();
+
+  return signedIn()
+      && resource.data.type == 'private'
+
+      && request.auth.uid
+          in resource.data.memberIds
+
+      && request.auth.uid
+          in request.resource.data.memberIds
+
+      && request.resource.data.type == 'private'
+
+      && request.resource.data.memberIds
+          == resource.data.memberIds
+
+      && affectedKeys.hasOnly([
+        'name',
+        'type',
+        'memberIds',
+        'memberEmails',
+        'memberRoles',
+        'memberStatus',
+        'groupSettings',
+        'lastRead',
+        'isDissolved'
+      ])
+
+      && (
+        !affectedKeys.hasAny([
+          'lastRead'
+        ])
+
+        || (
+          oldLastRead is map
+          && newLastRead is map
+
+          && newLastRead.keys().hasAll([
+            request.auth.uid
+          ])
+
+          && newLastRead
+              .diff(oldLastRead)
+              .affectedKeys()
+              .hasOnly([
+                request.auth.uid
+              ])
+
+          && newLastRead[request.auth.uid]
+              is timestamp
+
+          && newLastRead[request.auth.uid]
+              == request.time
+        )
+      );
+}
 
     function isPrivateChatIdParticipant(chatId) {
       return chatId.matches('.*' + request.auth.uid + '.*');
@@ -1091,44 +1302,58 @@ function isDeleteLastMessageForEveryoneUpdate(chatId) {
       allow create: if isValidChatCreate(chatId);
 
       allow update: if
+  changedKeys().hasOnly([
+    'lastMessage',
+    'lastMessageAt',
+    'lastMessageId'
+  ])
+  ? (
+    canWrite(chatId)
+    && isAtomicLastMessageUpdate(chatId)
+  )
+  : changedKeys().hasOnly([
+      'lastRead'
+    ])
+    ? isOwnLastReadUpdate()
+    : (
         changedKeys().hasOnly([
-          'lastMessage',
-          'lastMessageAt',
-          'lastMessageId'
+          'lastRead',
+          'privateReadState'
         ])
-        ? (
-          canWrite(chatId)
-          && isAtomicLastMessageUpdate(chatId)
+        && changedKeys().hasAny([
+          'privateReadState'
+        ])
+      )
+      ? isPrivateReadReceiptUpdate(chatId)
+      : (
+        (
+          isCurrentAdminOrOwner()
+          && !changesLastMessageMetadata()
+          && !changedKeys().hasAny(
+            groupAvatarControlledKeys()
+          )
+          && !changedKeys().hasAny([
+            'lastRead',
+            'privateReadState'
+          ])
         )
-        : (
-          (
-            isCurrentAdminOrOwner()
-            && !changesLastMessageMetadata()
-            && !changedKeys().hasAny(
-              groupAvatarControlledKeys()
-            )
-          )
-          || isGroupAvatarMetadataUpdate(chatId)
-          || (
-            isCurrentMemberInChat()
-            && isOnlyLastReadUpdate()
-          )
-          || isAdminRightsTransferLastMessageUpdate()
-          || isDissolveGroupLastMessageUpdate()
-          || (
-            canAddMembersByPermission()
-            && isAddMembersUpdate()
-          )
-          || (
-            canUpdateMemberStatus()
-            && isOnlyMemberStatusUpdate()
-          )
-          || isLeaveGroupUpdate()
-          || isClearPrivateChatForCurrentUserUpdate()
-          || isPrivateChatSelfRepair()
-          || isHideLastMessageForCurrentUserUpdate(chatId)
-          || isDeleteLastMessageForEveryoneUpdate(chatId)
-        );
+        || isGroupAvatarMetadataUpdate(chatId)
+        || isAdminRightsTransferLastMessageUpdate()
+        || isDissolveGroupLastMessageUpdate()
+        || (
+          canAddMembersByPermission()
+          && isAddMembersUpdate()
+        )
+        || (
+          canUpdateMemberStatus()
+          && isOnlyMemberStatusUpdate()
+        )
+        || isLeaveGroupUpdate()
+        || isClearPrivateChatForCurrentUserUpdate()
+        || isPrivateChatSelfRepair()
+        || isHideLastMessageForCurrentUserUpdate(chatId)
+        || isDeleteLastMessageForEveryoneUpdate(chatId)
+      );
 
             allow delete: if false;
 

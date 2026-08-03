@@ -3,10 +3,12 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import '../domain/models/private_read_cursor.dart';
 
 import '../helpers/chat_date_formatter.dart';
 import '../models/message_presentation.dart';
 import '../services/chat/image_message_metadata_mapper.dart';
+import '../services/chat/private_read_cursor_resolver.dart';
 import '../services/chat_service.dart';
 import 'chat/chat_scroll_date_indicator.dart';
 import 'message_item.dart';
@@ -18,12 +20,16 @@ class MessagesList extends StatefulWidget {
   final Map<String, dynamic> memberRoles;
   final Timestamp? visibleAfter;
   final double keyboardInset;
+  final ValueChanged<PrivateReadCursor>? onLatestReadCursorChanged;
+  final PrivateReadCursor? peerReadCursor;
 
   const MessagesList({
     super.key,
     required this.chatId,
     required this.memberRoles,
     required this.keyboardInset,
+    this.onLatestReadCursorChanged,
+    this.peerReadCursor,
     this.visibleAfter,
   });
 
@@ -65,6 +71,7 @@ class _MessagesListState extends State<MessagesList> {
   bool _isUserScrolling = false;
   bool _isScrollDateVisible = false;
   bool _scrollDateUpdateScheduled = false;
+  bool _readCursorUpdateScheduled = false;
 
   String? _scrollDateLabel;
 
@@ -188,6 +195,7 @@ class _MessagesListState extends State<MessagesList> {
     if (_isUserScrolling) {
       _scheduleScrollDateUpdate();
     }
+    _scheduleReadCursorUpdate();
   }
 
   void _handleScroll() {
@@ -202,6 +210,7 @@ class _MessagesListState extends State<MessagesList> {
     if (_isUserScrolling) {
       _scheduleScrollDateUpdate();
     }
+    _scheduleReadCursorUpdate();
   }
 
   bool _handleScrollNotification(ScrollNotification notification) {
@@ -549,6 +558,53 @@ class _MessagesListState extends State<MessagesList> {
     return position.maxScrollExtent - position.pixels < 180;
   }
 
+  void _scheduleReadCursorUpdate() {
+    if (widget.onLatestReadCursorChanged == null ||
+        _readCursorUpdateScheduled) {
+      return;
+    }
+
+    _readCursorUpdateScheduled = true;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _readCursorUpdateScheduled = false;
+
+      if (!mounted || !_isNearBottom) {
+        return;
+      }
+
+      final callback = widget.onLatestReadCursorChanged;
+      final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+
+      if (callback == null || currentUserId == null) {
+        return;
+      }
+
+      final cursor = PrivateReadCursorResolver.fromChronologicalCandidates(
+        _sortedMessages.map((message) {
+          final data = message.data();
+          final createdAt = data['createdAt'];
+
+          return (
+            messageId: message.id,
+            messageCreatedAt: createdAt is Timestamp
+                ? createdAt.toDate()
+                : null,
+            isVisible: _isMessageVisibleForCurrentUser(
+              messageId: message.id,
+              data: data,
+              currentUserId: currentUserId,
+            ),
+          );
+        }),
+      );
+
+      if (cursor != null) {
+        callback(cursor);
+      }
+    });
+  }
+
   void _hideMessageLocally(String messageId) {
     if (!mounted || _locallyHiddenMessageIds.contains(messageId)) {
       return;
@@ -822,6 +878,17 @@ class _MessagesListState extends State<MessagesList> {
                   final createdAt = data['createdAt'];
                   final timeText = formatMessageTime(createdAt);
                   final isMe = senderId == currentUser?.uid;
+                  final showPrivateReadReceipt =
+                      widget.onLatestReadCursorChanged != null && isMe;
+
+                  final isReadByPeer =
+                      showPrivateReadReceipt &&
+                      createdAt is Timestamp &&
+                      widget.peerReadCursor?.covers(
+                            messageId: message.id,
+                            messageCreatedAt: createdAt.toDate(),
+                          ) ==
+                          true;
 
                   final senderRole = widget.memberRoles[senderId] ?? 'member';
 
@@ -863,6 +930,8 @@ class _MessagesListState extends State<MessagesList> {
                     senderRole: senderRole,
                     timeText: timeText,
                     isMe: isMe,
+                    showPrivateReadReceipt: showPrivateReadReceipt,
+                    isReadByPeer: isReadByPeer,
                     dateLabel: dateLabelsByMessageId[message.id],
                     onLongPress: presentation.isVisible
                         ? () {

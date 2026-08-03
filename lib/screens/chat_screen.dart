@@ -6,9 +6,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show HapticFeedback;
 
 import '../domain/value_objects/message_text.dart';
+import '../domain/models/private_read_cursor.dart';
 import '../models/app_user.dart';
 import '../services/chat/active_chat_tracker.dart';
 import '../services/chat/existing_image_message_send_service.dart';
+import '../services/chat/private_read_cursor_mapper.dart';
+import '../services/chat/private_read_receipt_debouncer.dart';
+import '../services/chat/private_read_receipt_service.dart';
 import '../services/chat_service.dart';
 import '../services/media/image_message_image_preparation_service.dart';
 import '../services/media/image_message_image_processor.dart';
@@ -46,6 +50,8 @@ class _ChatScreenState extends State<ChatScreen> {
   StreamSubscription<QuerySnapshot>? messagesSubscription;
 
   late final ActiveChatRegistration _activeChatRegistration;
+  late final PrivateReadReceiptService _privateReadReceiptService;
+  late final PrivateReadReceiptDebouncer _privateReadReceiptDebouncer;
 
   String? lastNotifiedMessageId;
 
@@ -58,11 +64,28 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void initState() {
     super.initState();
+    _privateReadReceiptService = PrivateReadReceiptService.firebase();
+
+    _privateReadReceiptDebouncer = PrivateReadReceiptDebouncer(
+      commit: (cursor) async {
+        await _privateReadReceiptService.markRead(
+          chatId: widget.chatId,
+          cursor: cursor,
+        );
+      },
+      onError: (error, stackTrace) {
+        debugPrint('Private read receipt write failed: $error');
+      },
+    );
 
     _activeChatRegistration = activeChatTracker.enter(widget.chatId);
 
     _markChatAsReadBestEffort();
     startIncomingMessageListener();
+  }
+
+  void _handleLatestReadCursorChanged(PrivateReadCursor cursor) {
+    _privateReadReceiptDebouncer.schedule(cursor);
   }
 
   void _markChatAsReadBestEffort() {
@@ -81,6 +104,9 @@ class _ChatScreenState extends State<ChatScreen> {
     }
 
     _didScheduleFinalReadMark = true;
+
+    unawaited(_privateReadReceiptDebouncer.flushNow());
+
     _markChatAsReadBestEffort();
   }
 
@@ -254,6 +280,7 @@ class _ChatScreenState extends State<ChatScreen> {
     // Fallback для случаев, когда route был удалён не обычной
     // кнопкой «Назад», а внешней навигационной операцией.
     _scheduleFinalReadMark();
+    _privateReadReceiptDebouncer.dispose();
 
     activeChatTracker.leave(_activeChatRegistration);
 
@@ -310,6 +337,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   final chatType = data['type'] ?? 'group';
 
                   Timestamp? visibleAfter;
+                  PrivateReadCursor? peerReadCursor;
 
                   if (chatType == 'private' && currentUserId != null) {
                     final clearedAtByUser =
@@ -320,6 +348,26 @@ class _ChatScreenState extends State<ChatScreen> {
 
                     if (clearedAt is Timestamp) {
                       visibleAfter = clearedAt;
+                    }
+
+                    final memberIds = List<String>.from(
+                      data['memberIds'] ?? const <String>[],
+                    );
+
+                    String? peerUserId;
+
+                    for (final memberId in memberIds) {
+                      if (memberId != currentUserId) {
+                        peerUserId = memberId;
+                        break;
+                      }
+                    }
+
+                    if (peerUserId != null) {
+                      peerReadCursor = PrivateReadCursorMapper.fromChatData(
+                        chatData: data,
+                        userId: peerUserId,
+                      );
                     }
                   }
 
@@ -334,6 +382,10 @@ class _ChatScreenState extends State<ChatScreen> {
                         memberRoles: memberRoles,
                         visibleAfter: visibleAfter,
                         keyboardInset: keyboardInset,
+                        onLatestReadCursorChanged: chatType == 'private'
+                            ? _handleLatestReadCursorChanged
+                            : null,
+                        peerReadCursor: peerReadCursor,
                       ),
                       BannedOverlay(chatId: widget.chatId),
                     ],

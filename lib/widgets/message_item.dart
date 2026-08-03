@@ -13,6 +13,8 @@ class MessageItem extends StatefulWidget {
     required this.senderRole,
     required this.timeText,
     required this.isMe,
+    this.showPrivateReadReceipt = false,
+    this.isReadByPeer = false,
     this.dateLabel,
     this.onLongPress,
   });
@@ -21,6 +23,8 @@ class MessageItem extends StatefulWidget {
   final String senderRole;
   final String timeText;
   final bool isMe;
+  final bool showPrivateReadReceipt;
+  final bool isReadByPeer;
   final String? dateLabel;
   final VoidCallback? onLongPress;
 
@@ -131,6 +135,8 @@ class _MessageItemState extends State<MessageItem> {
                           senderRole: widget.senderRole,
                           timeText: widget.timeText,
                           isMe: widget.isMe,
+                          showPrivateReadReceipt: widget.showPrivateReadReceipt,
+                          isReadByPeer: widget.isReadByPeer,
                           isImageMessage: widget.message.isImageMessage,
                           imageMetadata: widget.message.imageMetadata,
                         ),
