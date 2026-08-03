@@ -44,6 +44,7 @@ class _MessagesListState extends State<MessagesList> {
   final GlobalKey _messagesViewportKey = GlobalKey();
 
   final Map<String, GlobalKey> _messageItemKeys = {};
+  final Set<String> _locallyHiddenMessageIds = <String>{};
 
   final Map<String, QueryDocumentSnapshot<Map<String, dynamic>>> _messagesById =
       {};
@@ -107,6 +108,7 @@ class _MessagesListState extends State<MessagesList> {
 
     _scrollDateHideTimer?.cancel();
     _messageItemKeys.clear();
+    _locallyHiddenMessageIds.clear();
 
     setState(() {
       _messagesById.clear();
@@ -306,7 +308,11 @@ class _MessagesListState extends State<MessagesList> {
     for (final message in _sortedMessages) {
       final data = message.data();
 
-      if (!_isMessageVisibleForCurrentUser(data, currentUserId)) {
+      if (!_isMessageVisibleForCurrentUser(
+        messageId: message.id,
+        data: data,
+        currentUserId: currentUserId,
+      )) {
         continue;
       }
 
@@ -455,10 +461,15 @@ class _MessagesListState extends State<MessagesList> {
     return first.id.compareTo(second.id);
   }
 
-  bool _isMessageVisibleForCurrentUser(
-    Map<String, dynamic> data,
-    String? currentUserId,
-  ) {
+  bool _isMessageVisibleForCurrentUser({
+    required String messageId,
+    required Map<String, dynamic> data,
+    required String? currentUserId,
+  }) {
+    if (_locallyHiddenMessageIds.contains(messageId)) {
+      return false;
+    }
+
     if (data['deletedForEveryone'] == true) {
       return false;
     }
@@ -484,7 +495,11 @@ class _MessagesListState extends State<MessagesList> {
     for (final message in messages) {
       final data = message.data();
 
-      if (!_isMessageVisibleForCurrentUser(data, currentUserId)) {
+      if (!_isMessageVisibleForCurrentUser(
+        messageId: message.id,
+        data: data,
+        currentUserId: currentUserId,
+      )) {
         continue;
       }
 
@@ -532,6 +547,18 @@ class _MessagesListState extends State<MessagesList> {
     final position = scrollController.position;
 
     return position.maxScrollExtent - position.pixels < 180;
+  }
+
+  void _hideMessageLocally(String messageId) {
+    if (!mounted || _locallyHiddenMessageIds.contains(messageId)) {
+      return;
+    }
+
+    setState(() {
+      _locallyHiddenMessageIds.add(messageId);
+    });
+
+    _scheduleScrollDateUpdate();
   }
 
   Future<void> _showMessageActions({
@@ -627,11 +654,17 @@ class _MessagesListState extends State<MessagesList> {
             messageId: message.id,
           );
 
+          _hideMessageLocally(message.id);
+          return;
+
         case _MessageDeleteAction.forEveryone:
           await chatService.deleteMessageForEveryone(
             chatId: widget.chatId,
             messageId: message.id,
           );
+
+          _hideMessageLocally(message.id);
+          return;
       }
     } catch (_) {
       if (!mounted) {
@@ -799,7 +832,13 @@ class _MessagesListState extends State<MessagesList> {
                       hiddenFor is Map<String, dynamic> &&
                       hiddenFor[currentUser.uid] is Timestamp;
 
-                  final visibility = data['deletedForEveryone'] == true
+                  final isLocallyHidden = _locallyHiddenMessageIds.contains(
+                    message.id,
+                  );
+
+                  final visibility = isLocallyHidden
+                      ? MessageVisibilityState.hiddenForCurrentUser
+                      : data['deletedForEveryone'] == true
                       ? MessageVisibilityState.deletedForEveryone
                       : isHiddenForCurrentUser
                       ? MessageVisibilityState.hiddenForCurrentUser
