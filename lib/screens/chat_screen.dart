@@ -7,6 +7,7 @@ import 'package:flutter/services.dart' show HapticFeedback;
 
 import '../domain/value_objects/message_text.dart';
 import '../models/app_user.dart';
+import '../services/chat/active_chat_tracker.dart';
 import '../services/chat/existing_image_message_send_service.dart';
 import '../services/chat_service.dart';
 import '../services/media/image_message_image_preparation_service.dart';
@@ -44,16 +45,67 @@ class _ChatScreenState extends State<ChatScreen> {
 
   StreamSubscription<QuerySnapshot>? messagesSubscription;
 
+  late final ActiveChatRegistration _activeChatRegistration;
+
   String? lastNotifiedMessageId;
 
   bool isSendingImage = false;
+
+  bool _allowPop = false;
+  bool _isLeaving = false;
+  bool _didScheduleFinalReadMark = false;
 
   @override
   void initState() {
     super.initState();
 
-    chatService.markChatAsRead(widget.chatId);
+    _activeChatRegistration = activeChatTracker.enter(widget.chatId);
+
+    _markChatAsReadBestEffort();
     startIncomingMessageListener();
+  }
+
+  void _markChatAsReadBestEffort() {
+    unawaited(
+      chatService.markChatAsRead(widget.chatId).catchError((Object _) {
+        // Firestore может поставить запись в локальную очередь.
+        // Ошибка отметки прочтения не должна закрывать экран
+        // и не должна мешать пользователю выйти из чата.
+      }),
+    );
+  }
+
+  void _scheduleFinalReadMark() {
+    if (_didScheduleFinalReadMark) {
+      return;
+    }
+
+    _didScheduleFinalReadMark = true;
+    _markChatAsReadBestEffort();
+  }
+
+  void _requestLeaveChat() {
+    if (_isLeaving) {
+      return;
+    }
+
+    _isLeaving = true;
+
+    // Сначала запускаем обновление lastRead, чтобы локальный
+    // Firestore snapshot успел попасть в список чатов.
+    _scheduleFinalReadMark();
+
+    setState(() {
+      _allowPop = true;
+    });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+
+      Navigator.of(context).pop();
+    });
   }
 
   void startIncomingMessageListener() {
@@ -199,6 +251,12 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
+    // Fallback для случаев, когда route был удалён не обычной
+    // кнопкой «Назад», а внешней навигационной операцией.
+    _scheduleFinalReadMark();
+
+    activeChatTracker.leave(_activeChatRegistration);
+
     messagesSubscription?.cancel();
     messageController.dispose();
 
@@ -209,79 +267,90 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget build(BuildContext context) {
     final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
 
-    return Scaffold(
-      appBar: ChatAppBar(
-        chatId: widget.chatId,
-        chatName: widget.chatName,
-        peerUser: widget.peerUser,
-      ),
-      body: Column(
-        children: [
-          Expanded(
-            child: StreamBuilder<DocumentSnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection('chats')
-                  .doc(widget.chatId)
-                  .snapshots(),
-              builder: (context, snapshot) {
-                final data = snapshot.data?.data() as Map<String, dynamic>?;
+    return PopScope(
+      canPop: _allowPop,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) {
+          return;
+        }
 
-                if (snapshot.connectionState == ConnectionState.waiting &&
-                    data == null) {
-                  return const Center(child: CircularProgressIndicator());
-                }
+        _requestLeaveChat();
+      },
+      child: Scaffold(
+        appBar: ChatAppBar(
+          chatId: widget.chatId,
+          chatName: widget.chatName,
+          peerUser: widget.peerUser,
+        ),
+        body: Column(
+          children: [
+            Expanded(
+              child: StreamBuilder<DocumentSnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection('chats')
+                    .doc(widget.chatId)
+                    .snapshots(),
+                builder: (context, snapshot) {
+                  final data = snapshot.data?.data() as Map<String, dynamic>?;
 
-                if (data == null) {
-                  return const Center(child: Text('Чат недоступен'));
-                }
-
-                final memberRoles =
-                    (data['memberRoles'] as Map<String, dynamic>?) ?? {};
-
-                final currentUserId = FirebaseAuth.instance.currentUser?.uid;
-
-                final chatType = data['type'] ?? 'group';
-
-                Timestamp? visibleAfter;
-
-                if (chatType == 'private' && currentUserId != null) {
-                  final clearedAtByUser =
-                      (data['clearedAtByUser'] as Map<String, dynamic>?) ?? {};
-
-                  final clearedAt = clearedAtByUser[currentUserId];
-
-                  if (clearedAt is Timestamp) {
-                    visibleAfter = clearedAt;
+                  if (snapshot.connectionState == ConnectionState.waiting &&
+                      data == null) {
+                    return const Center(child: CircularProgressIndicator());
                   }
-                }
 
-                return Stack(
-                  children: [
-                    MessagesList(
-                      key: ValueKey(
-                        '${widget.chatId}_'
-                        '${visibleAfter?.toDate().millisecondsSinceEpoch ?? 0}',
+                  if (data == null) {
+                    return const Center(child: Text('Чат недоступен'));
+                  }
+
+                  final memberRoles =
+                      (data['memberRoles'] as Map<String, dynamic>?) ?? {};
+
+                  final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+
+                  final chatType = data['type'] ?? 'group';
+
+                  Timestamp? visibleAfter;
+
+                  if (chatType == 'private' && currentUserId != null) {
+                    final clearedAtByUser =
+                        (data['clearedAtByUser'] as Map<String, dynamic>?) ??
+                        {};
+
+                    final clearedAt = clearedAtByUser[currentUserId];
+
+                    if (clearedAt is Timestamp) {
+                      visibleAfter = clearedAt;
+                    }
+                  }
+
+                  return Stack(
+                    children: [
+                      MessagesList(
+                        key: ValueKey(
+                          '${widget.chatId}_'
+                          '${visibleAfter?.toDate().millisecondsSinceEpoch ?? 0}',
+                        ),
+                        chatId: widget.chatId,
+                        memberRoles: memberRoles,
+                        visibleAfter: visibleAfter,
+                        keyboardInset: keyboardInset,
                       ),
-                      chatId: widget.chatId,
-                      memberRoles: memberRoles,
-                      visibleAfter: visibleAfter,
-                      keyboardInset: keyboardInset,
-                    ),
-                    BannedOverlay(chatId: widget.chatId),
-                  ],
-                );
-              },
+                      BannedOverlay(chatId: widget.chatId),
+                    ],
+                  );
+                },
+              ),
             ),
-          ),
-          MessageInputArea(
-            chatId: widget.chatId,
-            controller: messageController,
-            onSend: sendMessage,
-            onPickFromGallery: sendImageFromGallery,
-            onTakePhoto: takeAndSendPhoto,
-            isBusy: isSendingImage,
-          ),
-        ],
+            MessageInputArea(
+              chatId: widget.chatId,
+              controller: messageController,
+              onSend: sendMessage,
+              onPickFromGallery: sendImageFromGallery,
+              onTakePhoto: takeAndSendPhoto,
+              isBusy: isSendingImage,
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -6,6 +6,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:vibration/vibration.dart';
 
 import '../domain/models/push_deep_link_request.dart';
+import 'chat/active_chat_tracker.dart';
 import 'push/push_deep_link_coordinator.dart';
 import 'push_token_service.dart';
 
@@ -107,6 +108,17 @@ class NotificationService {
     }
 
     final request = PushDeepLinkRequest.fromRemoteData(message.data);
+
+    if (request != null && activeChatTracker.isCurrent(request.chatId)) {
+      if (kDebugMode) {
+        debugPrint(
+          'Foreground notification suppressed for active chat: '
+          'chatId=${request.chatId}',
+        );
+      }
+
+      return;
+    }
 
     await _localNotifications.show(
       id: message.messageId.hashCode & 0x7fffffff,
