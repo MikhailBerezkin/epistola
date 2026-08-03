@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../models/message_presentation.dart';
+import 'chat/chat_date_separator.dart';
 import 'message_bubble.dart';
 
 class MessageItem extends StatefulWidget {
@@ -12,6 +13,7 @@ class MessageItem extends StatefulWidget {
     required this.senderRole,
     required this.timeText,
     required this.isMe,
+    this.dateLabel,
     this.onLongPress,
   });
 
@@ -19,6 +21,7 @@ class MessageItem extends StatefulWidget {
   final String senderRole;
   final String timeText;
   final bool isMe;
+  final String? dateLabel;
   final VoidCallback? onLongPress;
 
   @override
@@ -50,7 +53,9 @@ class _MessageItemState extends State<MessageItem> {
     final wasVisible = oldWidget.message.isVisible;
     final isVisible = widget.message.isVisible;
 
-    if (wasVisible == isVisible) return;
+    if (wasVisible == isVisible) {
+      return;
+    }
 
     _collapseTimer?.cancel();
 
@@ -61,7 +66,9 @@ class _MessageItemState extends State<MessageItem> {
       });
 
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted || !widget.message.isVisible) return;
+        if (!mounted || !widget.message.isVisible) {
+          return;
+        }
 
         setState(() {
           _isContentVisible = true;
@@ -76,7 +83,9 @@ class _MessageItemState extends State<MessageItem> {
     });
 
     _collapseTimer = Timer(_fadeDuration, () {
-      if (!mounted || widget.message.isVisible) return;
+      if (!mounted || widget.message.isVisible) {
+        return;
+      }
 
       setState(() {
         _keepsSpace = false;
@@ -107,18 +116,26 @@ class _MessageItemState extends State<MessageItem> {
                 scale: _isContentVisible ? 1 : 0.96,
                 child: IgnorePointer(
                   ignoring: !_isContentVisible,
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onLongPress: widget.onLongPress,
-                    child: MessageBubble(
-                      text: widget.message.text,
-                      senderName: widget.message.senderName,
-                      senderRole: widget.senderRole,
-                      timeText: widget.timeText,
-                      isMe: widget.isMe,
-                      isImageMessage: widget.message.isImageMessage,
-                      imageMetadata: widget.message.imageMetadata,
-                    ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (widget.dateLabel != null)
+                        ChatDateSeparator(label: widget.dateLabel!),
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onLongPress: widget.onLongPress,
+                        child: MessageBubble(
+                          text: widget.message.text,
+                          senderName: widget.message.senderName,
+                          senderRole: widget.senderRole,
+                          timeText: widget.timeText,
+                          isMe: widget.isMe,
+                          isImageMessage: widget.message.isImageMessage,
+                          imageMetadata: widget.message.imageMetadata,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
