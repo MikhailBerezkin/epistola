@@ -2,17 +2,17 @@
 
 Корпоративный мессенджер на Flutter и Firebase.
 
-Epistola — Android-first корпоративный мессенджер и основа для будущей внутренней коммуникационной платформы компании. Проект развивается небольшими проверяемыми этапами с разделением UI, application services, domain-моделей и Firebase infrastructure.
+Epistola — Android-first корпоративный мессенджер и основа будущей внутренней коммуникационной платформы компании. Проект развивается небольшими проверяемыми этапами с разделением UI, application services, domain-моделей и Firebase infrastructure.
 
 ## Статус проекта
 
 | Параметр | Значение |
 |---|---|
-| Последний стабильный релиз | `v0.7.1` |
-| Release merge commit | `ee8b27b` |
-| Последний завершённый этап | `v0.7.1 Push Deep Link Foundation` |
+| Последний стабильный релиз | `v0.7.2` |
+| Release merge commit | `7d8357a` |
+| Последний завершённый этап | `v0.7.2 Chat Date Separator Foundation` |
 | Текущая ветка | `main` |
-| Состояние этапа | завершён и слит в `main`; release tag — `v0.7.1` |
+| Состояние этапа | завершён и слит в `main`; release tag — `v0.7.2` |
 | Основная платформа | Android |
 | Backend | Firebase |
 | Репозиторий | `MikhailBerezkin/epistola` |
@@ -22,16 +22,24 @@ Epistola — Android-first корпоративный мессенджер и о
 | Android package | `com.epistola.app` |
 | Пилотная группа | около 40–50 пользователей |
 
-Релизная ветка была создана от `v0.7.0 Image Message Foundation` и слита в `main` release merge commit `ee8b27b`.
+Релиз `v0.7.2` создан поверх `v0.7.1 Push Deep Link Foundation`.
 
-Последние итоговые проверки функциональной ветки:
+Итоговая Git-история этапа:
+
+```text
+2d34cfc feat(chat): add date separators and scroll indicator
+bffea4f fix(chat): hide paginated messages immediately
+7d8357a merge: release v0.7.2 Chat Date Separator Foundation
+```
+
+Финальные проверки:
 
 ```text
 flutter.bat analyze
 → No issues found
 
 flutter.bat test
-→ 409 tests passed
+→ 423 tests passed
 
 flutter.bat build apk --release
 → успешно, 55.3 MB
@@ -43,9 +51,9 @@ Release APK:
 build\app\outputs\flutter-apk\app-release.apk
 ```
 
-APK установлен и проверен на физическом Android-телефоне и Android Emulator.
+Функциональность проверена на Android Emulator. Разделители дней, плавающая дата, пагинация и немедленное локальное скрытие сообщений работают.
 
-Cloud Functions, Firestore Rules и Storage Rules на этапе `v0.7.1` не изменялись. Повторный Firebase deploy не требуется.
+Cloud Functions, Firestore Rules и Storage Rules на этапе `v0.7.2` не изменялись. Firebase deploy не требуется.
 
 ## Что такое Epistola
 
@@ -130,7 +138,13 @@ Image Message Foundation проверен для личных чатов. Отп
 - объединение по document ID;
 - корректный autoscroll;
 - учёт крупных изображений;
-- keyboard-aware scroll.
+- keyboard-aware scroll;
+- постоянные разделители календарных дней;
+- плавающий индикатор даты при прокрутке;
+- форматы `Сегодня`, `Вчера`, `3 августа`, `28 декабря 2025`;
+- плавная смена плавающей даты;
+- исчезновение плавающего индикатора после остановки прокрутки;
+- корректная работа разделителей после пагинации и удаления сообщений.
 
 ### Удаление сообщений
 
@@ -149,7 +163,9 @@ deletedForEveryone
 - sender-only delete for everyone;
 - logical deletion;
 - поиск предыдущего видимого preview;
-- отсутствие повторного push при логическом удалении.
+- отсутствие повторного push при логическом удалении;
+- немедленное локальное скрытие сообщений из ранее загруженных страниц;
+- перестройка разделителя даты после удаления.
 
 ### Роли и модерация
 
@@ -163,21 +179,94 @@ guest
 
 Поддерживаются mute, ban, permissions, управление участниками, last-admin protection, передача прав и безопасный выход. Owner сохраняет максимальный приоритет.
 
-## Push Deep Link Foundation — v0.7.1
+## Chat Date Separator Foundation — v0.7.2
 
 ### Назначение
 
-Push Deep Link Foundation переводит пользователя из системного или локального уведомления непосредственно в нужный личный или групповой чат.
+Этап добавляет календарную структуру истории сообщений и позволяет понимать дату сообщений при просмотре длинного чата.
 
-Серверный payload уже содержал:
+### Постоянные разделители
+
+Первое видимое сообщение каждого календарного дня получает разделитель:
 
 ```text
-data.chatId
+Сегодня
+Вчера
+3 августа
+28 декабря 2025
 ```
 
-Поэтому изменение и повторный deploy Cloud Function `sendMessageNotification` не потребовались.
+Скрытые у текущего пользователя и удалённые у всех сообщения не участвуют в выборе первого видимого сообщения дня.
 
-### Клиентский поток
+### Плавающая дата
+
+Во время пользовательской прокрутки над лентой отображается дата верхнего видимого сообщения.
+
+```text
+scroll start
+→ индикатор появляется
+
+scroll update / inertia
+→ индикатор остаётся видимым
+→ дата меняется при переходе между днями
+
+scroll end
+→ индикатор остаётся примерно 1.2 секунды
+→ плавно исчезает
+```
+
+Дата определяется по реальным позициям отрисованных элементов, поэтому корректно поддерживаются сообщения разной высоты, длинный текст и изображения.
+
+### Пагинация и удаление
+
+Сохранены invariants:
+
+```text
+page size 20
+merge by document ID
+chronological order
+scroll position preservation
+one old-page request at a time
+near-bottom-only autoscroll
+```
+
+Ранее загруженные страницы не входят в realtime-listener последних 20 сообщений. Поэтому после успешного удаления добавлено локальное optimistic-состояние скрытия:
+
+```text
+Firestore update succeeded
+→ messageId added to locally hidden set
+→ MessageItem collapses
+→ date labels rebuild
+```
+
+Это устраняет необходимость выходить из чата для обновления старого сообщения и не создаёт дополнительных Firestore reads.
+
+### Файлы этапа
+
+```text
+lib/helpers/chat_date_formatter.dart
+lib/widgets/chat/chat_date_separator.dart
+lib/widgets/chat/chat_scroll_date_indicator.dart
+lib/widgets/message_item.dart
+lib/widgets/messages_list.dart
+
+test/helpers/chat_date_formatter_test.dart
+test/widgets/chat/chat_date_widgets_test.dart
+```
+
+### Проверки этапа
+
+```text
+10 ChatDateFormatter tests
+4 date widget tests
+423 tests полного проекта
+flutter.bat analyze → No issues found
+release APK → 55.3 MB
+```
+
+## Push Deep Link Foundation — v0.7.1
+
+Notification tap открывает конкретный private или group chat.
 
 ```text
 RemoteMessage или local notification payload
@@ -188,55 +277,7 @@ RemoteMessage или local notification payload
 → ChatScreen
 ```
 
-### Реализовано
-
-- проверка и нормализация `chatId`;
-- отказ от пустого, нестрокового или содержащего `/` идентификатора;
-- `FirebaseMessaging.onMessageOpenedApp`;
-- `FirebaseMessaging.getInitialMessage()`;
-- foreground local notification;
-- передача `chatId` в payload локального уведомления;
-- ожидание готовности Flutter Navigator;
-- очередь запросов во время запуска;
-- дедупликация одинакового `chatId`;
-- защита от двойного открытия route;
-- повторное открытие после закрытия предыдущего route;
-- загрузка chat document;
-- проверка auth и membership;
-- отказ для отсутствующего, чужого или неподдерживаемого chat;
-- разрешение private peer и загрузка `AppUser`;
-- поддержка private и group chats;
-- безопасный fallback без падения;
-- единый `navigatorKey` в `MaterialApp`.
-
-### Проверенные сценарии v0.7.1
-
-На физическом Android-телефоне и Android Emulator проверено:
-
-- private chat при свёрнутом приложении;
-- private chat после удаления приложения из последних задач;
-- cold start;
-- group chat;
-- foreground local notification;
-- переход из другого открытого чата;
-- delayed notification tap;
-- правильные имя и текст уведомления;
-- открытие правильного chat;
-- отсутствие двойного route;
-- возврат кнопкой «Назад».
-
-### Автоматические проверки v0.7.1
-
-```text
-test/domain/models/push_deep_link_request_test.dart
-test/services/push/push_deep_link_resolver_test.dart
-test/services/push/push_deep_link_coordinator_test.dart
-```
-
-```text
-23 профильных теста passed
-409 тестов полного проекта passed
-```
+Поддерживаются foreground, background, terminated, cold start, membership validation, private/group resolution и duplicate route protection.
 
 ## Image Message Foundation — v0.7.0
 
@@ -258,11 +299,9 @@ chat_media/{chatId}/messages/{messageId}/v{version}/full.jpg
 
 Для первой фотографии используется `createFirstPrivateImageUploadGrant`. Chat и первое image message создаются атомарно. Partial uploads очищаются best-effort.
 
-Viewer поддерживает progress, retry, pinch-to-zoom, перемещение, 5x, double-tap и системный back.
-
 ## Push Notification Foundation — v0.6.3
 
-Реализованы Firebase Cloud Messaging, локальные Android-уведомления, foreground/background/terminated, регистрация и обновление tokens, удаление token при logout, sender exclusion, private/group push, cleanup невалидных tokens и представление image message как `Фотография`.
+Реализованы Firebase Cloud Messaging, локальные Android-уведомления, foreground/background/terminated, регистрация и обновление tokens, удаление token при logout, sender exclusion, private/group push и cleanup невалидных tokens.
 
 Начиная с `v0.7.1`, notification tap открывает конкретный chat.
 
@@ -279,16 +318,10 @@ Image messages используют ту же logical deletion модель. Ass
 
 ## Avatar Foundation — v0.6.5
 
-User avatar paths:
-
 ```text
 user_avatars/{uid}/v{version}/thumb.jpg
 user_avatars/{uid}/v{version}/full.jpg
-```
 
-Group avatar paths:
-
-```text
 group_avatars/{chatId}/v{version}/thumb.jpg
 group_avatars/{chatId}/v{version}/full.jpg
 ```
@@ -337,23 +370,12 @@ Infrastructure Gateways / Adapters
 Firebase
 ```
 
-Push deep-link flow:
-
-```text
-NotificationService
-→ PushDeepLinkRequest
-→ PushDeepLinkCoordinator
-→ PushDeepLinkResolver
-→ PushDeepLinkNavigation
-→ ChatScreen
-```
-
 ## Структура проекта
 
 ```text
 lib/
 ├── domain/
-│   └── models/
+├── helpers/
 ├── models/
 ├── screens/
 ├── services/
@@ -372,6 +394,8 @@ functions/
 
 test/
 ├── domain/
+├── helpers/
+├── models/
 ├── rules/
 ├── services/
 └── widgets/
@@ -394,13 +418,6 @@ flutter.bat test
 flutter.bat build apk --release
 ```
 
-```powershell
-npm.cmd --prefix functions run build
-npm.cmd --prefix functions run lint
-```
-
-На этапе `v0.7.1` Firebase deploy не требуется.
-
 Generated plugin files после серии Flutter-команд восстанавливаются один раз:
 
 ```powershell
@@ -413,18 +430,22 @@ git.exe restore -- `
 ## Известные ограничения
 
 - Group image messages не завершены.
+- Private read receipts пока не реализованы.
+- Group like/dislike reactions пока не реализованы.
+- Private typing indicator и Realtime Database пока не подключены.
 - Files и voice messages не реализованы.
-- Geolocation и contact sharing отложены.
 - Production retention cleanup отсутствует.
 - App Check не завершён.
 - Release signing требует отдельной настройки.
-- Firebase Storage usage и Firestore reads требуют наблюдения.
 
 ## Roadmap
 
-После выпуска `v0.7.1`:
+После выпуска `v0.7.2`:
 
-1. Стабилизация Push Deep Link и Image Message Foundation.
+1. `v0.7.3 Messaging Feedback Foundation`:
+   - Private Read Receipt Foundation — `✓ / ✓✓` только для личных чатов;
+   - Group Message Reactions — `👍 / 👎`, одно взаимоисключающее состояние на пользователя;
+   - Private Typing Indicator Foundation — Realtime Database только для личных чатов.
 2. Group Image Message Foundation.
 3. File Message Foundation.
 4. Voice Message Foundation.
@@ -432,7 +453,6 @@ git.exe restore -- `
 6. App Check / Production Hardening.
 7. Release Signing.
 8. UI customization.
-9. Внутренние приложения Epistola вместо обычного типа чата Spaces.
 
 ## Рабочий процесс
 

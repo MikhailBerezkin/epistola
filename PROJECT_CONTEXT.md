@@ -26,14 +26,14 @@
 Последняя стабильная версия:
 
 ```text
-v0.7.1 — Push Deep Link Foundation
+v0.7.2 — Chat Date Separator Foundation
 ```
 
 Стабильный `main`:
 
 ```text
-release merge commit: ee8b27b
-tag: v0.7.1
+release merge commit: 7d8357a
+tag: v0.7.2
 ```
 
 Текущая ветка:
@@ -45,22 +45,37 @@ main
 Последний завершённый этап:
 
 ```text
-v0.7.1 — Push Deep Link Foundation
+v0.7.2 — Chat Date Separator Foundation
 ```
 
 Состояние этапа:
 
 ```text
-функциональный контур реализован
+форматирование календарных дат реализовано
+→ постоянные разделители дней реализованы
+→ плавающая дата при прокрутке реализована
+→ пагинация через несколько дней проверена
+→ удаление старых сообщений исправлено
 → профильные тесты пройдены
 → полный analyze пройден
 → полный test suite пройден
 → release APK собран
-→ APK установлен на физический Android-телефон
-→ private и group deep links вручную проверены
-→ feature commit 21ce30f создан и отправлен
-→ release merge ee8b27b создан в main
-→ release tag v0.7.1
+→ feature commits отправлены
+→ release merge 7d8357a создан в main
+→ release tag v0.7.2
+```
+
+Feature commits:
+
+```text
+2d34cfc feat(chat): add date separators and scroll indicator
+bffea4f fix(chat): hide paginated messages immediately
+```
+
+Release merge:
+
+```text
+7d8357a merge: release v0.7.2 Chat Date Separator Foundation
 ```
 
 Итоговые проверки:
@@ -70,7 +85,7 @@ flutter.bat analyze
 → No issues found
 
 flutter.bat test
-→ 409 tests passed
+→ 423 tests passed
 
 flutter.bat build apk --release
 → успешно, 55.3 MB
@@ -85,415 +100,290 @@ Release APK:
 build\app\outputs\flutter-apk\app-release.apk
 ```
 
-Cloud Functions, Firestore Rules и Storage Rules на текущем этапе не менялись. Firebase deploy для `v0.7.1` не требуется.
+Cloud Functions, Firestore Rules и Storage Rules на текущем этапе не менялись. Firebase deploy для `v0.7.2` не требуется.
 
-Рабочее дерево до обновления документации содержит только Push Deep Link Foundation:
+Generated plugin files восстановлены и не входят в release commits.
 
-```text
-M  lib/main.dart
-M  lib/services/notification_service.dart
-?? lib/domain/models/push_deep_link_request.dart
-?? lib/services/push/
-?? test/domain/models/push_deep_link_request_test.dart
-?? test/services/push/
-```
+## 2. Цель этапа v0.7.2
 
-Generated plugin files восстановлены и не должны входить в feature commit.
-
-## 2. Цель этапа
-
-После нажатия на notification открыть именно тот private или group chat, к которому относится сообщение.
-
-До `v0.7.1`:
+Добавить календарную структуру истории сообщений:
 
 ```text
-notification tap
-→ приложение открывается
-→ пользователь остаётся на главном экране
-```
+первое видимое сообщение дня
+→ постоянный разделитель
 
-После `v0.7.1`:
-
-```text
-notification tap
-→ payload validation
-→ auth + membership validation
-→ destination resolution
-→ ChatScreen
+пользователь прокручивает историю
+→ плавающая дата верхнего видимого сообщения
 ```
 
 Требования:
 
-- foreground, background, terminated и cold start;
-- private и group chats;
-- чужой или удалённый chat не открывается;
-- приложение не падает;
-- один tap не создаёт duplicate route;
-- тот же chat можно открыть снова после закрытия route;
-- без постоянных Firestore listeners;
-- без ненужного изменения server contract.
+- `Сегодня`;
+- `Вчера`;
+- дата без года в текущем году;
+- дата с годом для другого года;
+- разделитель только один раз на день;
+- плавающая дата меняется во время непрерывного scroll;
+- индикатор остаётся видимым во время inertia;
+- после остановки исчезает с задержкой;
+- pagination не создаёт duplicate separators;
+- удаление сообщения перестраивает разделитель;
+- никаких новых Firebase operations.
 
-## 3. Серверный контракт
-
-Cloud Function `sendMessageNotification` уже передавала:
-
-```text
-data: {
-  chatId
-}
-```
-
-Принятое решение:
-
-```text
-не менять functions/src/index.ts
-не выполнять Firebase deploy
-использовать существующий data.chatId
-```
-
-## 4. PushDeepLinkRequest
+## 3. ChatDateFormatter
 
 Файл:
 
 ```text
-lib/domain/models/push_deep_link_request.dart
+lib/helpers/chat_date_formatter.dart
 ```
 
 Ответственность:
 
-- `chatId` из `RemoteMessage.data`;
-- `chatId` из local payload;
-- только String;
-- `trim()`;
-- reject empty;
-- reject `/`;
-- value equality;
-- отсутствие зависимостей Flutter/Firebase.
-
-Методы:
-
-```text
-fromRemoteData
-fromLocalPayload
-tryParseChatId
-```
+- `isSameDay`;
+- `startsNewDay`;
+- `Сегодня`;
+- `Вчера`;
+- русские названия месяцев;
+- скрытие текущего года;
+- добавление другого года;
+- локальный календарный день.
 
 Тесты:
 
 ```text
-test/domain/models/push_deep_link_request_test.dart
-8 tests
+test/helpers/chat_date_formatter_test.dart
+10 tests
 ```
 
-Проверены valid remote/local, whitespace, missing, non-string, empty, slash, equality и `toString`.
+Проверены:
 
-## 5. PushDeepLinkResolver
+- сегодня;
+- вчера;
+- граница месяца;
+- граница года;
+- текущий год;
+- другой год;
+- сравнение времени внутри одного дня;
+- первое сообщение;
+- переход между днями;
+- отсутствие разделителя внутри одного дня.
+
+## 4. Постоянный разделитель
 
 Файл:
 
 ```text
-lib/services/push/push_deep_link_resolver.dart
+lib/widgets/chat/chat_date_separator.dart
 ```
 
-Injected dependencies:
+`ChatDateSeparator`:
+
+- центрирован;
+- компактный;
+- использует `surfaceContainerHighest`;
+- поддерживает тему;
+- имеет скругление;
+- имеет лёгкую тень;
+- не содержит Firebase logic.
+
+`MessageItem` принимает nullable:
 
 ```text
-currentUserIdProvider
-loadChat
-loadUser
+dateLabel
 ```
 
-Firebase factory:
+Разделитель находится внутри существующей анимации сообщения. Если сообщение скрывается, его date separator схлопывается вместе с ним.
+
+## 5. Расчёт разделителей
+
+`MessagesList` строит:
 
 ```text
-PushDeepLinkResolver.firebase()
+Map<messageId, dateLabel>
 ```
 
 Алгоритм:
 
 ```text
-current UID
-→ chats/{chatId}
-→ memberIds
-→ type
-→ private: ChatPeerResolver + AppUser
-→ group: name
-→ PushDeepLinkDestination
+sorted messages
+→ skip deletedForEveryone
+→ skip hiddenForCurrentUser
+→ skip locally hidden
+→ compare current visible date with previous visible date
+→ assign label to first visible message of day
 ```
 
-Поддерживаются:
+Граница Firestore page не является календарной границей. После загрузки старой страницы labels пересчитываются по всей локально загруженной истории.
+
+## 6. Плавающая дата
+
+Файлы:
 
 ```text
-private
-group
+lib/widgets/chat/chat_scroll_date_indicator.dart
+lib/widgets/messages_list.dart
 ```
 
-Возвращает `null`, если:
-
-- нет auth;
-- chat отсутствует;
-- `memberIds` некорректен;
-- current user не member;
-- type неизвестен;
-- private chat не содержит peer.
-
-Private title:
+Используются:
 
 ```text
-peer.name
-→ peer.email
-→ stored chat name
-→ Личный чат
+ScrollController
+NotificationListener<ScrollNotification>
+GlobalKey viewport
+GlobalKey per message item
+post-frame date calculation
 ```
 
-Group fallback:
+Плавающий label берётся из первого видимого message item, пересекающего верхнюю probe line.
 
-```text
-Без названия
-```
+Это поддерживает элементы переменной высоты:
 
-Тесты:
-
-```text
-test/services/push/push_deep_link_resolver_test.dart
-9 tests
-```
-
-## 6. PushDeepLinkCoordinator
-
-Файл:
-
-```text
-lib/services/push/push_deep_link_coordinator.dart
-```
-
-Coordinator не зависит от Flutter Navigator.
-
-Ответственность:
-
-- pending queue;
-- navigation readiness;
-- queue deduplication;
-- sequential resolve;
-- destination opener;
-- unavailable/error callbacks;
-- duplicate route protection;
-- retry после ошибки;
-- повторное открытие после закрытия route.
-
-Структуры:
-
-```text
-Queue<PushDeepLinkRequest> _pendingRequests
-Set<String> _queuedChatIds
-Set<String> _openedChatIds
-```
-
-Методы:
-
-```text
-handle
-flush
-clearPending
-```
-
-Cold-start guarantee:
-
-```text
-request до Navigator
-→ queue
-→ markNavigationReady
-→ flush
-→ resolver
-→ route
-```
-
-Тесты:
-
-```text
-test/services/push/push_deep_link_coordinator_test.dart
-6 tests
-```
-
-## 7. PushDeepLinkNavigation
-
-Файл:
-
-```text
-lib/services/push/push_deep_link_navigation.dart
-```
-
-Flutter adapter содержит:
-
-```text
-GlobalKey<NavigatorState>
-PushDeepLinkResolver
-PushDeepLinkCoordinator
-```
+- короткий текст;
+- длинный текст;
+- изображение;
+- анимация удаления.
 
 Lifecycle:
 
 ```text
-markNavigationReady()
-markNavigationUnavailable()
+drag start
+→ show
+
+scroll update / overscroll / inertia
+→ keep visible
+→ update date
+
+scroll end
+→ wait 1200 ms
+→ fade out
 ```
 
-Open flow:
+Смена даты:
 
 ```text
-Navigator.push<void>
-→ MaterialPageRoute<void>
-→ ChatScreen
+AnimatedSwitcher
+FadeTransition
+SlideTransition
 ```
 
-Private destination передаёт `peerUser`. Group destination передаёт `peerUser: null`.
-
-Unavailable chat не открывает route. Errors логируются только в debug.
-
-## 8. main.dart integration
-
-Изменён:
+Появление и исчезновение:
 
 ```text
-lib/main.dart
+AnimatedOpacity
 ```
 
-Startup:
+## 7. Координация overlays
+
+`MessagesList` использует Stack:
 
 ```text
-WidgetsFlutterBinding.ensureInitialized
-→ Firebase.initializeApp
-→ background handler
-→ PushDeepLinkNavigation
-→ NotificationService.initialize(coordinator)
-→ AppSettings.loadThemeMode
-→ runApp
-→ NotificationService.startMessaging
+message ListView
+loading older indicator
+floating date indicator
 ```
 
-`MaterialApp` получает `navigatorKey`.
+Если floating date видима, loading older indicator смещается ниже и не перекрывает её.
 
-После первого frame вызывается `markNavigationReady()`. При dispose — `markNavigationUnavailable()`.
+## 8. Пагинация
 
-## 9. NotificationService integration
-
-Изменён:
+Сохранены invariants:
 
 ```text
-lib/services/notification_service.dart
+page size: 20
+descending Firestore query
+chronological local order
+merge by document ID
+one older request at a time
+scroll position preservation
+near-bottom-only autoscroll
 ```
 
-Initialize contract:
+Проверено вручную:
+
+- загрузка старых страниц;
+- несколько календарных дней;
+- отсутствие duplicate labels;
+- отсутствие скачка позиции;
+- продолжение работы плавающей даты.
+
+## 9. Исправление удаления старых сообщений
+
+Проблема:
 
 ```text
-NotificationService.initialize(
-  deepLinkCoordinator: ...
-)
+realtime listener
+→ только последние 20 сообщений
+
+older pages
+→ загружены one-shot query
+→ не получают дальнейшие realtime changes
 ```
 
-Remote tap:
+Симптом:
 
 ```text
-FirebaseMessaging.onMessageOpenedApp
-→ PushDeepLinkRequest.fromRemoteData
-→ coordinator.handle
+delete peer old message for self
+→ Firestore update successful
+→ old local snapshot remained visible
+→ message disappeared only after reopening chat
 ```
 
-Cold start:
+Исправление:
 
 ```text
-FirebaseMessaging.getInitialMessage
-→ request
-→ coordinator.handle
+Set<String> _locallyHiddenMessageIds
 ```
 
-Foreground:
+После успешного `deleteMessageForCurrentUser`:
 
 ```text
-FirebaseMessaging.onMessage
-→ local notification
-→ payload: request.chatId
+messageId added locally
+→ MessagePresentation.hiddenForCurrentUser
+→ MessageItem collapse animation
+→ date label rebuild
 ```
 
-Local tap:
+То же локальное схлопывание применяется после успешного `deleteMessageForEveryone`.
+
+Дополнительные Firestore reads не добавлены.
+
+Bugfix commit:
 
 ```text
-NotificationResponse.payload
-→ PushDeepLinkRequest.fromLocalPayload
-→ coordinator.handle
+bffea4f fix(chat): hide paginated messages immediately
 ```
 
-NotificationService не читает chat document, не проверяет membership и не создаёт `ChatScreen` напрямую.
-
-## 10. Ручные проверки
-
-Физический телефон — получатель. Android Emulator — отправитель.
-
-### 10.1 Private background
+Ручная проверка:
 
 ```text
-app свёрнуто
-→ private push
-→ правильные title/body
-→ tap
-→ нужный private chat
-→ duplicate route отсутствует
+peer old message disappears immediately
+own message delete for self works
+own message delete for everyone works
+date separator moves to next visible message
+single-message day separator disappears
+message stays hidden after reopening
 ```
 
-### 10.2 Private terminated / cold start
+## 10. Widget tests
+
+Файл:
 
 ```text
-app удалено из recent tasks
-→ push
-→ tap
-→ app запускается
-→ нужный private chat открывается
+test/widgets/chat/chat_date_widgets_test.dart
 ```
 
-### 10.3 Group chat
+Проверено:
+
+- `ChatDateSeparator` показывает label;
+- floating indicator видим при включённой visibility;
+- floating indicator имеет opacity 0 после hide;
+- label меняется через `AnimatedSwitcher`.
+
+Итог:
 
 ```text
-group push
-→ tap
-→ нужный group chat
-```
-
-### 10.4 Foreground local notification
-
-```text
-app открыто
-→ message
-→ local notification
-→ tap
-→ нужный chat
-```
-
-### 10.5 Из другого chat screen
-
-```text
-открыт chat A
-→ push chat B
-→ tap
-→ chat B
-→ back возвращает назад
-```
-
-### 10.6 Delayed tap
-
-```text
-notification получено
-→ прошло время
-→ tap
-→ нужный chat открывается
-```
-
-Итог пользователя:
-
-```text
-уведомление пришло: да
-имя и текст правильные: да
-нужный чат открылся: да
-двойного открытия нет: да
+4 widget tests
 ```
 
 ## 11. Автоматические проверки
@@ -502,20 +392,19 @@ notification получено
 
 ```powershell
 flutter.bat test `
-  test/domain/models/push_deep_link_request_test.dart `
-  test/services/push/push_deep_link_resolver_test.dart `
-  test/services/push/push_deep_link_coordinator_test.dart
+  test/helpers/chat_date_formatter_test.dart `
+  test/widgets/chat/chat_date_widgets_test.dart
 ```
 
 ```text
-23 tests passed
+14 tests passed
 ```
 
 Полная серия:
 
 ```text
 flutter.bat analyze → No issues found
-flutter.bat test → 409 tests passed
+flutter.bat test → 423 tests passed
 flutter.bat build apk --release → 55.3 MB
 ```
 
@@ -526,7 +415,7 @@ Corrupt JPEG data: 2 extraneous bytes before marker 0xd9
 Shell: JPEG datastream contains no image
 ```
 
-Это не падение suite, а проверка повреждённых JPEG.
+Это не падение suite, а тест повреждённых JPEG.
 
 ## 12. Generated files
 
@@ -538,7 +427,7 @@ macos/Flutter/GeneratedPluginRegistrant.swift
 windows/flutter/generated_plugins.cmake
 ```
 
-Они восстановлены:
+После последней Flutter-серии они восстановлены:
 
 ```powershell
 git.exe restore -- `
@@ -547,7 +436,15 @@ git.exe restore -- `
   windows/flutter/generated_plugins.cmake
 ```
 
-После восстановления `git.exe diff --check` не вывел ошибок.
+После восстановления:
+
+```text
+git.exe status --short
+→ без вывода
+
+git.exe diff --check
+→ без вывода
+```
 
 ## 13. Deploy state
 
@@ -559,36 +456,47 @@ firestore.rules
 storage.rules
 ```
 
-Не выполнять Firebase deploy для `v0.7.1`, если до commit не появятся server-side изменения.
+Не выполнять Firebase deploy для `v0.7.2`.
 
-## 14. Стоимость
+## 14. Стоимость v0.7.2
 
-После явного tap:
+Chat date labels вычисляются локально поверх уже загруженных документов.
+
+Добавлено:
 
 ```text
-1 read chat document
-+ private chat: до 1 read peer user document
+0 Firestore reads
+0 Firestore writes
+0 Storage operations
+0 Cloud Function invocations
 ```
 
-Не добавлены polling, background listener, новая Function, дополнительный push или Storage operations.
+Локальное optimistic hide также не добавляет backend operation; Firestore transaction удаления уже существовала.
 
 ## 15. Security
 
-`chatId` из push недоверенный.
+Date separators и floating date являются presentation-only.
 
-Client resolver проверяет:
+Локально скрытый `messageId`:
+
+- не даёт новых прав;
+- не меняет серверные данные;
+- не заменяет Firestore Rules;
+- очищается при смене conversation;
+- после повторного открытия authoritative visibility загружается из Firestore.
+
+Сохранены:
 
 ```text
 auth
-chat existence
-memberIds
-supported type
-private peer
+membership
+role permissions
+sender-only delete for everyone
+private clear isolation
+canonical image paths
+upload grants
+push payload validation
 ```
-
-Client validation не заменяет Firestore Rules.
-
-Подменённый payload не должен открыть чужой chat. Недоступный chat не создаёт route и не вызывает crash.
 
 ## 16. Сохранённые invariants
 
@@ -601,11 +509,12 @@ Client validation не заменяет Firestore Rules.
 - pagination по 20;
 - realtime merge;
 - scroll position;
+- near-bottom-only autoscroll;
 - logical deletion;
 - sender-only delete for everyone;
 - private clear only for current user;
 - roles и permissions;
-- last admin protection;
+- last-admin protection;
 - push sender exclusion;
 - image metadata и upload grant;
 - rollback;
@@ -614,53 +523,155 @@ Client validation не заменяет Firestore Rules.
 
 Добавлены:
 
-- payload validation;
-- membership validation до route;
-- cold-start queue;
-- duplicate route protection;
-- centralized private/group destination resolution.
+- calendar day formatting;
+- permanent day separators;
+- floating scroll date;
+- date transition animation;
+- pagination-safe date rebuild;
+- immediate local hide for paginated messages.
 
-## 17. Git-результат v0.7.1
+## 17. Git-результат v0.7.2
 
 ```text
-feature commit:
-21ce30f feat(push): add notification deep links
+feature commits:
+2d34cfc feat(chat): add date separators and scroll indicator
+bffea4f fix(chat): hide paginated messages immediately
 
 release merge:
-ee8b27b merge: release v0.7.1 Push Deep Link Foundation
+7d8357a merge: release v0.7.2 Chat Date Separator Foundation
 
 release tag:
-v0.7.1
+v0.7.2
 ```
 
 Функциональная ветка отправлена в GitHub:
 
 ```text
-origin/feat/v0.7.1-push-deep-link-foundation
+origin/feat/v0.7.2-chat-date-separators
 ```
 
 Release merge выполнен в `main`.
 
 После публикации `main` и тега рабочее дерево должно оставаться чистым.
-## 18. Следующий этап
 
-После выпуска `v0.7.1`:
+## 18. Следующий этап — v0.7.3 Messaging Feedback Foundation
+
+Этап состоит из трёх подфаз.
+
+### 18.1 Private Read Receipt Foundation
+
+Только private chats:
+
+```text
+✓  сообщение сохранено
+✓✓ собеседник прочитал
+```
+
+Для групп галочки не добавляются.
+
+Требования:
+
+- text и image messages;
+- только исходящие сообщения;
+- экономное обновление позиции чтения;
+- debounce;
+- отсутствие write на каждое сообщение;
+- Rules разрешают менять только собственный read state.
+
+Оценка:
+
+```text
+2–4 часа
+```
+
+### 18.2 Group Message Reactions
+
+Только group chats:
+
+```text
+👍 like
+👎 dislike
+```
+
+На один UID хранится только одно значение:
+
+```text
+none + like → like
+like + like → none
+like + dislike → dislike
+none + dislike → dislike
+dislike + dislike → none
+dislike + like → like
+```
+
+Требования:
+
+- text и image messages;
+- один user не может иметь like и dislike одновременно;
+- локальное optimistic update;
+- Rules позволяют менять только собственный UID;
+- без push-уведомлений.
+
+Оценка:
+
+```text
+3–5 часов
+```
+
+### 18.3 Private Typing Indicator Foundation
+
+Только private chats через Firebase Realtime Database.
+
+```text
+first input
+→ typing state set
+
+idle / send / clear / leave
+→ typing state removed
+
+disconnect
+→ onDisconnect remove
+```
+
+Без feature flag. Функция включается сразу.
+
+Группы Realtime Database typing не используют.
+
+Оценка:
+
+```text
+3–5 часов
+```
+
+### 18.4 Финальные проверки v0.7.3
+
+```text
+Rules tests
+Flutter analyze
+targeted tests
+full test suite
+release APK
+phone + emulator
+README
+ARCHITECTURE
+PROJECT_CONTEXT
+merge
+tag
+push
+```
+
+Оценка всего `v0.7.3`:
+
+```text
+9–16 часов
+```
+
+## 19. Дальнейший roadmap
+
+После `v0.7.3`:
 
 ```text
 Group Image Message Foundation
-```
-
-Перед началом:
-
-- `main` синхронизирован;
-- tag `v0.7.1` существует;
-- working tree чистый;
-- новая branch от `main`;
-- group image scope проектируется отдельно.
-
-Дальше:
-
-```text
 File Message Foundation
 Voice Message Foundation
 Media Retention Cleanup Foundation
@@ -669,7 +680,7 @@ Release Signing
 UI Customization Foundation
 ```
 
-## 19. Правила работы
+## 20. Правила работы
 
 - Русский язык.
 - PowerShell.
@@ -682,3 +693,4 @@ UI Customization Foundation
 - Generated plugin files восстанавливать один раз в конце.
 - Учитывать Firebase free-tier и 40–50 пользователей.
 - Не смешивать feature work и toolchain work.
+- В каждом рабочем сообщении указывать текущий этап и ориентировочное оставшееся время.
