@@ -21,30 +21,31 @@
 
 | Параметр | Значение |
 |---|---|
-| Версия документа | `4.2` |
-| Последняя стабильная версия | `v0.7.2` |
-| Release merge commit | `7d8357a` |
-| Последний завершённый этап | `v0.7.2 Chat Date Separator Foundation` |
-| Текущая ветка | `main` |
-| Состояние этапа | завершён и слит в `main`; release tag — `v0.7.2` |
+| Версия документа | `4.3` |
+| Последний стабильный релиз | `v0.7.2` |
+| Текущий release candidate | `v0.7.3 Messaging Feedback Foundation` |
+| Текущая ветка | `feat/v0.7.3-messaging-feedback` |
+| Functional HEAD | `60b3fef` |
+| Состояние | функциональность завершена и отправлена в feature branch; release merge и tag ещё не созданы |
 | Последнее обновление | август 2026 |
 
-Chat Date Separator Foundation добавляет календарные разделители в историю сообщений, плавающую дату при прокрутке и немедленное локальное скрытие сообщений из ранее загруженных страниц.
-
-Проверено:
+`v0.7.3` добавляет четыре независимые границы messaging feedback:
 
 ```text
-permanent date separators
-Сегодня / Вчера / calendar date formatting
-floating scroll date indicator
-date transition during continuous scroll
-1.2 second delayed hide
-pagination across multiple days
-message deletion and date label rebuild
-paginated message immediate local hide
+active chat notification suppression
+private read receipts
+group message reactions
+private typing indicator
 ```
 
-Cloud Functions, Firestore Rules и Storage Rules на этапе `v0.7.2` не менялись.
+Функциональные commits:
+
+```text
+f901c06 fix(chat): suppress active chat notifications
+8228f9a feat(chat): add private read receipts
+d10c110 feat(chat): add group message reactions
+60b3fef feat(chat): add private typing indicator
+```
 
 ## 2. Назначение проекта
 
@@ -60,7 +61,8 @@ Epistola — корпоративный мессенджер на Flutter и Fir
 - заменяемый UI;
 - расширяемый media foundation;
 - предсказуемая навигация;
-- понятная история сообщений.
+- понятная история сообщений;
+- realtime feedback без избыточных writes.
 
 Долгосрочные цели:
 
@@ -82,14 +84,29 @@ Spaces → внутренние приложения Epistola
 Repository: MikhailBerezkin/epistola
 Firebase project: epistola-434b7
 Firestore region: eur3
+Realtime Database region: europe-west1
 Cloud Functions region: europe-west1
 Android package: com.epistola.app
 Storage bucket: gs://epistola-434b7.firebasestorage.app
 ```
 
-Используются Firebase Authentication, Cloud Firestore, Security Rules, Storage, Cloud Messaging и Cloud Functions.
+Realtime Database URL:
 
-Realtime Database пока не подключена. Она запланирована для private typing indicator в `v0.7.3`.
+```text
+https://epistola-434b7-default-rtdb.europe-west1.firebasedatabase.app
+```
+
+Используются:
+
+```text
+Firebase Authentication
+Cloud Firestore
+Realtime Database
+Security Rules
+Cloud Storage
+Cloud Messaging
+Cloud Functions
+```
 
 Infrastructure configuration не должна находиться в UI или domain layer.
 
@@ -116,7 +133,9 @@ Firebase
 - domain не зависит от Flutter и Firebase;
 - navigation adapter может зависеть от Flutter, но не переносит Firebase business logic в widgets;
 - временное UI-состояние не должно создавать лишние backend reads;
-- локальная optimistic presentation не заменяет server-side security.
+- локальная optimistic presentation не заменяет server-side security;
+- ephemeral presence не хранится в Firestore;
+- security-sensitive access projection создаётся только trusted server code.
 
 ### 4.1 Flutter UI
 
@@ -125,14 +144,15 @@ Firebase
 UI не должен:
 
 - обращаться к Storage напрямую;
-- выполнять Firestore transactions;
+- выполнять Firestore transactions без application service;
 - выдавать upload grants;
 - вычислять permissions;
-- формировать canonical paths;
+- формировать canonical media paths;
 - выполнять remote rollback;
 - содержать compression policy;
 - доверять `chatId` из notification без resolver;
-- читать chat document из notification callback.
+- самостоятельно создавать RTDB access grants;
+- писать typing state другого пользователя.
 
 ### 4.2 Presentation
 
@@ -143,28 +163,51 @@ UI не должен:
 ```text
 MessagePresentation
 MessageVisibilityState
+PrivateReadCursor
+GroupMessageReaction
 ```
 
-Date separator presentation:
+Presentation flows:
 
 ```text
 message.createdAt
 → ChatDateFormatter
-→ date label
 → ChatDateSeparator / ChatScrollDateIndicator
+```
+
+```text
+peer privateReadState
+→ PrivateReadCursorMapper
+→ PrivateReadCursorResolver
+→ PrivateReadReceiptIndicator
+```
+
+```text
+message.reactions
+→ GroupMessageReactionMapper
+→ GroupMessageReactionBar
+```
+
+```text
+peer RTDB timestamp
+→ freshness validation
+→ ChatAppBar subtitle
 ```
 
 ### 4.3 Application Services
 
-Оркестрируют use case: порядок операций, validation, upload, atomic write, rollback, cleanup и errors.
+Оркестрируют use case: validation, ordering, transactions, debounce, upload, atomic write, rollback, cleanup и errors.
 
 Примеры:
 
 ```text
-ImageMessageImagePreparationService
-ImageMessageUploadService
 ExistingImageMessageSendService
 FirstPrivateImageMessageSendService
+PrivateReadReceiptService
+PrivateReadReceiptDebouncer
+GroupMessageReactionService
+PrivateTypingService
+PrivateTypingCoordinator
 PushDeepLinkCoordinator
 PushDeepLinkResolver
 ChatMessagesService
@@ -188,11 +231,13 @@ UserAvatar
 GroupAvatar
 PushDeepLinkRequest
 ChatDateFormatter
+PrivateReadCursor
+GroupMessageReaction
 ```
 
-`PushDeepLinkRequest` не зависит от Flutter, Firebase или Navigator.
+`PrivateReadCursor` содержит только monotonic cursor semantics и не зависит от Flutter/Firebase.
 
-`ChatDateFormatter` не зависит от Firebase и Flutter UI. Он работает с календарными `DateTime` и поддерживает unit-тестирование без widget tree.
+`GroupMessageReaction.resolveTap` задаёт XOR-подобное состояние `none | like | dislike`.
 
 ### 4.5 Infrastructure
 
@@ -204,6 +249,9 @@ FirebaseMediaStorageProvider
 Firestore gateways
 Cloud Functions callable gateway
 PushDeepLinkResolver.firebase()
+PrivateReadReceiptService.firebase()
+GroupMessageReactionService.firebase()
+PrivateTypingService.firebase()
 ```
 
 ## 5. Структура проекта
@@ -211,6 +259,7 @@ PushDeepLinkResolver.firebase()
 ```text
 lib/
 ├── domain/
+│   └── models/
 ├── helpers/
 ├── models/
 ├── screens/
@@ -234,22 +283,44 @@ test/
 ├── helpers/
 ├── models/
 ├── rules/
+│   ├── database/
+│   ├── firestore/
+│   └── storage/
 ├── services/
 └── widgets/
     └── chat/
 ```
 
-Chat date files:
+Ключевые файлы `v0.7.3`:
 
 ```text
-lib/helpers/chat_date_formatter.dart
-lib/widgets/chat/chat_date_separator.dart
-lib/widgets/chat/chat_scroll_date_indicator.dart
-lib/widgets/message_item.dart
-lib/widgets/messages_list.dart
+lib/domain/models/private_read_cursor.dart
+lib/domain/models/group_message_reaction.dart
 
-test/helpers/chat_date_formatter_test.dart
-test/widgets/chat/chat_date_widgets_test.dart
+lib/services/chat/active_chat_tracker.dart
+lib/services/chat/private_read_cursor_mapper.dart
+lib/services/chat/private_read_cursor_resolver.dart
+lib/services/chat/private_read_receipt_debouncer.dart
+lib/services/chat/private_read_receipt_service.dart
+lib/services/chat/group_message_reaction_mapper.dart
+lib/services/chat/group_message_reaction_service.dart
+lib/services/chat/private_typing_service.dart
+lib/services/chat/private_typing_coordinator.dart
+
+lib/widgets/chat/private_read_receipt_indicator.dart
+lib/widgets/chat/group_message_reaction_bar.dart
+lib/widgets/chat/chat_app_bar.dart
+
+lib/screens/chat_screen.dart
+lib/widgets/messages_list.dart
+lib/widgets/message_item.dart
+lib/widgets/message_bubble.dart
+lib/services/notification_service.dart
+
+functions/src/index.ts
+firestore.rules
+database.rules.json
+firebase.json
 ```
 
 ## 6. Пользовательская идентичность
@@ -261,6 +332,16 @@ users/{uid}
 ```
 
 Firebase UID является главным application identifier.
+
+Один UID используется как ключ:
+
+```text
+chat membership
+privateReadState
+message reactions
+privateTyping
+privateChatAccess
+```
 
 ## 7. Chat architecture
 
@@ -319,21 +400,299 @@ Delete for everyone доступен только sender. Firestore document ф�
 Map<messageId, QueryDocumentSnapshot>
 ```
 
-Realtime listener не обновляет документы, которые находятся только в старой локальной странице.
-
-Для `deleteMessageForCurrentUser` после успешной Firestore transaction используется локальный set:
+Для успешного удаления старого сообщения используется локальный set:
 
 ```text
 Set<String> locallyHiddenMessageIds
 ```
 
-Он немедленно переводит presentation в `hiddenForCurrentUser`, запускает анимацию схлопывания и перестройку date labels.
+Это presentation optimization, а не security boundary.
 
-Это presentation optimization, а не security boundary. После повторного открытия authoritative state загружается из Firestore.
+## 9. Active Chat Notification Suppression
 
-## 9. Chat Date Separator Foundation
+### 9.1 Active route tracking
 
-### 9.1 Форматирование календарной даты
+Singleton:
+
+```text
+activeChatTracker
+```
+
+`ChatScreen` регистрирует route:
+
+```text
+initState → activeChatTracker.enter(chatId)
+dispose → activeChatTracker.leave(registration)
+```
+
+Tracker использует registration identity, поэтому вложенные и повторные регистрации одного chat ID корректно восстанавливают предыдущий active route.
+
+### 9.2 Notification decision
+
+```text
+foreground RemoteMessage
+→ PushDeepLinkRequest.fromRemoteData
+→ activeChatTracker.isCurrent(chatId)
+```
+
+Результат:
+
+```text
+same active chat → do not show local notification
+another chat → show local notification
+```
+
+Это presentation decision. Cloud Function и FCM delivery не отключаются. Background/terminated flow сохраняется.
+
+## 10. Private Read Receipt Foundation
+
+### 10.1 Data model
+
+В private chat document:
+
+```text
+privateReadState: {
+  uid: {
+    messageId: string,
+    messageCreatedAt: timestamp,
+    readAt: timestamp
+  }
+}
+```
+
+Legacy/общий `lastRead` обновляется совместно для совместимости chat list unread state.
+
+### 10.2 Cursor semantics
+
+`PrivateReadCursor`:
+
+- требует непустой `messageId` без `/`;
+- хранит UTC `messageCreatedAt`;
+- определяет, покрывает ли cursor конкретное сообщение;
+- не разрешает логический откат назад;
+- при одинаковом timestamp требует совпадение `messageId`.
+
+### 10.3 Read detection
+
+```text
+visible sorted messages
+→ select latest eligible cursor
+→ PrivateReadReceiptDebouncer.schedule(cursor)
+→ debounce
+→ PrivateReadReceiptService.markRead
+```
+
+При выходе:
+
+```text
+flushNow
+→ final read write best-effort
+→ route pop
+```
+
+### 10.4 Sender UI
+
+```text
+outgoing private message
+→ peer cursor does not cover message → ✓
+→ peer cursor covers message → ✓✓
+```
+
+Групповые сообщения не получают read receipt indicator.
+
+### 10.5 Firestore security
+
+Rules проверяют:
+
+- authenticated member;
+- private chat type;
+- неизменность member IDs;
+- изменение только собственного UID;
+- обязательные keys `messageId`, `messageCreatedAt`, `readAt`;
+- существование message document;
+- совпадение message timestamp;
+- `readAt == request.time`;
+- monotonic progression.
+
+## 11. Group Message Reactions
+
+### 11.1 Data model
+
+В message document:
+
+```text
+reactions: {
+  uid: "like" | "dislike"
+}
+```
+
+Отсутствие ключа означает `none`.
+
+### 11.2 Domain transition
+
+```text
+current == tapped → remove reaction
+current != tapped → set tapped reaction
+```
+
+Это гарантирует только одно значение на UID.
+
+### 11.3 Transaction
+
+`GroupMessageReactionService`:
+
+```text
+read message in Firestore transaction
+→ map current reactions
+→ resolve next state
+→ update reactions.{uid}
+```
+
+Удаление реакции использует `FieldValue.delete()`.
+
+### 11.4 UI
+
+`GroupMessageReactionBar` отображает:
+
+```text
+👍 count
+👎 count
+```
+
+Выбранная текущим пользователем реакция выделяется. Private chats не включают reaction layer.
+
+### 11.5 Firestore security
+
+Rules разрешают update только если:
+
+- пользователь является участником группы;
+- chat type — `group`;
+- сообщение не удалено для всех;
+- affected key сообщения — только `reactions`;
+- affected key map — только текущий UID;
+- новое значение отсутствует, `like` или `dislike`.
+
+Reaction update не изменяет chat preview и не создаёт push.
+
+## 12. Private Typing Indicator Foundation
+
+### 12.1 Почему Realtime Database
+
+Typing state является ephemeral presence data:
+
+- высокая частота;
+- короткий TTL;
+- не требуется history;
+- нужен `onDisconnect`;
+- Firestore writes для каждого heartbeat нежелательны.
+
+Поэтому typing state хранится только в Realtime Database.
+
+### 12.2 Paths
+
+```text
+privateChatAccess/{chatId}/{uid} = true
+privateTyping/{chatId}/{uid} = timestamp
+```
+
+`privateChatAccess` — server-owned projection. Client не может создавать или изменять access nodes.
+
+### 12.3 Callable access projection
+
+Cloud Function:
+
+```text
+ensurePrivateTypingAccess
+```
+
+Алгоритм:
+
+```text
+auth required
+→ validate chatId
+→ read chats/{chatId} from Firestore
+→ require type == private
+→ require isDissolved != true
+→ require exactly two valid unique members
+→ require caller membership
+→ write privateChatAccess/{chatId}
+```
+
+Access projection содержит только двух участников private chat.
+
+### 12.4 Client service
+
+`PrivateTypingService`:
+
+- вызывает `ensurePrivateTypingAccess` один раз на session;
+- регистрирует `onDisconnect().remove()`;
+- пишет `ServerValue.timestamp` только в собственный path;
+- удаляет собственный state при stop;
+- слушает точный peer path;
+- валидирует RTDB identifiers;
+- предоставляет injectable delegates для unit tests.
+
+### 12.5 Coordinator timing
+
+`PrivateTypingCoordinator`:
+
+```text
+initial debounce: 450 ms
+heartbeat: 3 s
+inactivity stop: 4 s
+```
+
+Operation queue сериализует writes и предотвращает race между start/heartbeat/stop.
+
+Immediate stop вызывается при:
+
+```text
+controller becomes empty
+text send
+image send success
+leave chat
+dispose
+```
+
+### 12.6 Peer freshness
+
+`ChatScreen` принимает timestamp только если он:
+
+- numeric;
+- не находится более чем примерно на 10 секунд в будущем;
+- моложе 6 секунд.
+
+Локальный expiry timer скрывает stale state даже при задержке сетевого `onDisconnect`.
+
+### 12.7 Header presentation
+
+Private chat:
+
+```text
+peer typing → Пишет...
+otherwise → личный чат
+```
+
+Group chat:
+
+```text
+N участников
+```
+
+Typing flow в группах не запускается.
+
+### 12.8 RTDB security
+
+Rules:
+
+- `.read` typing data только для UID с `privateChatAccess == true`;
+- client не читает и не пишет access projection;
+- пользователь пишет только `privateTyping/{chatId}/{auth.uid}`;
+- значение — numeric server-like timestamp;
+- удаление собственного state разрешено;
+- запись чужого UID запрещена.
+
+## 13. Chat Date Separator Foundation
 
 `ChatDateFormatter` поддерживает:
 
@@ -344,93 +703,9 @@ same year → 3 августа
 different year → 28 декабря 2025
 ```
 
-Сравнение выполняется по локальному календарному году, месяцу и дню.
+Разделитель показывается перед первым видимым сообщением календарного дня. Floating indicator вычисляется по реальным RenderBox positions и поддерживает элементы переменной высоты.
 
-### 9.2 Постоянный разделитель
-
-Разделитель показывается перед первым видимым сообщением календарного дня.
-
-При расчёте игнорируются:
-
-```text
-deletedForEveryone
-hiddenForCurrentUser
-locallyHiddenMessageIds
-```
-
-Если первое сообщение дня скрывается, label автоматически переходит к следующему видимому сообщению. Если видимых сообщений дня больше нет, разделитель исчезает.
-
-### 9.3 Плавающая дата
-
-`MessagesList` использует:
-
-```text
-ScrollController
-NotificationListener<ScrollNotification>
-GlobalKey для отрисованных message items
-GlobalKey viewport
-```
-
-Алгоритм:
-
-```text
-scroll notification
-→ schedule one post-frame update
-→ calculate viewport probe line
-→ inspect attached visible message RenderBox objects
-→ choose first visible message crossing probe
-→ format createdAt
-→ update floating label
-```
-
-Высота сообщения не предполагается фиксированной. Поддерживаются длинный текст, изображения и анимированное схлопывание.
-
-### 9.4 Lifecycle плавающего индикатора
-
-```text
-user scroll starts
-→ cancel hide timer
-→ show indicator
-
-scroll update / overscroll / inertia
-→ keep indicator visible
-→ update current date
-
-scroll end
-→ schedule hide after 1200 ms
-
-hide
-→ AnimatedOpacity
-```
-
-Смена label выполняется через `AnimatedSwitcher`.
-
-### 9.5 Пагинация
-
-При подгрузке старой страницы сохраняется:
-
-```text
-previous maxScrollExtent
-previous pixels
-```
-
-После layout вычисляется added extent, и scroll position сдвигается на его величину.
-
-Date labels строятся по всей локально загруженной и отсортированной истории, поэтому граница страницы не создаёт отдельный календарный день.
-
-### 9.6 Overlay coordination
-
-`MessagesList` использует верхний `Stack`:
-
-```text
-ListView
-loading older indicator
-floating date indicator
-```
-
-Если плавающая дата видима, loading indicator смещается ниже и не перекрывает её.
-
-## 10. Image Message Foundation
+## 14. Image Message Foundation
 
 Согласованная пара:
 
@@ -446,8 +721,6 @@ chat_media/{chatId}/messages/{messageId}/v{version}/thumb.jpg
 chat_media/{chatId}/messages/{messageId}/v{version}/full.jpg
 ```
 
-Thumbnail используется в ленте. Full — только по явному открытию. Оригинал не загружается.
-
 ```text
 thumbnail: max 128 KB, max side 480 px
 full: target 512 KB, absolute max 1 MB, max side 1920 px
@@ -455,7 +728,7 @@ full: target 512 KB, absolute max 1 MB, max side 1920 px
 
 First private image upload защищён `createFirstPrivateImageUploadGrant`. Chat, message и preview записываются атомарно. Partial uploads очищаются best-effort.
 
-## 11. Avatar architecture
+## 15. Avatar architecture
 
 ```text
 user_avatars/{uid}/v{version}/thumb.jpg
@@ -476,7 +749,7 @@ prepare new version
 
 Cache key: `path@version`.
 
-## 12. Push Notification architecture
+## 16. Push architecture
 
 Cloud Function:
 
@@ -497,7 +770,7 @@ text → текст
 image → Фотография
 ```
 
-## 13. Push Deep Link Foundation
+Deep link flow:
 
 ```text
 RemoteMessage.data или local payload
@@ -509,13 +782,9 @@ RemoteMessage.data или local payload
 → ChatScreen
 ```
 
-Resolver проверяет auth, существование chat, membership, supported type и private peer.
-
-Coordinator поддерживает pending queue, readiness gate, deduplication, sequential resolve и duplicate route suppression.
-
 Notification payload считается недоверенным. Firestore Rules остаются последней server-side защитой.
 
-## 14. Android Toolchain Foundation
+## 17. Android Toolchain Foundation
 
 ```text
 Flutter: 3.44.1
@@ -539,188 +808,154 @@ kotlin.incremental=false
 
 Built-in Kotlin warning относится к plugin internals и не блокирует release APK.
 
-## 15. Testing strategy
+## 18. Testing strategy
 
-Chat date targeted tests:
-
-```text
-ChatDateFormatter: 10
-ChatDate widgets: 4
-Total targeted: 14
-```
-
-Manual Android tests:
-
-- permanent separators across several days;
-- `Сегодня`, `Вчера`, ordinary date;
-- slow scroll;
-- fast inertial scroll;
-- floating date transition;
-- delayed hide;
-- images in the same list;
-- pagination through several days;
-- delete own message for self;
-- delete own message for everyone;
-- delete peer message for self;
-- immediate hide of old paginated messages;
-- date separator transfer after deletion.
-
-Финальные результаты:
+### 18.1 Flutter
 
 ```text
 flutter.bat analyze → No issues found
-flutter.bat test → 423 tests passed
-flutter.bat build apk --release → 55.3 MB
+flutter.bat test → 535 passed
+flutter.bat build apk --release → 55.7 MB
 ```
 
-Ожидаемый диагностический вывод image tests:
+### 18.2 Security Rules
+
+```text
+Realtime Database Rules → 15 passed
+Firestore Rules → 53 passed
+Storage Rules → 42 passed
+Total → 110 passed
+```
+
+### 18.3 Functions
+
+```text
+npm lint → passed
+TypeScript build → passed
+```
+
+Существующее предупреждение TypeScript/ESLint version compatibility не блокирует build и не изменяется внутри feature release.
+
+### 18.4 Manual Android scenarios
+
+Проверены:
+
+- push не показывается поверх открытого целевого чата;
+- push другого чата показывается;
+- private `✓` и `✓✓` работают;
+- group `👍`/`👎` переключаются по одному значению на UID;
+- private `Пишет...` работает в обоих направлениях;
+- typing исчезает после idle, clear, send, leave и force close;
+- typing не появляется в group chat.
+
+### 18.5 Diagnostic JPEG output
 
 ```text
 Corrupt JPEG data: 2 extraneous bytes before marker 0xd9
 Shell: JPEG datastream contains no image
 ```
 
-Это не падение suite, а тест обработки повреждённых JPEG.
+Это ожидаемый вывод тестов повреждённых JPEG, а не падение suite.
 
-## 16. Проверки и deploy
+## 19. Cost model
 
-```powershell
-flutter.bat analyze
-flutter.bat test
-flutter.bat build apk --release
-git.exe diff --check
-git.exe status --short
+### Read receipts
+
+- cursor writes объединяются debounce;
+- нет write на каждое отображённое сообщение;
+- peer UI читает chat document, который уже нужен экрану.
+
+### Reactions
+
+- один transaction на пользовательский toggle;
+- counters вычисляются из уже загруженного message snapshot;
+- push не создаётся.
+
+### Typing
+
+- ephemeral writes находятся в RTDB, не Firestore;
+- initial debounce предотвращает write при коротком случайном вводе;
+- heartbeat ограничен 3 секундами;
+- listener подписан только на одного peer;
+- access projection создаётся callable-функцией и переиспользуется.
+
+## 20. Security boundaries
+
+Сохранены:
+
+```text
+auth
+membership
+role permissions
+sender-only delete for everyone
+private clear isolation
+canonical image paths
+upload grants
+push payload validation
+private read cursor ownership
+group reaction UID ownership
+server-owned typing access projection
+own typing node only
 ```
 
-Generated plugin files восстанавливаются один раз после Flutter-серии:
+UI state, optimistic updates, local active-chat tracking и timestamp freshness не являются server-side authorization.
+
+## 21. Generated files policy
+
+После последней серии Flutter-команд один раз восстанавливаются:
 
 ```powershell
-git.exe restore -- `
+git restore -- `
   linux/flutter/generated_plugins.cmake `
   macos/Flutter/GeneratedPluginRegistrant.swift `
+  windows/flutter/generated_plugin_registrant.cc `
   windows/flutter/generated_plugins.cmake
 ```
 
-Deploy выполняется только в `epistola-434b7`.
+`pubspec.yaml`, `pubspec.lock`, Firebase options и Android Google Services config не восстанавливаются, если их изменения требуются feature.
 
-Для `v0.7.2` deploy не требуется:
+## 22. Известные ограничения
 
-```text
-functions/src/index.ts unchanged
-firestore.rules unchanged
-storage.rules unchanged
-```
+- Group image sending не завершён как отдельный foundation.
+- Caption к изображению отсутствует.
+- File и voice messages отсутствуют.
+- Единая clickable avatar/profile card navigation реализована не во всех точках.
+- Production retention cleanup отсутствует.
+- App Check не завершён.
+- Release signing требует отдельной production-настройки.
 
-## 17. Cost controls
-
-Chat Date Separator Foundation выполняется локально поверх уже загруженных сообщений.
-
-Не добавлены:
+## 23. Следующие архитектурные этапы
 
 ```text
-Firestore reads
-Firestore writes
-polling
-Cloud Function invocations
-Storage operations
+Attachment Composer Foundation
+→ Image Caption
+→ File Message Foundation
+→ Voice Message Foundation
 ```
 
-Локальное скрытие после успешного удаления также не добавляет backend operations. Оно только немедленно отражает уже выполненную Firestore transaction в UI.
+Attachment composer должен создать единый draft contract для media/file payload и optional caption. Временный отдельный hack только для подписи к фотографии не допускается.
 
-## 18. Security principles
-
-- UI не является security boundary.
-- UID, membership и role проверяются Rules.
-- Notification payload недоверенный.
-- Deep link не открывает chat без membership.
-- Canonical paths проверяются Rules.
-- First-private upload требует server-side grant.
-- Локально скрытое сообщение не изменяет authoritative server state.
-- App Check остаётся отдельным hardening этапом.
-
-## 19. Неприкосновенные invariants
-
-Нельзя ломать:
-
-- `Auth UID == users/{uid}`;
-- отсутствие пустых private chats;
-- first message atomicity;
-- deterministic private chat ID;
-- pagination по 20;
-- сохранение старых страниц;
-- сохранение scroll position;
-- near-bottom-only autoscroll;
-- logical deletion;
-- sender-only delete for everyone;
-- role permissions и last-admin protection;
-- push sender exclusion;
-- notification `data.chatId` contract;
-- deep-link membership validation;
-- duplicate route protection;
-- versioned avatar paths;
-- canonical image paths;
-- first-image grant;
-- partial upload rollback;
-- original image not uploaded;
-- full loaded only on demand;
-- UI/Firebase separation.
-
-## 20. Следующий этап — v0.7.3 Messaging Feedback Foundation
-
-### 20.1 Private Read Receipt Foundation
-
-Только private chats:
+Отдельно планируется:
 
 ```text
-✓  saved
-✓✓ peer read
+Clickable Avatar and Profile Card Foundation
+Retention Cleanup
+App Check
+Production Hardening
 ```
 
-Позиция чтения должна обновляться экономно и не создавать write на каждое сообщение.
+## 24. Release gate v0.7.3
 
-### 20.2 Group Message Reactions
-
-Только group chats:
+До merge в `main` требуется:
 
 ```text
-👍 like
-👎 dislike
+functional commits pushed
+→ documentation updated
+→ docs commit pushed
+→ feature branch clean
+→ merge into main
+→ tag v0.7.3
+→ push main and tag
 ```
 
-На один UID допускается только одно взаимоисключающее значение.
-
-### 20.3 Private Typing Indicator Foundation
-
-Только private chats через Firebase Realtime Database:
-
-```text
-peer starts typing
-→ typing state appears
-
-idle / send / leave / disconnect
-→ state removed
-```
-
-Функция включается сразу, без feature flag.
-
-## 21. Технический долг
-
-- group image messages;
-- production retention cleanup;
-- App Check;
-- release signing;
-- дополнительные concurrent tests;
-- мониторинг Firestore reads, Storage usage и будущего RTDB traffic;
-- расширение Rules tests;
-- постепенное разделение документации на ADR/reference files.
-
-Отложено:
-
-```text
-files
-voice messages
-geolocation
-contact sharing
-media captions
-multi-image galleries
-```
+Release merge commit и финальный documentation commit должны быть внесены в документы после их создания.
