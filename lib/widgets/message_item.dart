@@ -2,8 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../domain/models/group_message_reaction.dart';
 import '../models/message_presentation.dart';
 import 'chat/chat_date_separator.dart';
+import 'chat/group_message_reaction_bar.dart';
 import 'message_bubble.dart';
 
 class MessageItem extends StatefulWidget {
@@ -13,6 +15,12 @@ class MessageItem extends StatefulWidget {
     required this.senderRole,
     required this.timeText,
     required this.isMe,
+    this.showPrivateReadReceipt = false,
+    this.isReadByPeer = false,
+    this.showGroupReactions = false,
+    this.groupLikeCount = 0,
+    this.groupDislikeCount = 0,
+    this.selectedGroupReaction,
     this.dateLabel,
     this.onLongPress,
   });
@@ -21,6 +29,15 @@ class MessageItem extends StatefulWidget {
   final String senderRole;
   final String timeText;
   final bool isMe;
+
+  final bool showPrivateReadReceipt;
+  final bool isReadByPeer;
+
+  final bool showGroupReactions;
+  final int groupLikeCount;
+  final int groupDislikeCount;
+  final GroupMessageReaction? selectedGroupReaction;
+
   final String? dateLabel;
   final VoidCallback? onLongPress;
 
@@ -36,6 +53,11 @@ class _MessageItemState extends State<MessageItem> {
 
   late bool _isContentVisible;
   late bool _keepsSpace;
+
+  bool get _hasVisibleReactions {
+    return widget.showGroupReactions &&
+        (widget.groupLikeCount > 0 || widget.groupDislikeCount > 0);
+  }
 
   @override
   void initState() {
@@ -131,10 +153,33 @@ class _MessageItemState extends State<MessageItem> {
                           senderRole: widget.senderRole,
                           timeText: widget.timeText,
                           isMe: widget.isMe,
+                          showPrivateReadReceipt: widget.showPrivateReadReceipt,
+                          isReadByPeer: widget.isReadByPeer,
                           isImageMessage: widget.message.isImageMessage,
                           imageMetadata: widget.message.imageMetadata,
                         ),
                       ),
+                      if (_hasVisibleReactions)
+                        Transform.translate(
+                          offset: const Offset(0, -6),
+                          child: Padding(
+                            padding: EdgeInsets.only(
+                              left: widget.isMe ? 0 : 14,
+                              right: widget.isMe ? 14 : 0,
+                              bottom: 4,
+                            ),
+                            child: Align(
+                              alignment: widget.isMe
+                                  ? Alignment.centerRight
+                                  : Alignment.centerLeft,
+                              child: GroupMessageReactionBar(
+                                likeCount: widget.groupLikeCount,
+                                dislikeCount: widget.groupDislikeCount,
+                                selectedReaction: widget.selectedGroupReaction,
+                              ),
+                            ),
+                          ),
+                        ),
                     ],
                   ),
                 ),

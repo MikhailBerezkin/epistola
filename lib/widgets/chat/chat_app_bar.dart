@@ -4,25 +4,29 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show HapticFeedback;
 
 import '../../helpers/status_helper.dart';
-import '../../screens/group_info_screen.dart';
-import '../chat_app_bar_title.dart';
 import '../../models/app_user.dart';
+import '../../screens/group_info_screen.dart';
 import '../../services/avatar/group_avatar_metadata_mapper.dart';
+import '../chat_app_bar_title.dart';
 
 class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
-  final String chatId;
-  final String chatName;
-  final AppUser? peerUser;
-
   const ChatAppBar({
     super.key,
     required this.chatId,
     required this.chatName,
     this.peerUser,
+    this.peerIsTyping = false,
   });
 
+  final String chatId;
+  final String chatName;
+  final AppUser? peerUser;
+  final bool peerIsTyping;
+
   @override
-  Size get preferredSize => const Size.fromHeight(kToolbarHeight);
+  Size get preferredSize {
+    return const Size.fromHeight(kToolbarHeight);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -37,28 +41,33 @@ class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
         final currentUser = FirebaseAuth.instance.currentUser;
 
         final chatType = data?['type'] ?? 'private';
+
         final memberIds = (data?['memberIds'] as List?) ?? [];
+
         final memberStatus =
             (data?['memberStatus'] as Map<String, dynamic>?) ?? {};
 
         final isGroup = chatType == 'group';
+
         final groupAvatar = isGroup && data != null
             ? GroupAvatarMetadataMapper.fromMap(data: data, chatId: chatId)
             : null;
 
         final currentStatusData =
             (memberStatus[currentUser?.uid] as Map<String, dynamic>?) ??
-            {'status': 'normal'};
+            <String, dynamic>{'status': 'normal'};
 
         final currentStatus = currentStatusData['status'] ?? 'normal';
+
         final currentStatusIsActive = StatusHelper.isActive(currentStatusData);
 
         final isBanned =
             isGroup && currentStatus == 'banned' && currentStatusIsActive;
 
-        final subtitle = isGroup
-            ? '${memberIds.length} участников'
-            : 'личный чат';
+        final subtitle = _resolveSubtitle(
+          isGroup: isGroup,
+          memberCount: memberIds.length,
+        );
 
         return AppBar(
           titleSpacing: 0,
@@ -79,7 +88,9 @@ class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => GroupInfoScreen(chatId: chatId),
+                      builder: (_) {
+                        return GroupInfoScreen(chatId: chatId);
+                      },
                     ),
                   );
                 },
@@ -90,5 +101,25 @@ class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
         );
       },
     );
+  }
+
+  String _resolveSubtitle({required bool isGroup, required int memberCount}) {
+    if (isGroup) {
+      return '$memberCount участников';
+    }
+
+    if (!peerIsTyping) {
+      return 'личный чат';
+    }
+
+    final peerName = peerUser?.name.trim() ?? '';
+
+    final effectivePeerName = peerName.isNotEmpty ? peerName : chatName.trim();
+
+    if (effectivePeerName.isEmpty) {
+      return 'Пишет…';
+    }
+
+    return '$effectivePeerName пишет…';
   }
 }

@@ -1,4 +1,5 @@
 import {getApps, initializeApp} from "firebase-admin/app";
+import {getDatabase} from "firebase-admin/database";
 import {getFirestore, Timestamp} from "firebase-admin/firestore";
 import {getMessaging} from "firebase-admin/messaging";
 import {logger} from "firebase-functions";
@@ -198,6 +199,229 @@ function isReusableGrant(
     durationMilliseconds <= MAX_GRANT_DURATION_MILLISECONDS
   );
 }
+const PRIVATE_TYPING_ACCESS_ROOT = "privateChatAccess";
+const ENSURE_PRIVATE_TYPING_ACCESS_FIELDS = [
+  "chatId",
+] as const;
+
+interface EnsurePrivateTypingAccessRequest {
+  chatId: string;
+}
+
+/**
+ * Checks whether a value contains a character forbidden in an RTDB key.
+ * @param {string} value Candidate key.
+ * @return {boolean} Whether the key contains a forbidden character.
+ */
+function containsInvalidRealtimeDatabaseKeyCharacter(
+  value: string,
+): boolean {
+  return [
+    ".",
+    "#",
+    "$",
+    "[",
+    "]",
+    "/",
+  ].some(
+    (character) => value.includes(character),
+  );
+}
+
+/**
+ * Parses a strict typing access callable request.
+ * @param {unknown} data Callable request data.
+ * @return {EnsurePrivateTypingAccessRequest} Validated request.
+ */
+function parseEnsurePrivateTypingAccessRequest(
+  data: unknown,
+): EnsurePrivateTypingAccessRequest {
+  if (
+    typeof data !== "object" ||
+    data === null ||
+    Array.isArray(data)
+  ) {
+    throw new HttpsError(
+      "invalid-argument",
+      "Request data must be an object.",
+    );
+  }
+
+  const record = data as Record<string, unknown>;
+  const keys = Object.keys(record);
+  const hasExactFields =
+    keys.length ===
+        ENSURE_PRIVATE_TYPING_ACCESS_FIELDS.length &&
+    ENSURE_PRIVATE_TYPING_ACCESS_FIELDS.every(
+      (field) =>
+        Object.prototype.hasOwnProperty.call(
+          record,
+          field,
+        ),
+    );
+
+  if (!hasExactFields) {
+    throw new HttpsError(
+      "invalid-argument",
+      "Request data contains missing or unknown fields.",
+    );
+  }
+
+  const chatId = record.chatId;
+
+  if (
+    typeof chatId !== "string" ||
+    chatId.length === 0 ||
+    chatId !== chatId.trim() ||
+    containsInvalidRealtimeDatabaseKeyCharacter(chatId)
+  ) {
+    throw new HttpsError(
+      "invalid-argument",
+      "Field chatId must be a valid non-empty RTDB key.",
+    );
+  }
+
+  return {chatId};
+}
+
+/**
+ * Reads and validates private chat member IDs.
+ * @param {FirebaseFirestore.DocumentData|undefined} data Chat data.
+ * @param {string} authenticatedUserId Authenticated caller ID.
+ * @return {string[]} Two validated private chat member IDs.
+ */
+function readPrivateTypingMemberIds(
+  data: FirebaseFirestore.DocumentData | undefined,
+  authenticatedUserId: string,
+): string[] {
+  if (
+    data == null ||
+    data.type !== "private" ||
+    data.isDissolved !== false
+  ) {
+    throw new HttpsError(
+      "failed-precondition",
+      "Typing access is available only for an active private chat.",
+    );
+  }
+
+  const memberIds: unknown = data.memberIds;
+
+  if (
+    !Array.isArray(memberIds) ||
+    memberIds.length !== 2 ||
+    !memberIds.every(
+      (memberId) =>
+        typeof memberId === "string" &&
+        memberId.length > 0 &&
+        memberId === memberId.trim() &&
+        !containsInvalidRealtimeDatabaseKeyCharacter(
+          memberId,
+        ),
+    )
+  ) {
+    throw new HttpsError(
+      "failed-precondition",
+      "Private chat members are invalid.",
+    );
+  }
+
+  const validatedMemberIds = memberIds as string[];
+
+  if (
+    new Set(validatedMemberIds).size !==
+    validatedMemberIds.length
+  ) {
+    throw new HttpsError(
+      "failed-precondition",
+      "Private chat members must be unique.",
+    );
+  }
+
+  if (!validatedMemberIds.includes(authenticatedUserId)) {
+    throw new HttpsError(
+      "permission-denied",
+      "The authenticated user is not a chat member.",
+    );
+  }
+
+  return validatedMemberIds;
+}
+
+export const ensurePrivateTypingAccess = onCall<unknown>(
+  async (callableRequest) => {
+    const authenticatedUser = callableRequest.auth;
+
+    if (authenticatedUser == null) {
+      throw new HttpsError(
+        "unauthenticated",
+        "Authentication is required.",
+      );
+    }
+
+    const request =
+      parseEnsurePrivateTypingAccessRequest(
+        callableRequest.data,
+      );
+    const authenticatedUserId = authenticatedUser.uid;
+
+    try {
+      const chatSnapshot = await getFirestore()
+        .collection("chats")
+        .doc(request.chatId)
+        .get();
+
+      if (!chatSnapshot.exists) {
+        throw new HttpsError(
+          "not-found",
+          "The private chat does not exist.",
+        );
+      }
+
+      const memberIds = readPrivateTypingMemberIds(
+        chatSnapshot.data(),
+        authenticatedUserId,
+      );
+      const accessData: Record<string, boolean> = {};
+
+      for (const memberId of memberIds) {
+        accessData[memberId] = true;
+      }
+
+      await getDatabase()
+        .ref(
+          `${PRIVATE_TYPING_ACCESS_ROOT}/${request.chatId}`,
+        )
+        .set(accessData);
+
+      logger.info("Private typing access is ready", {
+        chatId: request.chatId,
+        requestedBy: authenticatedUserId,
+        memberIds,
+      });
+
+      return {granted: true};
+    } catch (error) {
+      if (error instanceof HttpsError) {
+        throw error;
+      }
+
+      logger.error(
+        "Failed to ensure private typing access",
+        {
+          error,
+          chatId: request.chatId,
+          requestedBy: authenticatedUserId,
+        },
+      );
+
+      throw new HttpsError(
+        "internal",
+        "Unable to prepare private typing access.",
+      );
+    }
+  },
+);
 
 export const createFirstPrivateImageUploadGrant = onCall<unknown>(
   async (callableRequest) => {

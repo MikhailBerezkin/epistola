@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../domain/models/image_message_metadata.dart';
+import 'chat/private_read_receipt_indicator.dart';
 import 'image_message_thumbnail.dart';
 
 class MessageBubble extends StatelessWidget {
@@ -11,6 +12,8 @@ class MessageBubble extends StatelessWidget {
     required this.senderRole,
     required this.timeText,
     required this.isMe,
+    this.showPrivateReadReceipt = false,
+    this.isReadByPeer = false,
     this.isImageMessage = false,
     this.imageMetadata,
   });
@@ -20,6 +23,9 @@ class MessageBubble extends StatelessWidget {
   final String senderRole;
   final String timeText;
   final bool isMe;
+
+  final bool showPrivateReadReceipt;
+  final bool isReadByPeer;
 
   final bool isImageMessage;
   final ImageMessageMetadata? imageMetadata;
@@ -80,12 +86,21 @@ class MessageBubble extends StatelessWidget {
               const SizedBox(height: 4),
               Align(
                 alignment: Alignment.centerRight,
-                child: Text(
-                  timeText,
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: Theme.of(context).colorScheme.outline,
-                  ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      timeText,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Theme.of(context).colorScheme.outline,
+                      ),
+                    ),
+                    if (showPrivateReadReceipt) ...[
+                      const SizedBox(width: 4),
+                      PrivateReadReceiptIndicator(isRead: isReadByPeer),
+                    ],
+                  ],
                 ),
               ),
             ],

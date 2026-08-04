@@ -9,40 +9,57 @@ Epistola — Android-first корпоративный мессенджер и о
 | Параметр | Значение |
 |---|---|
 | Последний стабильный релиз | `v0.7.2` |
-| Release merge commit | `7d8357a` |
-| Последний завершённый этап | `v0.7.2 Chat Date Separator Foundation` |
-| Текущая ветка | `main` |
-| Состояние этапа | завершён и слит в `main`; release tag — `v0.7.2` |
+| Текущий release candidate | `v0.7.3 Messaging Feedback Foundation` |
+| Текущая ветка | `feat/v0.7.3-messaging-feedback` |
+| Functional HEAD | `60b3fef` |
+| Состояние этапа | функциональность завершена, проверки и ручные сценарии пройдены; ожидаются документационный commit, merge в `main` и tag `v0.7.3` |
 | Основная платформа | Android |
 | Backend | Firebase |
 | Репозиторий | `MikhailBerezkin/epistola` |
 | Firebase project | `epistola-434b7` |
 | Firestore region | `eur3` |
+| Realtime Database region | `europe-west1` |
 | Cloud Functions region | `europe-west1` |
 | Android package | `com.epistola.app` |
 | Пилотная группа | около 40–50 пользователей |
 
-Релиз `v0.7.2` создан поверх `v0.7.1 Push Deep Link Foundation`.
+`v0.7.3` создаётся поверх стабильного `v0.7.2 Chat Date Separator Foundation`.
 
-Итоговая Git-история этапа:
+Функциональные commits этапа:
 
 ```text
-2d34cfc feat(chat): add date separators and scroll indicator
-bffea4f fix(chat): hide paginated messages immediately
-7d8357a merge: release v0.7.2 Chat Date Separator Foundation
+f901c06 fix(chat): suppress active chat notifications
+8228f9a feat(chat): add private read receipts
+d10c110 feat(chat): add group message reactions
+60b3fef feat(chat): add private typing indicator
 ```
 
-Финальные проверки:
+Финальные проверки release candidate:
 
 ```text
 flutter.bat analyze
 → No issues found
 
 flutter.bat test
-→ 423 tests passed
+→ 535 tests passed
+
+Realtime Database Rules
+→ 15 tests passed
+
+Firestore Rules
+→ 53 tests passed
+
+Storage Rules
+→ 42 tests passed
+
+Security Rules total
+→ 110 tests passed
+
+functions lint / build
+→ passed
 
 flutter.bat build apk --release
-→ успешно, 55.3 MB
+→ успешно, 55.7 MB
 ```
 
 Release APK:
@@ -51,9 +68,7 @@ Release APK:
 build\app\outputs\flutter-apk\app-release.apk
 ```
 
-Функциональность проверена на Android Emulator. Разделители дней, плавающая дата, пагинация и немедленное локальное скрытие сообщений работают.
-
-Cloud Functions, Firestore Rules и Storage Rules на этапе `v0.7.2` не изменялись. Firebase deploy не требуется.
+Функциональность проверена вручную на Android Emulator и физическом Android-устройстве.
 
 ## Что такое Epistola
 
@@ -72,7 +87,7 @@ Cloud Functions, Firestore Rules и Storage Rules на этапе `v0.7.2` не 
 - корпоративные сервисы;
 - возможный собственный backend.
 
-Spaces больше не рассматриваются как обычный тип чата.
+Spaces не рассматриваются как обычный тип чата.
 
 ```text
 Spaces → внутренние приложения Epistola
@@ -111,7 +126,9 @@ Spaces → внутренние приложения Epistola
 - персональная очистка private chat;
 - поиск private chat по данным собеседника;
 - аватары в списке, поиске, draft и заголовке;
-- переход в конкретный private chat по нажатию на push.
+- переход в конкретный private chat по нажатию на push;
+- одинарная и двойная галочка доставки/прочтения;
+- realtime-индикатор `Пишет...` только для собеседника.
 
 ### Групповые чаты
 
@@ -125,7 +142,9 @@ Spaces → внутренние приложения Epistola
 - настройки и ограничения по ролям;
 - групповые аватары;
 - управление аватаром для owner и admin;
-- переход в конкретный group chat по нажатию на push.
+- переход в конкретный group chat по нажатию на push;
+- реакции `👍` и `👎` под сообщениями;
+- только одно значение реакции на пользователя.
 
 Image Message Foundation проверен для личных чатов. Отправка изображений в групповые чаты пока не заявлена завершённой.
 
@@ -145,6 +164,16 @@ Image Message Foundation проверен для личных чатов. Отп
 - плавная смена плавающей даты;
 - исчезновение плавающего индикатора после остановки прокрутки;
 - корректная работа разделителей после пагинации и удаления сообщений.
+
+### Уведомления
+
+- Firebase Cloud Messaging;
+- foreground/background/terminated;
+- переход из push в конкретный private или group chat;
+- sender exclusion;
+- удаление невалидных tokens;
+- подавление foreground-уведомления, если пользователь уже находится в этом чате;
+- уведомления из других чатов не подавляются.
 
 ### Удаление сообщений
 
@@ -179,13 +208,129 @@ guest
 
 Поддерживаются mute, ban, permissions, управление участниками, last-admin protection, передача прав и безопасный выход. Owner сохраняет максимальный приоритет.
 
+## Messaging Feedback Foundation — v0.7.3
+
+### Подавление уведомлений активного чата
+
+`ActiveChatTracker` хранит текущий открытый chat route.
+
+```text
+foreground FCM received
+→ payload converted to PushDeepLinkRequest
+→ activeChatTracker checks chatId
+→ same active chat: local notification suppressed
+→ another chat: notification shown normally
+```
+
+Подавление действует только для активного чата. Background и terminated delivery не отключаются.
+
+### Private Read Receipt Foundation
+
+Только в личных чатах:
+
+```text
+✓  сообщение сохранено
+✓✓ собеседник прочитал
+```
+
+Read cursor хранится в документе чата и содержит:
+
+```text
+privateReadState/{uid}
+  messageId
+  messageCreatedAt
+  readAt
+```
+
+Свойства решения:
+
+- только private chats;
+- только исходящие сообщения получают галочки;
+- text и image используют один read cursor;
+- cursor монотонный и не откатывается назад;
+- запись объединяется debounce-механизмом;
+- финальная запись запускается при выходе из чата;
+- группы не получают read receipt UI;
+- Firestore Rules разрешают пользователю менять только собственный cursor.
+
+### Group Message Reactions
+
+Только в групповых чатах:
+
+```text
+👍 like
+👎 dislike
+```
+
+В сообщении хранится map:
+
+```text
+reactions/{uid} = like | dislike
+```
+
+Один пользователь не может одновременно иметь `like` и `dislike`.
+
+```text
+none + like → like
+like + like → none
+like + dislike → dislike
+none + dislike → dislike
+dislike + dislike → none
+dislike + like → like
+```
+
+Свойства решения:
+
+- transaction-based toggle;
+- optimistic UI;
+- counters под сообщением;
+- выбранная пользователем реакция визуально выделяется;
+- поддерживаются text и image presentation;
+- private chats не получают реакции;
+- реакции не создают push-уведомления;
+- Firestore Rules разрешают менять только ключ текущего UID.
+
+### Private Typing Indicator Foundation
+
+Только в личных чатах через Firebase Realtime Database.
+
+```text
+пользователь вводит текст
+→ в шапке собеседника появляется «Пишет...»
+
+нет активности / поле очищено / сообщение отправлено / выход
+→ снова «личный чат»
+```
+
+RTDB paths:
+
+```text
+privateChatAccess/{chatId}/{uid} = true
+privateTyping/{chatId}/{uid} = server timestamp
+```
+
+`privateChatAccess` создаётся только серверной callable-функцией `ensurePrivateTypingAccess`, которая проверяет Firestore chat, тип чата, membership и состояние роспуска.
+
+Client lifecycle:
+
+```text
+450 ms initial debounce
+3 s heartbeat while typing
+4 s inactivity stop
+6 s peer timestamp freshness guard
+onDisconnect remove
+```
+
+Дополнительно:
+
+- клиент слушает только точный путь текущего собеседника;
+- пользователь пишет только собственный typing node;
+- очистка выполняется при send, clear, leave и dispose;
+- stale timestamp автоматически скрывается;
+- групповые чаты не создают typing state;
+- feature flags не используются.
+
 ## Chat Date Separator Foundation — v0.7.2
-
-### Назначение
-
-Этап добавляет календарную структуру истории сообщений и позволяет понимать дату сообщений при просмотре длинного чата.
-
-### Постоянные разделители
 
 Первое видимое сообщение каждого календарного дня получает разделитель:
 
@@ -196,73 +341,7 @@ guest
 28 декабря 2025
 ```
 
-Скрытые у текущего пользователя и удалённые у всех сообщения не участвуют в выборе первого видимого сообщения дня.
-
-### Плавающая дата
-
-Во время пользовательской прокрутки над лентой отображается дата верхнего видимого сообщения.
-
-```text
-scroll start
-→ индикатор появляется
-
-scroll update / inertia
-→ индикатор остаётся видимым
-→ дата меняется при переходе между днями
-
-scroll end
-→ индикатор остаётся примерно 1.2 секунды
-→ плавно исчезает
-```
-
-Дата определяется по реальным позициям отрисованных элементов, поэтому корректно поддерживаются сообщения разной высоты, длинный текст и изображения.
-
-### Пагинация и удаление
-
-Сохранены invariants:
-
-```text
-page size 20
-merge by document ID
-chronological order
-scroll position preservation
-one old-page request at a time
-near-bottom-only autoscroll
-```
-
-Ранее загруженные страницы не входят в realtime-listener последних 20 сообщений. Поэтому после успешного удаления добавлено локальное optimistic-состояние скрытия:
-
-```text
-Firestore update succeeded
-→ messageId added to locally hidden set
-→ MessageItem collapses
-→ date labels rebuild
-```
-
-Это устраняет необходимость выходить из чата для обновления старого сообщения и не создаёт дополнительных Firestore reads.
-
-### Файлы этапа
-
-```text
-lib/helpers/chat_date_formatter.dart
-lib/widgets/chat/chat_date_separator.dart
-lib/widgets/chat/chat_scroll_date_indicator.dart
-lib/widgets/message_item.dart
-lib/widgets/messages_list.dart
-
-test/helpers/chat_date_formatter_test.dart
-test/widgets/chat/chat_date_widgets_test.dart
-```
-
-### Проверки этапа
-
-```text
-10 ChatDateFormatter tests
-4 date widget tests
-423 tests полного проекта
-flutter.bat analyze → No issues found
-release APK → 55.3 MB
-```
+Во время прокрутки показывается плавающая дата верхнего видимого сообщения. Пагинация, удаление и элементы переменной высоты поддерживаются без дополнительных Firestore reads.
 
 ## Push Deep Link Foundation — v0.7.1
 
@@ -303,7 +382,7 @@ chat_media/{chatId}/messages/{messageId}/v{version}/full.jpg
 
 Реализованы Firebase Cloud Messaging, локальные Android-уведомления, foreground/background/terminated, регистрация и обновление tokens, удаление token при logout, sender exclusion, private/group push и cleanup невалидных tokens.
 
-Начиная с `v0.7.1`, notification tap открывает конкретный chat.
+Начиная с `v0.7.1`, notification tap открывает конкретный chat. Начиная с `v0.7.3`, foreground notification не показывается поверх уже открытого целевого чата.
 
 ## Message Deletion Foundation — v0.6.4
 
@@ -410,6 +489,31 @@ test/
 → README.md
 ```
 
+## Firebase infrastructure
+
+```text
+Authentication
+Cloud Firestore
+Realtime Database
+Cloud Storage
+Cloud Functions
+Cloud Messaging
+```
+
+Realtime Database URL:
+
+```text
+https://epistola-434b7-default-rtdb.europe-west1.firebasedatabase.app
+```
+
+Основные Cloud Functions:
+
+```text
+sendMessageNotification
+createFirstPrivateImageUploadGrant
+ensurePrivateTypingAccess
+```
+
 ## Сборка и проверки
 
 ```powershell
@@ -418,54 +522,68 @@ flutter.bat test
 flutter.bat build apk --release
 ```
 
-Generated plugin files после серии Flutter-команд восстанавливаются один раз:
+Rules:
 
 ```powershell
-git.exe restore -- `
+firebase.cmd emulators:exec --only database --project epistola-434b7 `
+  "npm.cmd --prefix test/rules run test:database"
+
+firebase.cmd emulators:exec --only firestore --project epistola-434b7 `
+  "npm.cmd --prefix test/rules run test:firestore"
+
+firebase.cmd emulators:exec --only firestore,storage --project epistola-434b7 `
+  "npm.cmd --prefix test/rules run test:storage"
+```
+
+Generated plugin files после последней серии Flutter-команд восстанавливаются один раз:
+
+```powershell
+git restore -- `
   linux/flutter/generated_plugins.cmake `
   macos/Flutter/GeneratedPluginRegistrant.swift `
+  windows/flutter/generated_plugin_registrant.cc `
   windows/flutter/generated_plugins.cmake
 ```
 
 ## Известные ограничения
 
-- Group image messages не завершены.
-- Private read receipts пока не реализованы.
-- Group like/dislike reactions пока не реализованы.
-- Private typing indicator и Realtime Database пока не подключены.
-- Files и voice messages не реализованы.
+- Group image sending не заявлен завершённым.
+- Подписи к фотографиям ещё не реализованы.
+- File messages не реализованы.
+- Voice messages не реализованы.
+- Кликабельные аватары и единая profile card навигация реализованы не во всех точках UI.
 - Production retention cleanup отсутствует.
 - App Check не завершён.
 - Release signing требует отдельной настройки.
+- Built-in Kotlin warning остаётся предупреждением plugin internals и не блокирует APK.
 
-## Roadmap
+## Roadmap после v0.7.3
 
-После выпуска `v0.7.2`:
-
-1. `v0.7.3 Messaging Feedback Foundation`:
-   - Private Read Receipt Foundation — `✓ / ✓✓` только для личных чатов;
-   - Group Message Reactions — `👍 / 👎`, одно взаимоисключающее состояние на пользователя;
-   - Private Typing Indicator Foundation — Realtime Database только для личных чатов.
-2. Group Image Message Foundation.
-3. File Message Foundation.
+1. Выпустить `v0.7.3 Messaging Feedback Foundation` в `main` и создать tag.
+2. Attachment Composer Foundation: единый draft вложения и подпись к фотографии без временного обходного решения.
+3. File Message Foundation поверх общего attachment contract.
 4. Voice Message Foundation.
-5. Media Retention Cleanup Foundation.
-6. App Check / Production Hardening.
-7. Release Signing.
-8. UI customization.
+5. Clickable Avatar and Profile Card Foundation во всех ключевых списках и экранах.
+6. Retention cleanup, App Check и production hardening.
 
-## Рабочий процесс
+## Git workflow
 
-- Общение на русском языке.
-- PowerShell-команды с явными executable-именами.
-- Используются `flutter.bat`, `dart.bat`, `firebase.cmd`, `npm.cmd`, `git.exe`.
-- Изменения делаются небольшими проверяемыми шагами.
-- Перед commit выполняются analyze, профильные tests и `diff --check`.
-- Перед релизом выполняются полный test suite и release APK build.
-- Изменённый пользовательский сценарий проверяется вручную.
-- Generated plugin files не включаются в feature commits.
-- Учитывается Firebase free-tier и пилотная группа 40–50 пользователей.
+```text
+main
+└── feat/vX.Y.Z-short-name
+```
 
-## Лицензия
+Перед commit:
 
-Проект является внутренним продуктом и не публикуется в pub.dev.
+```powershell
+git status --short
+git diff --check
+```
+
+После commit:
+
+```powershell
+git push origin <feature-branch>
+```
+
+Release merge и tag выполняются только после зелёных автоматических проверок и ручного Android-сценария.

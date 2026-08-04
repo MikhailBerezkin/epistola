@@ -46,6 +46,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '636745926786',
     projectId: 'epistola-434b7',
     authDomain: 'epistola-434b7.firebaseapp.com',
+    databaseURL: 'https://epistola-434b7-default-rtdb.europe-west1.firebasedatabase.app',
     storageBucket: 'epistola-434b7.firebasestorage.app',
     measurementId: 'G-CST8DBH89X',
   );
@@ -55,6 +56,7 @@ class DefaultFirebaseOptions {
     appId: '1:636745926786:android:e5fb63f4eb7e59528e4c9b',
     messagingSenderId: '636745926786',
     projectId: 'epistola-434b7',
+    databaseURL: 'https://epistola-434b7-default-rtdb.europe-west1.firebasedatabase.app',
     storageBucket: 'epistola-434b7.firebasestorage.app',
   );
   static const FirebaseOptions ios = FirebaseOptions(
@@ -62,6 +64,7 @@ class DefaultFirebaseOptions {
     appId: '1:636745926786:ios:dce4f8c000848ab28e4c9b',
     messagingSenderId: '636745926786',
     projectId: 'epistola-434b7',
+    databaseURL: 'https://epistola-434b7-default-rtdb.europe-west1.firebasedatabase.app',
     storageBucket: 'epistola-434b7.firebasestorage.app',
     iosBundleId: 'com.example.epistola',
   );
@@ -70,6 +73,7 @@ class DefaultFirebaseOptions {
     appId: '1:636745926786:ios:dce4f8c000848ab28e4c9b',
     messagingSenderId: '636745926786',
     projectId: 'epistola-434b7',
+    databaseURL: 'https://epistola-434b7-default-rtdb.europe-west1.firebasedatabase.app',
     storageBucket: 'epistola-434b7.firebasestorage.app',
     iosBundleId: 'com.example.epistola',
   );
@@ -80,6 +84,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '636745926786',
     projectId: 'epistola-434b7',
     authDomain: 'epistola-434b7.firebaseapp.com',
+    databaseURL: 'https://epistola-434b7-default-rtdb.europe-west1.firebasedatabase.app',
     storageBucket: 'epistola-434b7.firebasestorage.app',
     measurementId: 'G-T51KTGN8X6',
   );
