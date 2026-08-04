@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "test:firestore": "node --test firestore/*.test.mjs",
+    "test:database": "node --test database/*.test.mjs",
     "test:storage": "node --test storage/*.test.mjs"
   },
   "devDependencies": {
