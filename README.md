@@ -8,11 +8,12 @@ Epistola — Android-first корпоративный мессенджер и о
 
 | Параметр | Значение |
 |---|---|
-| Последний стабильный релиз | `v0.7.2` |
-| Текущий release candidate | `v0.7.3 Messaging Feedback Foundation` |
-| Текущая ветка | `feat/v0.7.3-messaging-feedback` |
+| Последний стабильный релиз | `v0.7.3` |
+| Release merge commit | `81eb9f4` |
+| Последний завершённый этап | `v0.7.3 Messaging Feedback Foundation` |
+| Текущая ветка | `main` |
 | Functional HEAD | `60b3fef` |
-| Состояние этапа | функциональность завершена, проверки и ручные сценарии пройдены; ожидаются документационный commit, merge в `main` и tag `v0.7.3` |
+| Состояние этапа | завершён и слит в `main`; release tag — `v0.7.3` |
 | Основная платформа | Android |
 | Backend | Firebase |
 | Репозиторий | `MikhailBerezkin/epistola` |
@@ -23,7 +24,7 @@ Epistola — Android-first корпоративный мессенджер и о
 | Android package | `com.epistola.app` |
 | Пилотная группа | около 40–50 пользователей |
 
-`v0.7.3` создаётся поверх стабильного `v0.7.2 Chat Date Separator Foundation`.
+`v0.7.3` создан поверх стабильного `v0.7.2 Chat Date Separator Foundation`.
 
 Функциональные commits этапа:
 
@@ -34,7 +35,7 @@ d10c110 feat(chat): add group message reactions
 60b3fef feat(chat): add private typing indicator
 ```
 
-Финальные проверки release candidate:
+Финальные проверки релиза:
 
 ```text
 flutter.bat analyze
@@ -559,12 +560,11 @@ git restore -- `
 
 ## Roadmap после v0.7.3
 
-1. Выпустить `v0.7.3 Messaging Feedback Foundation` в `main` и создать tag.
-2. Attachment Composer Foundation: единый draft вложения и подпись к фотографии без временного обходного решения.
-3. File Message Foundation поверх общего attachment contract.
-4. Voice Message Foundation.
-5. Clickable Avatar and Profile Card Foundation во всех ключевых списках и экранах.
-6. Retention cleanup, App Check и production hardening.
+1. Attachment Composer Foundation: единый draft вложения и подпись к фотографии без временного обходного решения.
+2. File Message Foundation поверх общего attachment contract.
+3. Voice Message Foundation.
+4. Clickable Avatar and Profile Card Foundation во всех ключевых списках и экранах.
+5. Retention cleanup, App Check и production hardening.
 
 ## Git workflow
 

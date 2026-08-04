@@ -22,11 +22,12 @@
 | Параметр | Значение |
 |---|---|
 | Версия документа | `4.3` |
-| Последний стабильный релиз | `v0.7.2` |
-| Текущий release candidate | `v0.7.3 Messaging Feedback Foundation` |
-| Текущая ветка | `feat/v0.7.3-messaging-feedback` |
+| Последний стабильный релиз | `v0.7.3` |
+| Release merge commit | `81eb9f4` |
+| Последний завершённый этап | `v0.7.3 Messaging Feedback Foundation` |
+| Текущая ветка | `main` |
 | Functional HEAD | `60b3fef` |
-| Состояние | функциональность завершена и отправлена в feature branch; release merge и tag ещё не созданы |
+| Состояние | завершён и слит в `main`; release tag — `v0.7.3` |
 | Последнее обновление | август 2026 |
 
 `v0.7.3` добавляет четыре независимые границы messaging feedback:

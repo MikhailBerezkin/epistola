@@ -27,21 +27,21 @@
 Последняя стабильная версия:
 
 ```text
-v0.7.2 — Chat Date Separator Foundation
+v0.7.3 — Messaging Feedback Foundation
 ```
 
-Стабильный `main` перед текущим release candidate:
+Стабильный `main`:
 
 ```text
-main documentation head: 8e6f8fe
-tag: v0.7.2
-release merge: 7d8357a
+release merge commit: 81eb9f4
+functional head: 60b3fef
+tag: v0.7.3
 ```
 
 Текущая ветка:
 
 ```text
-feat/v0.7.3-messaging-feedback
+main
 ```
 
 Текущий functional HEAD:
@@ -71,8 +71,9 @@ active chat notification suppression реализован
 → release APK собран
 → ручные сценарии телефон ↔ эмулятор пройдены
 → функциональные commits отправлены в origin
-→ документы подготавливаются
-→ release merge и tag ещё не созданы
+→ документация подготовлена
+→ release merge 81eb9f4 создан в main
+→ release tag v0.7.3
 ```
 
 Функциональные commits:
@@ -84,7 +85,7 @@ d10c110 feat(chat): add group message reactions
 60b3fef feat(chat): add private typing indicator
 ```
 
-Итоговые проверки release candidate:
+Итоговые проверки релиза:
 
 ```text
 flutter.bat analyze
@@ -809,56 +810,28 @@ Firestore Rules содержат private read receipt и group reaction boundari
 
 ## 12. Git state
 
-Feature branch:
+```text
+functional branch: feat/v0.7.3-messaging-feedback
+functional head: 60b3fef
+documentation preparation: 388cba3
+release merge: 81eb9f4
+current branch: main
+release tag: v0.7.3
+```
+
+Generated plugin files восстановлены и не входят в release commits.
+
+## 13. Состояние публикации
 
 ```text
-feat/v0.7.3-messaging-feedback
+final documentation committed
+→ annotated tag v0.7.3 created
+→ main pushed to origin/main
+→ tag v0.7.3 pushed
+→ remote refs verified
 ```
 
-Remote sync после functional commit:
-
-```text
-60b3fef pushed to origin/feat/v0.7.3-messaging-feedback
-```
-
-Рабочее дерево перед документами было чистым.
-
-Следующий expected commit:
-
-```text
-docs: prepare v0.7.3 release
-```
-
-После него:
-
-```text
-push feature branch
-→ switch main
-→ pull/verify main
-→ merge --no-ff feature branch
-→ create tag v0.7.3
-→ push main and tag
-→ final documentation update with actual merge SHA
-```
-
-Коммит и merge выполнять только маленькими проверяемыми шагами.
-
-## 13. Следующий непосредственный шаг
-
-1. Заменить `README.md`, `ARCHITECTURE.md`, `PROJECT_CONTEXT.md` полными версиями `v0.7.3`.
-2. Проверить:
-
-```powershell
-git status --short
-git diff --check
-git diff --stat
-```
-
-3. Создать документационный commit.
-4. Отправить feature branch.
-5. Выполнить release merge в `main`.
-6. Создать tag `v0.7.3`.
-7. Обновить документы фактическим release merge SHA и финальным состоянием.
+После публикации рабочее дерево должно оставаться чистым.
 
 ## 14. Roadmap после v0.7.3
 
