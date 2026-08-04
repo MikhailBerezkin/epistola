@@ -4,6 +4,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import '../domain/models/private_read_cursor.dart';
+import '../domain/models/group_message_reaction.dart';
+import '../services/chat/group_message_reaction_mapper.dart';
+import '../services/chat/group_message_reaction_service.dart';
 
 import '../helpers/chat_date_formatter.dart';
 import '../models/message_presentation.dart';
@@ -13,7 +16,7 @@ import '../services/chat_service.dart';
 import 'chat/chat_scroll_date_indicator.dart';
 import 'message_item.dart';
 
-enum _MessageDeleteAction { forCurrentUser, forEveryone }
+enum _MessageAction { like, dislike, deleteForCurrentUser, deleteForEveryone }
 
 class MessagesList extends StatefulWidget {
   final String chatId;
@@ -22,12 +25,14 @@ class MessagesList extends StatefulWidget {
   final double keyboardInset;
   final ValueChanged<PrivateReadCursor>? onLatestReadCursorChanged;
   final PrivateReadCursor? peerReadCursor;
+  final bool enableGroupReactions;
 
   const MessagesList({
     super.key,
     required this.chatId,
     required this.memberRoles,
     required this.keyboardInset,
+    this.enableGroupReactions = false,
     this.onLatestReadCursorChanged,
     this.peerReadCursor,
     this.visibleAfter,
@@ -45,6 +50,10 @@ class _MessagesListState extends State<MessagesList> {
   static const Duration _scrollDateHideDelay = Duration(milliseconds: 1200);
 
   final chatService = ChatService();
+  final GroupMessageReactionService _groupMessageReactionService =
+      GroupMessageReactionService.firebase();
+
+  final Set<String> _reactionWriteMessageIds = <String>{};
   final scrollController = ScrollController();
 
   final GlobalKey _messagesViewportKey = GlobalKey();
@@ -116,6 +125,7 @@ class _MessagesListState extends State<MessagesList> {
     _scrollDateHideTimer?.cancel();
     _messageItemKeys.clear();
     _locallyHiddenMessageIds.clear();
+    _reactionWriteMessageIds.clear();
 
     setState(() {
       _messagesById.clear();
@@ -167,6 +177,42 @@ class _MessagesListState extends State<MessagesList> {
     final wasNearBottom = _isNearBottom;
     final previousIds = _messagesById.keys.toSet();
 
+    final imageReactionRowBecameVisible = snapshot.docChanges.any((change) {
+      if (change.type != DocumentChangeType.modified) {
+        return false;
+      }
+
+      final newData = change.doc.data();
+
+      if (newData == null || newData['messageType'] != 'image') {
+        return false;
+      }
+
+      final oldData = _messagesById[change.doc.id]?.data();
+
+      if (oldData == null) {
+        return false;
+      }
+
+      final oldReactionSnapshot = GroupMessageReactionMapper.fromMessageData(
+        oldData,
+      );
+
+      final newReactionSnapshot = GroupMessageReactionMapper.fromMessageData(
+        newData,
+      );
+
+      final previouslyHadReactions =
+          oldReactionSnapshot.count(GroupMessageReaction.like) > 0 ||
+          oldReactionSnapshot.count(GroupMessageReaction.dislike) > 0;
+
+      final nowHasReactions =
+          newReactionSnapshot.count(GroupMessageReaction.like) > 0 ||
+          newReactionSnapshot.count(GroupMessageReaction.dislike) > 0;
+
+      return !previouslyHadReactions && nowHasReactions;
+    });
+
     for (final message in snapshot.docs) {
       _messagesById[message.id] = message;
     }
@@ -174,6 +220,13 @@ class _MessagesListState extends State<MessagesList> {
     final addedMessage = snapshot.docs.any(
       (message) => !previousIds.contains(message.id),
     );
+    final addedImageMessage = snapshot.docs.any((message) {
+      if (previousIds.contains(message.id)) {
+        return false;
+      }
+
+      return message.data()['messageType'] == 'image';
+    });
 
     _updateOldestLoadedDocument();
 
@@ -188,8 +241,16 @@ class _MessagesListState extends State<MessagesList> {
 
     if (wasInitialLoad) {
       _scrollToBottom(animated: false, correctAfterLayout: true);
-    } else if (addedMessage && wasNearBottom) {
-      _scrollToBottom(correctAfterLayout: true);
+    } else if (wasNearBottom) {
+      if (addedImageMessage || imageReactionRowBecameVisible) {
+        // Фотографии и впервые появившаяся строка реакции
+        // требуют повторной коррекции после окончательного layout.
+        _scrollToBottom(correctAfterLayout: true);
+      } else if (addedMessage) {
+        // Для обычного текста достаточно одного скролла.
+        // Второй проход через 450 мс создавал заметный скачок.
+        _scrollToBottom();
+      }
     }
 
     if (_isUserScrolling) {
@@ -620,43 +681,107 @@ class _MessagesListState extends State<MessagesList> {
   Future<void> _showMessageActions({
     required MessagePresentation message,
     required bool isMe,
+    required bool canReact,
+    required GroupMessageReaction? selectedReaction,
   }) async {
     if (!message.isVisible) {
       return;
     }
 
-    final action = await showModalBottomSheet<_MessageDeleteAction>(
+    final action = await showModalBottomSheet<_MessageAction>(
       context: context,
       showDragHandle: true,
       builder: (sheetContext) {
+        final colorScheme = Theme.of(sheetContext).colorScheme;
+
+        Widget reactionButton({
+          required String emoji,
+          required String label,
+          required GroupMessageReaction reaction,
+          required _MessageAction action,
+        }) {
+          final isSelected = selectedReaction == reaction;
+
+          return Expanded(
+            child: TextButton(
+              onPressed: () {
+                Navigator.of(sheetContext).pop(action);
+              },
+              style: TextButton.styleFrom(
+                foregroundColor: isSelected
+                    ? colorScheme.primary
+                    : colorScheme.onSurface,
+                padding: const EdgeInsets.symmetric(vertical: 10),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(emoji, style: const TextStyle(fontSize: 28)),
+                  const SizedBox(height: 3),
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: isSelected
+                          ? FontWeight.w600
+                          : FontWeight.w400,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
         return SafeArea(
           child: Wrap(
             children: [
+              if (canReact) ...[
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                  child: Row(
+                    children: [
+                      reactionButton(
+                        emoji: '👍',
+                        label: 'Нравится',
+                        reaction: GroupMessageReaction.like,
+                        action: _MessageAction.like,
+                      ),
+                      const SizedBox(width: 8),
+                      reactionButton(
+                        emoji: '👎',
+                        label: 'Не нравится',
+                        reaction: GroupMessageReaction.dislike,
+                        action: _MessageAction.dislike,
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1),
+              ],
               ListTile(
                 leading: const Icon(Icons.delete_outline),
                 title: const Text('Удалить у себя'),
                 onTap: () {
                   Navigator.of(
                     sheetContext,
-                  ).pop(_MessageDeleteAction.forCurrentUser);
+                  ).pop(_MessageAction.deleteForCurrentUser);
                 },
               ),
               if (isMe)
                 ListTile(
                   leading: Icon(
                     Icons.delete_forever_outlined,
-                    color: Theme.of(sheetContext).colorScheme.error,
+                    color: colorScheme.error,
                   ),
                   title: Text(
                     'Удалить у всех',
-                    style: TextStyle(
-                      color: Theme.of(sheetContext).colorScheme.error,
-                    ),
+                    style: TextStyle(color: colorScheme.error),
                   ),
                   onTap: () {
                     Navigator.of(
                       sheetContext,
-                    ).pop(_MessageDeleteAction.forEveryone);
+                    ).pop(_MessageAction.deleteForEveryone);
                   },
                 ),
             ],
@@ -669,7 +794,20 @@ class _MessagesListState extends State<MessagesList> {
       return;
     }
 
-    if (action == _MessageDeleteAction.forEveryone) {
+    if (action == _MessageAction.like || action == _MessageAction.dislike) {
+      final reaction = action == _MessageAction.like
+          ? GroupMessageReaction.like
+          : GroupMessageReaction.dislike;
+
+      await _toggleGroupMessageReaction(
+        messageId: message.id,
+        reaction: reaction,
+      );
+
+      return;
+    }
+
+    if (action == _MessageAction.deleteForEveryone) {
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (dialogContext) {
@@ -704,7 +842,7 @@ class _MessagesListState extends State<MessagesList> {
 
     try {
       switch (action) {
-        case _MessageDeleteAction.forCurrentUser:
+        case _MessageAction.deleteForCurrentUser:
           await chatService.deleteMessageForCurrentUser(
             chatId: widget.chatId,
             messageId: message.id,
@@ -713,13 +851,17 @@ class _MessagesListState extends State<MessagesList> {
           _hideMessageLocally(message.id);
           return;
 
-        case _MessageDeleteAction.forEveryone:
+        case _MessageAction.deleteForEveryone:
           await chatService.deleteMessageForEveryone(
             chatId: widget.chatId,
             messageId: message.id,
           );
 
           _hideMessageLocally(message.id);
+          return;
+
+        case _MessageAction.like:
+        case _MessageAction.dislike:
           return;
       }
     } catch (_) {
@@ -791,6 +933,57 @@ class _MessagesListState extends State<MessagesList> {
 
       performScroll(useAnimation: true);
     });
+  }
+
+  Future<void> _toggleGroupMessageReaction({
+    required String messageId,
+    required GroupMessageReaction reaction,
+  }) async {
+    if (!widget.enableGroupReactions ||
+        _reactionWriteMessageIds.contains(messageId)) {
+      return;
+    }
+
+    setState(() {
+      _reactionWriteMessageIds.add(messageId);
+    });
+
+    try {
+      final result = await _groupMessageReactionService.toggle(
+        chatId: widget.chatId,
+        messageId: messageId,
+        tappedReaction: reaction,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      if (result.status ==
+          GroupMessageReactionWriteStatus.skippedUnauthenticated) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Для реакции нужно войти в аккаунт.')),
+        );
+      }
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      debugPrint('Group message reaction write failed: $error');
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Не удалось изменить реакцию.')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _reactionWriteMessageIds.remove(messageId);
+        });
+      } else {
+        _reactionWriteMessageIds.remove(messageId);
+      }
+    }
   }
 
   @override
@@ -923,6 +1116,28 @@ class _MessagesListState extends State<MessagesList> {
                     isImageMessage: messageType == 'image',
                     imageMetadata: imageMetadata,
                   );
+                  final reactionSnapshot =
+                      GroupMessageReactionMapper.fromMessageData(data);
+
+                  final showGroupReactions =
+                      widget.enableGroupReactions &&
+                      presentation.isVisible &&
+                      currentUser != null;
+
+                  final selectedGroupReaction = currentUser == null
+                      ? null
+                      : reactionSnapshot.reactionForUser(currentUser.uid);
+
+                  final groupLikeCount = reactionSnapshot.count(
+                    GroupMessageReaction.like,
+                  );
+
+                  final groupDislikeCount = reactionSnapshot.count(
+                    GroupMessageReaction.dislike,
+                  );
+
+                  final isGroupReactionEnabled = !_reactionWriteMessageIds
+                      .contains(message.id);
 
                   return MessageItem(
                     key: _messageItemKey(message.id),
@@ -932,6 +1147,10 @@ class _MessagesListState extends State<MessagesList> {
                     isMe: isMe,
                     showPrivateReadReceipt: showPrivateReadReceipt,
                     isReadByPeer: isReadByPeer,
+                    showGroupReactions: showGroupReactions,
+                    groupLikeCount: groupLikeCount,
+                    groupDislikeCount: groupDislikeCount,
+                    selectedGroupReaction: selectedGroupReaction,
                     dateLabel: dateLabelsByMessageId[message.id],
                     onLongPress: presentation.isVisible
                         ? () {
@@ -939,6 +1158,10 @@ class _MessagesListState extends State<MessagesList> {
                               _showMessageActions(
                                 message: presentation,
                                 isMe: isMe,
+                                canReact:
+                                    showGroupReactions &&
+                                    isGroupReactionEnabled,
+                                selectedReaction: selectedGroupReaction,
                               ),
                             );
                           }

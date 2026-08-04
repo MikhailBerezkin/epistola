@@ -832,6 +832,52 @@ function isPrivateReadReceiptUpdate(chatId) {
       && request.resource.data.lastRead[request.auth.uid] is timestamp
       && request.resource.data.lastRead[request.auth.uid] == request.time;
 }
+function isGroupMessageReactionUpdate(chatId) {
+  let oldReactions =
+      resource.data.get('reactions', {});
+
+  let newReactions =
+      request.resource.data.get('reactions', {});
+
+  let newReaction =
+      newReactions.get(request.auth.uid, '');
+
+  return isChatMember(chatId)
+
+      && chatDoc(chatId).data.type == 'group'
+
+      && resource.data
+          .get('deletedForEveryone', false) != true
+
+      && request.resource.data
+          .get('deletedForEveryone', false) != true
+
+      && request.resource.data
+          .diff(resource.data)
+          .affectedKeys()
+          .hasOnly([
+            'reactions'
+          ])
+
+      && oldReactions is map
+      && newReactions is map
+
+      && newReactions
+          .diff(oldReactions)
+          .affectedKeys()
+          .hasOnly([
+            request.auth.uid
+          ])
+
+      && (
+        !newReactions.keys().hasAny([
+          request.auth.uid
+        ])
+
+        || newReaction == 'like'
+        || newReaction == 'dislike'
+      );
+}
 function isHideMessageForCurrentUserUpdate(chatId, messageId) {
   let oldHiddenFor = resource.data.get('hiddenFor', {});
   let newHiddenFor = request.resource.data.get('hiddenFor', {});
@@ -1377,14 +1423,15 @@ function isDeleteLastMessageForEveryoneUpdate(chatId) {
           );
 
         allow update: if
-          isHideMessageForCurrentUserUpdate(
-            chatId,
-            messageId
-          )
-          || isDeleteMessageForEveryoneUpdate(
-            chatId,
-            messageId
-          );
+  isGroupMessageReactionUpdate(chatId)
+  || isHideMessageForCurrentUserUpdate(
+    chatId,
+    messageId
+  )
+  || isDeleteMessageForEveryoneUpdate(
+    chatId,
+    messageId
+  );
 
         allow delete: if false;
       }

@@ -382,6 +382,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         memberRoles: memberRoles,
                         visibleAfter: visibleAfter,
                         keyboardInset: keyboardInset,
+                        enableGroupReactions: chatType == 'group',
                         onLatestReadCursorChanged: chatType == 'private'
                             ? _handleLatestReadCursorChanged
                             : null,

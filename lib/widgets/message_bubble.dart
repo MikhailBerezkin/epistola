@@ -23,6 +23,7 @@ class MessageBubble extends StatelessWidget {
   final String senderRole;
   final String timeText;
   final bool isMe;
+
   final bool showPrivateReadReceipt;
   final bool isReadByPeer;
 
