@@ -1,4 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show HapticFeedback;
@@ -16,12 +15,16 @@ class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
     required this.chatName,
     this.peerUser,
     this.peerIsTyping = false,
+    this.chatData,
+    this.onIdentityTap,
   });
 
   final String chatId;
   final String chatName;
   final AppUser? peerUser;
   final bool peerIsTyping;
+  final Map<String, dynamic>? chatData;
+  final VoidCallback? onIdentityTap;
 
   @override
   Size get preferredSize {
@@ -30,76 +33,69 @@ class ChatAppBar extends StatelessWidget implements PreferredSizeWidget {
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<DocumentSnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('chats')
-          .doc(chatId)
-          .snapshots(),
-      builder: (context, snapshot) {
-        final data = snapshot.data?.data() as Map<String, dynamic>?;
+    final data = chatData;
 
-        final currentUser = FirebaseAuth.instance.currentUser;
+    final currentUser = FirebaseAuth.instance.currentUser;
 
-        final chatType = data?['type'] ?? 'private';
+    final chatType = data?['type'] ?? 'private';
 
-        final memberIds = (data?['memberIds'] as List?) ?? [];
+    final memberIds = (data?['memberIds'] as List?) ?? const [];
 
-        final memberStatus =
-            (data?['memberStatus'] as Map<String, dynamic>?) ?? {};
+    final memberStatus =
+        (data?['memberStatus'] as Map<String, dynamic>?) ?? <String, dynamic>{};
 
-        final isGroup = chatType == 'group';
+    final isGroup = chatType == 'group';
 
-        final groupAvatar = isGroup && data != null
-            ? GroupAvatarMetadataMapper.fromMap(data: data, chatId: chatId)
-            : null;
+    final groupAvatar = isGroup && data != null
+        ? GroupAvatarMetadataMapper.fromMap(data: data, chatId: chatId)
+        : null;
 
-        final currentStatusData =
-            (memberStatus[currentUser?.uid] as Map<String, dynamic>?) ??
-            <String, dynamic>{'status': 'normal'};
+    final currentStatusData =
+        (memberStatus[currentUser?.uid] as Map<String, dynamic>?) ??
+        <String, dynamic>{'status': 'normal'};
 
-        final currentStatus = currentStatusData['status'] ?? 'normal';
+    final currentStatus = currentStatusData['status'] ?? 'normal';
 
-        final currentStatusIsActive = StatusHelper.isActive(currentStatusData);
+    final currentStatusIsActive = StatusHelper.isActive(currentStatusData);
 
-        final isBanned =
-            isGroup && currentStatus == 'banned' && currentStatusIsActive;
+    final isBanned =
+        isGroup && currentStatus == 'banned' && currentStatusIsActive;
 
-        final subtitle = _resolveSubtitle(
-          isGroup: isGroup,
-          memberCount: memberIds.length,
-        );
+    final subtitle = _resolveSubtitle(
+      isGroup: isGroup,
+      memberCount: memberIds.length,
+    );
 
-        return AppBar(
-          titleSpacing: 0,
-          title: ChatAppBarTitle(
-            chatId: chatId,
-            chatName: chatName,
-            subtitle: subtitle,
-            peerUser: isGroup ? null : peerUser,
-            groupAvatar: groupAvatar,
-            isGroup: isGroup,
+    return AppBar(
+      titleSpacing: 0,
+      title: ChatAppBarTitle(
+        chatId: chatId,
+        chatName: chatName,
+        subtitle: subtitle,
+        peerUser: isGroup ? null : peerUser,
+        groupAvatar: groupAvatar,
+        isGroup: isGroup,
+        onTap: onIdentityTap,
+      ),
+      actions: [
+        if (isGroup && !isBanned)
+          IconButton(
+            onPressed: () {
+              HapticFeedback.selectionClick();
+
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) {
+                    return GroupInfoScreen(chatId: chatId);
+                  },
+                ),
+              );
+            },
+            icon: const Icon(Icons.more_vert),
+            tooltip: 'Настройки группы',
           ),
-          actions: [
-            if (isGroup && !isBanned)
-              IconButton(
-                onPressed: () {
-                  HapticFeedback.selectionClick();
-
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) {
-                        return GroupInfoScreen(chatId: chatId);
-                      },
-                    ),
-                  );
-                },
-                icon: const Icon(Icons.more_vert),
-                tooltip: 'Настройки группы',
-              ),
-          ],
-        );
-      },
+      ],
     );
   }
 

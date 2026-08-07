@@ -832,6 +832,106 @@ function isPrivateReadReceiptUpdate(chatId) {
       && request.resource.data.lastRead[request.auth.uid] is timestamp
       && request.resource.data.lastRead[request.auth.uid] == request.time;
 }
+function isOwnNotificationSettingsUpdate() {
+  let oldSettings =
+      resource.data.get('notificationSettingsByUser', {});
+
+  let newSettings =
+      request.resource.data.get('notificationSettingsByUser', {});
+
+  let ownSettings =
+      newSettings.get(request.auth.uid, {});
+
+  let mode =
+      ownSettings.get('mode', '');
+
+  return signedIn()
+      && isCurrentMemberInChat()
+
+      && changedKeys().hasOnly([
+        'notificationSettingsByUser'
+      ])
+
+      && oldSettings is map
+      && newSettings is map
+
+      && newSettings.keys().hasAll([
+        request.auth.uid
+      ])
+
+      && newSettings
+          .diff(oldSettings)
+          .affectedKeys()
+          .hasOnly([
+            request.auth.uid
+          ])
+
+      && ownSettings is map
+
+      && (
+        (
+          mode == 'sound'
+
+          && ownSettings.keys().hasOnly([
+            'mode'
+          ])
+        )
+
+        ||
+
+        (
+          mode == 'disabled'
+
+          && ownSettings.keys().hasOnly([
+            'mode'
+          ])
+        )
+
+        ||
+
+        (
+          mode == 'silent'
+
+          && (
+            (
+              ownSettings.keys().hasAll([
+                'mode',
+                'permanent'
+              ])
+
+              && ownSettings.keys().hasOnly([
+                'mode',
+                'permanent'
+              ])
+
+              && ownSettings.permanent == true
+            )
+
+            ||
+
+            (
+              ownSettings.keys().hasAll([
+                'mode',
+                'expiresAt'
+              ])
+
+              && ownSettings.keys().hasOnly([
+                'mode',
+                'expiresAt'
+              ])
+
+              && ownSettings.expiresAt is timestamp
+
+              && ownSettings.expiresAt > request.time
+
+              && ownSettings.expiresAt
+                  <= request.time
+                      + duration.value(25, 'h')
+            )
+          )
+        )
+      );
+}
 function isGroupMessageReactionUpdate(chatId) {
   let oldReactions =
       resource.data.get('reactions', {});
@@ -1379,9 +1479,10 @@ function isDeleteLastMessageForEveryoneUpdate(chatId) {
             groupAvatarControlledKeys()
           )
           && !changedKeys().hasAny([
-            'lastRead',
-            'privateReadState'
-          ])
+  'lastRead',
+  'privateReadState',
+  'notificationSettingsByUser'
+])
         )
         || isGroupAvatarMetadataUpdate(chatId)
         || isAdminRightsTransferLastMessageUpdate()
@@ -1396,7 +1497,8 @@ function isDeleteLastMessageForEveryoneUpdate(chatId) {
         )
         || isLeaveGroupUpdate()
         || isClearPrivateChatForCurrentUserUpdate()
-        || isPrivateChatSelfRepair()
+|| isOwnNotificationSettingsUpdate()
+|| isPrivateChatSelfRepair()
         || isHideLastMessageForCurrentUserUpdate(chatId)
         || isDeleteLastMessageForEveryoneUpdate(chatId)
       );
