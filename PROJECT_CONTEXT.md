@@ -59,7 +59,7 @@ feat/v0.7.4-avatar-interaction-card-foundation
 
 Feature branch отправлена в origin.
 
-`main` синхронизирован с `origin/main` на commit `7f12f40`.
+`main` синхронизирован с `origin/main` после финальной синхронизации release-документации.
 
 Release tag: `v0.7.4`. Tag создаётся на финальном release state после синхронизации документации.
 
