@@ -22,9 +22,14 @@ import '../services/avatar/avatar_image_crop_gateway.dart';
 import '../services/avatar/avatar_image_processor.dart';
 
 class GroupInfoScreen extends StatefulWidget {
-  const GroupInfoScreen({super.key, required this.chatId});
+  const GroupInfoScreen({
+    super.key,
+    required this.chatId,
+    this.membersOnly = false,
+  });
 
   final String chatId;
+  final bool membersOnly;
 
   @override
   State<GroupInfoScreen> createState() => _GroupInfoScreenState();
@@ -127,7 +132,9 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Информация о группе')),
+      appBar: AppBar(
+        title: Text(widget.membersOnly ? 'Участники' : 'Информация о группе'),
+      ),
       body: StreamBuilder<DocumentSnapshot>(
         stream: FirebaseFirestore.instance
             .collection('chats')
@@ -203,6 +210,21 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                 final bName = b.name.isNotEmpty ? b.name : b.email;
                 return aName.toLowerCase().compareTo(bName.toLowerCase());
               });
+              if (widget.membersOnly) {
+                return ListView(
+                  padding: const EdgeInsets.all(16),
+                  children: [
+                    GroupMembersSection(
+                      chatId: widget.chatId,
+                      users: users,
+                      memberRoles: memberRoles,
+                      isLoading:
+                          usersSnapshot.connectionState ==
+                          ConnectionState.waiting,
+                    ),
+                  ],
+                );
+              }
 
               return ListView(
                 padding: const EdgeInsets.all(16),

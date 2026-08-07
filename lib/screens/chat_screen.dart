@@ -22,8 +22,16 @@ import '../services/media/image_message_image_processor.dart';
 import '../services/notification_service.dart';
 import '../widgets/chat/banned_overlay.dart';
 import '../widgets/chat/chat_app_bar.dart';
+import '../widgets/chat/chat_identity_overlay.dart';
+import '../widgets/chat/chat_identity_background.dart';
+import '../widgets/chat/chat_identity_card_content.dart';
 import '../widgets/chat/message_input_area.dart';
 import '../widgets/messages_list.dart';
+import '../services/avatar/group_avatar_metadata_mapper.dart';
+import 'group_info_screen.dart';
+import '../widgets/chat/chat_identity_action_button.dart';
+import '../domain/models/chat_notification_settings.dart';
+import '../widgets/chat/chat_notification_settings_sheet.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({
@@ -81,7 +89,10 @@ class _ChatScreenState extends State<ChatScreen> {
 
   bool _typingEnabled = false;
   bool _peerIsTyping = false;
+  bool _isIdentityOverlayOpen = false;
 
+  ChatNotificationSettings _currentNotificationSettings =
+      const ChatNotificationSettings.sound();
   bool _allowPop = false;
   bool _isLeaving = false;
   bool _didScheduleFinalReadMark = false;
@@ -130,6 +141,28 @@ class _ChatScreenState extends State<ChatScreen> {
 
     _markChatAsReadBestEffort();
     startIncomingMessageListener();
+  }
+
+  void _openIdentityOverlay() {
+    if (_isIdentityOverlayOpen) {
+      return;
+    }
+
+    FocusManager.instance.primaryFocus?.unfocus();
+
+    setState(() {
+      _isIdentityOverlayOpen = true;
+    });
+  }
+
+  void _closeIdentityOverlay() {
+    if (!_isIdentityOverlayOpen) {
+      return;
+    }
+
+    setState(() {
+      _isIdentityOverlayOpen = false;
+    });
   }
 
   void _handleLatestReadCursorChanged(PrivateReadCursor cursor) {
@@ -245,6 +278,14 @@ class _ChatScreenState extends State<ChatScreen> {
           lastNotifiedMessageId = messageId;
 
           if (senderId == currentUser.uid) {
+            return;
+          }
+
+          final notificationMode = _currentNotificationSettings.effectiveModeAt(
+            DateTime.now(),
+          );
+
+          if (notificationMode != ChatNotificationMode.sound) {
             return;
           }
 
@@ -610,6 +651,21 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget build(BuildContext context) {
     final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
 
+    String groupMemberCountLabel(int count) {
+      final mod10 = count % 10;
+      final mod100 = count % 100;
+
+      if (mod10 == 1 && mod100 != 11) {
+        return '$count участник';
+      }
+
+      if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) {
+        return '$count участника';
+      }
+
+      return '$count участников';
+    }
+
     return PopScope(
       canPop: _allowPop,
       onPopInvokedWithResult: (didPop, result) {
@@ -617,108 +673,296 @@ class _ChatScreenState extends State<ChatScreen> {
           return;
         }
 
+        if (_isIdentityOverlayOpen) {
+          _closeIdentityOverlay();
+          return;
+        }
+
         unawaited(_requestLeaveChat());
       },
-      child: Scaffold(
-        appBar: ChatAppBar(
-          chatId: widget.chatId,
-          chatName: widget.chatName,
-          peerUser: widget.peerUser,
-          peerIsTyping: _peerIsTyping,
-        ),
-        body: Column(
-          children: [
-            Expanded(
-              child: StreamBuilder<DocumentSnapshot>(
-                stream: FirebaseFirestore.instance
-                    .collection('chats')
-                    .doc(widget.chatId)
-                    .snapshots(),
-                builder: (context, snapshot) {
-                  final data = snapshot.data?.data() as Map<String, dynamic>?;
+      child: StreamBuilder<DocumentSnapshot>(
+        stream: FirebaseFirestore.instance
+            .collection('chats')
+            .doc(widget.chatId)
+            .snapshots(),
+        builder: (context, snapshot) {
+          final data = snapshot.data?.data() as Map<String, dynamic>?;
 
-                  if (snapshot.connectionState == ConnectionState.waiting &&
-                      data == null) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
+          final chatType = data?['type'] ?? 'private';
+          final isGroup = chatType == 'group';
 
-                  if (data == null) {
-                    return const Center(child: Text('Чат недоступен'));
-                  }
+          final memberIds = List<String>.from(
+            data?['memberIds'] ?? const <String>[],
+          );
 
-                  final memberRoles =
-                      (data['memberRoles'] as Map<String, dynamic>?) ??
-                      <String, dynamic>{};
+          final memberRoles =
+              (data?['memberRoles'] as Map<String, dynamic>?) ??
+              <String, dynamic>{};
 
-                  final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+          final currentUserId = FirebaseAuth.instance.currentUser?.uid;
 
-                  final chatType = data['type'] ?? 'group';
+          final currentUserRole = currentUserId == null
+              ? 'member'
+              : (memberRoles[currentUserId] ?? 'member').toString();
 
-                  final peerUserId = currentUserId == null
-                      ? null
-                      : ChatPeerResolver.otherUserId(
-                          chatData: data,
-                          currentUserId: currentUserId,
-                        );
+          final canManageGroup =
+              isGroup &&
+              (currentUserRole == 'admin' || currentUserRole == 'owner');
 
-                  _schedulePrivateTypingConfiguration(peerUserId);
+          final peerUserId =
+              data != null && currentUserId != null && chatType == 'private'
+              ? ChatPeerResolver.otherUserId(
+                  chatData: data,
+                  currentUserId: currentUserId,
+                )
+              : null;
 
-                  Timestamp? visibleAfter;
+          _schedulePrivateTypingConfiguration(peerUserId);
 
-                  PrivateReadCursor? peerReadCursor;
+          Timestamp? visibleAfter;
+          PrivateReadCursor? peerReadCursor;
 
-                  if (chatType == 'private' && currentUserId != null) {
-                    final clearedAtByUser =
-                        (data['clearedAtByUser'] as Map<String, dynamic>?) ??
-                        <String, dynamic>{};
+          if (data != null && chatType == 'private' && currentUserId != null) {
+            final clearedAtByUser =
+                (data['clearedAtByUser'] as Map<String, dynamic>?) ??
+                <String, dynamic>{};
 
-                    final clearedAt = clearedAtByUser[currentUserId];
+            final clearedAt = clearedAtByUser[currentUserId];
 
-                    if (clearedAt is Timestamp) {
-                      visibleAfter = clearedAt;
-                    }
+            if (clearedAt is Timestamp) {
+              visibleAfter = clearedAt;
+            }
 
-                    if (peerUserId != null) {
-                      peerReadCursor = PrivateReadCursorMapper.fromChatData(
-                        chatData: data,
-                        userId: peerUserId,
-                      );
-                    }
-                  }
+            if (peerUserId != null) {
+              peerReadCursor = PrivateReadCursorMapper.fromChatData(
+                chatData: data,
+                userId: peerUserId,
+              );
+            }
+          }
 
-                  return Stack(
-                    children: [
-                      MessagesList(
-                        key: ValueKey(
-                          '${widget.chatId}_'
-                          '${visibleAfter?.toDate().millisecondsSinceEpoch ?? 0}',
-                        ),
+          final groupNameFromData = data?['name']?.toString().trim() ?? '';
+
+          final groupName = groupNameFromData.isNotEmpty
+              ? groupNameFromData
+              : widget.chatName.trim();
+
+          final groupAvatar = isGroup && data != null
+              ? GroupAvatarMetadataMapper.fromMap(
+                  data: data,
+                  chatId: widget.chatId,
+                )
+              : null;
+
+          final identityUser = isGroup ? null : widget.peerUser;
+
+          final identityAvatar = identityUser?.effectiveAvatar;
+
+          final normalizedIdentityName = identityUser?.name.trim() ?? '';
+
+          final privateIdentityName = normalizedIdentityName.isNotEmpty
+              ? normalizedIdentityName
+              : widget.chatName.trim();
+
+          final identityName = isGroup ? groupName : privateIdentityName;
+
+          final normalizedIdentityUserId = identityUser?.uid.trim() ?? '';
+
+          final identityStableKey = isGroup
+              ? widget.chatId
+              : normalizedIdentityUserId.isNotEmpty
+              ? normalizedIdentityUserId
+              : widget.chatId;
+
+          final identityStoragePath = isGroup
+              ? groupAvatar?.fullStoragePath
+              : identityAvatar?.fullStoragePath;
+
+          final identityVersion = isGroup
+              ? groupAvatar?.version
+              : identityAvatar?.version;
+
+          final identityImageUrl = isGroup
+              ? groupAvatar?.fullUrl
+              : identityUser?.effectiveAvatarFullUrl;
+
+          final identityCacheKey = isGroup
+              ? groupAvatar?.fullCacheKey(widget.chatId)
+              : identityAvatar?.fullCacheKey(
+                  normalizedIdentityUserId.isNotEmpty
+                      ? normalizedIdentityUserId
+                      : widget.chatId,
+                );
+
+          final identityDetails = isGroup
+              ? <String>[groupMemberCountLabel(memberIds.length)]
+              : <String>[identityUser?.about ?? '', identityUser?.phone ?? ''];
+
+          final notificationSettings = data == null || currentUserId == null
+              ? const ChatNotificationSettings.sound()
+              : ChatNotificationSettings.fromChatData(
+                  chatData: data,
+                  userId: currentUserId,
+                );
+          _currentNotificationSettings = notificationSettings;
+
+          final effectiveNotificationMode = notificationSettings
+              .effectiveModeAt(DateTime.now());
+
+          late final IconData notificationButtonIcon;
+          late final String notificationButtonLabel;
+
+          switch (effectiveNotificationMode) {
+            case ChatNotificationMode.sound:
+              notificationButtonIcon = Icons.notifications_none;
+              notificationButtonLabel = 'Уведомления';
+
+            case ChatNotificationMode.silent:
+              notificationButtonIcon = Icons.notifications_off_outlined;
+              notificationButtonLabel = 'Без звука';
+
+            case ChatNotificationMode.disabled:
+              notificationButtonIcon = Icons.notifications_off_outlined;
+              notificationButtonLabel = 'Отключены';
+          }
+
+          final identityActions = <Widget>[
+            ChatIdentityActionButton(
+              icon: notificationButtonIcon,
+              label: notificationButtonLabel,
+              onTap: () {
+                showModalBottomSheet<void>(
+                  context: context,
+                  showDragHandle: true,
+                  isScrollControlled: true,
+                  builder: (sheetContext) {
+                    return ChatNotificationSettingsSheet(
+                      chatId: widget.chatId,
+                      initialSettings: notificationSettings,
+                    );
+                  },
+                );
+              },
+            ),
+            if (isGroup)
+              ChatIdentityActionButton(
+                icon: Icons.group_outlined,
+                label: 'Участники',
+                onTap: () {
+                  _closeIdentityOverlay();
+
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => GroupInfoScreen(
                         chatId: widget.chatId,
-                        memberRoles: memberRoles,
-                        visibleAfter: visibleAfter,
-                        keyboardInset: keyboardInset,
-                        enableGroupReactions: chatType == 'group',
-                        onLatestReadCursorChanged: chatType == 'private'
-                            ? _handleLatestReadCursorChanged
-                            : null,
-                        peerReadCursor: peerReadCursor,
+                        membersOnly: true,
                       ),
-                      BannedOverlay(chatId: widget.chatId),
-                    ],
+                    ),
                   );
                 },
               ),
-            ),
-            MessageInputArea(
-              chatId: widget.chatId,
-              controller: messageController,
-              onSend: sendMessage,
-              onPickFromGallery: sendImageFromGallery,
-              onTakePhoto: takeAndSendPhoto,
-              isBusy: isSendingImage,
-            ),
-          ],
-        ),
+            if (canManageGroup)
+              ChatIdentityActionButton(
+                icon: Icons.settings_outlined,
+                label: 'Управление',
+                onTap: () {
+                  _closeIdentityOverlay();
+
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => GroupInfoScreen(chatId: widget.chatId),
+                    ),
+                  );
+                },
+              ),
+          ];
+
+          return Stack(
+            children: [
+              Scaffold(
+                appBar: ChatAppBar(
+                  chatId: widget.chatId,
+                  chatName: widget.chatName,
+                  peerUser: widget.peerUser,
+                  peerIsTyping: _peerIsTyping,
+                  chatData: data,
+                  onIdentityTap: _openIdentityOverlay,
+                ),
+                body: Column(
+                  children: [
+                    Expanded(
+                      child: Builder(
+                        builder: (context) {
+                          if (snapshot.connectionState ==
+                                  ConnectionState.waiting &&
+                              data == null) {
+                            return const Center(
+                              child: CircularProgressIndicator(),
+                            );
+                          }
+
+                          if (data == null) {
+                            return const Center(child: Text('Чат недоступен'));
+                          }
+
+                          return Stack(
+                            children: [
+                              MessagesList(
+                                key: ValueKey(
+                                  '${widget.chatId}_'
+                                  '${visibleAfter?.toDate().millisecondsSinceEpoch ?? 0}',
+                                ),
+                                chatId: widget.chatId,
+                                memberRoles: memberRoles,
+                                visibleAfter: visibleAfter,
+                                keyboardInset: keyboardInset,
+                                enableGroupReactions: chatType == 'group',
+                                onLatestReadCursorChanged: chatType == 'private'
+                                    ? _handleLatestReadCursorChanged
+                                    : null,
+                                peerReadCursor: peerReadCursor,
+                              ),
+                              BannedOverlay(chatId: widget.chatId),
+                            ],
+                          );
+                        },
+                      ),
+                    ),
+                    MessageInputArea(
+                      chatId: widget.chatId,
+                      controller: messageController,
+                      onSend: sendMessage,
+                      onPickFromGallery: sendImageFromGallery,
+                      onTakePhoto: takeAndSendPhoto,
+                      isBusy: isSendingImage,
+                    ),
+                  ],
+                ),
+              ),
+              ChatIdentityOverlay(
+                isOpen: _isIdentityOverlayOpen,
+                onClose: _closeIdentityOverlay,
+                child: ChatIdentityBackground(
+                  stableKey: identityStableKey,
+                  name: identityName,
+                  email: identityUser?.email ?? '',
+                  storagePath: identityStoragePath,
+                  version: identityVersion,
+                  imageUrl: identityImageUrl,
+                  cacheKey: identityCacheKey,
+                  child: ChatIdentityCardContent(
+                    title: identityName.isEmpty
+                        ? 'Информация о чате'
+                        : identityName,
+                    details: identityDetails,
+                    actions: identityActions,
+                    onClose: _closeIdentityOverlay,
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }

@@ -556,6 +556,105 @@ export const createFirstPrivateImageUploadGrant = onCall<unknown>(
   },
 );
 
+type NotificationDeliveryMode =
+  "sound" |
+  "silent" |
+  "disabled";
+
+type EnabledNotificationDeliveryMode =
+  Exclude<NotificationDeliveryMode, "disabled">;
+
+interface NotificationRecipient {
+  recipientId: string;
+  mode: EnabledNotificationDeliveryMode;
+}
+
+interface NotificationTokenDocument {
+  reference: FirebaseFirestore.DocumentReference;
+  token: string;
+  mode: EnabledNotificationDeliveryMode;
+}
+
+const MESSAGE_NOTIFICATION_CHANNEL_ID =
+  "epistola_messages_seagull_v3";
+
+const SILENT_MESSAGE_NOTIFICATION_CHANNEL_ID =
+  "epistola_messages_silent";
+
+const FCM_MULTICAST_TOKEN_LIMIT = 500;
+
+const INVALID_FCM_TOKEN_CODES = new Set([
+  "messaging/invalid-registration-token",
+  "messaging/registration-token-not-registered",
+]);
+
+/**
+ * Checks whether a value is a plain record.
+ * @param {unknown} value Candidate value.
+ * @return {boolean} Whether the value is a record.
+ */
+function isRecord(
+  value: unknown,
+): value is Record<string, unknown> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value)
+  );
+}
+
+/**
+ * Resolves notification delivery mode for one chat member.
+ * Missing, malformed, or expired settings fall back to sound.
+ * @param {FirebaseFirestore.DocumentData|undefined} chatData Chat data.
+ * @param {string} recipientId Recipient user ID.
+ * @param {Timestamp} now Current server time.
+ * @return {NotificationDeliveryMode} Effective delivery mode.
+ */
+function resolveNotificationDeliveryMode(
+  chatData: FirebaseFirestore.DocumentData | undefined,
+  recipientId: string,
+  now: Timestamp,
+): NotificationDeliveryMode {
+  const rawSettingsByUser: unknown =
+    chatData?.notificationSettingsByUser;
+
+  if (!isRecord(rawSettingsByUser)) {
+    return "sound";
+  }
+
+  const rawSettings = rawSettingsByUser[recipientId];
+
+  if (!isRecord(rawSettings)) {
+    return "sound";
+  }
+
+  const mode = rawSettings.mode;
+
+  if (mode === "disabled") {
+    return "disabled";
+  }
+
+  if (mode !== "silent") {
+    return "sound";
+  }
+
+  if (rawSettings.permanent === true) {
+    return "silent";
+  }
+
+  const expiresAt = rawSettings.expiresAt;
+
+  if (
+    expiresAt instanceof Timestamp &&
+    expiresAt.toMillis() > now.toMillis()
+  ) {
+    return "silent";
+  }
+
+  return "sound";
+}
+
 export const sendMessageNotification = onDocumentCreated(
   "chats/{chatId}/messages/{messageId}",
   async (event) => {
@@ -569,24 +668,39 @@ export const sendMessageNotification = onDocumentCreated(
     const {chatId} = event.params;
     const messageData = messageSnapshot.data();
 
-    const senderId = messageData.senderId as string | undefined;
-    const senderName = messageData.senderName as string | undefined;
-    const text = messageData.text as string | undefined;
+    const senderId =
+      messageData.senderId as string | undefined;
+
+    const senderName =
+      messageData.senderName as string | undefined;
+
+    const text =
+      messageData.text as string | undefined;
 
     if (!senderId || !text) {
       logger.warn("Message data is incomplete", {
         chatId,
         messageId: event.params.messageId,
       });
+
       return;
     }
-    const notificationBody = buildPushPreview(text);
+
+    const notificationBody =
+      buildPushPreview(text);
 
     const firestore = getFirestore();
-    const chatSnapshot = await firestore.collection("chats").doc(chatId).get();
+
+    const chatSnapshot = await firestore
+      .collection("chats")
+      .doc(chatId)
+      .get();
 
     if (!chatSnapshot.exists) {
-      logger.warn("Chat does not exist", {chatId});
+      logger.warn("Chat does not exist", {
+        chatId,
+      });
+
       return;
     }
 
@@ -594,93 +708,224 @@ export const sendMessageNotification = onDocumentCreated(
     const memberIds = chatData?.memberIds;
 
     if (!Array.isArray(memberIds)) {
-      logger.warn("Chat memberIds are invalid", {chatId});
+      logger.warn("Chat memberIds are invalid", {
+        chatId,
+      });
+
       return;
     }
 
     const recipientIds = memberIds.filter(
       (memberId): memberId is string =>
-        typeof memberId === "string" && memberId !== senderId,
+        typeof memberId === "string" &&
+        memberId !== senderId,
     );
 
     if (recipientIds.length === 0) {
       return;
     }
 
-    const deviceSnapshots = await Promise.all(
-      recipientIds.map((recipientId) =>
-        firestore
-          .collection("users")
-          .doc(recipientId)
-          .collection("devices")
-          .get(),
-      ),
-    );
+    const now = Timestamp.now();
 
-    const tokenDocuments = deviceSnapshots.flatMap((snapshot) =>
-      snapshot.docs
-        .map((document) => ({
-          reference: document.ref,
-          token: document.data().token,
-        }))
-        .filter(
-          (
-            device,
-          ): device is {
-            reference: FirebaseFirestore.DocumentReference;
-            token: string;
-          } => typeof device.token === "string" && device.token.length > 0,
-        ),
-    );
+    const enabledRecipients:
+      NotificationRecipient[] = [];
 
-    if (tokenDocuments.length === 0) {
-      logger.info("No recipient tokens found", {chatId});
+    let disabledRecipientCount = 0;
+
+    for (const recipientId of recipientIds) {
+      const mode = resolveNotificationDeliveryMode(
+        chatData,
+        recipientId,
+        now,
+      );
+
+      if (mode === "disabled") {
+        disabledRecipientCount += 1;
+        continue;
+      }
+
+      enabledRecipients.push({
+        recipientId,
+        mode,
+      });
+    }
+
+    if (enabledRecipients.length === 0) {
+      logger.info(
+        "Push notification skipped for all recipients",
+        {
+          chatId,
+          recipients: recipientIds.length,
+          disabledRecipients:
+            disabledRecipientCount,
+        },
+      );
+
       return;
     }
 
-    const response = await getMessaging().sendEachForMulticast({
-      tokens: tokenDocuments.map((device) => device.token),
-      notification: {
-        title: senderName?.trim() || "Epistola",
-        body: notificationBody,
-      },
-      data: {
-        chatId,
-      },
-      android: {
-        priority: "high",
-        notification: {
-          channelId: "epistola_messages",
+    const deviceResults = await Promise.all(
+      enabledRecipients.map(
+        async (recipient) => {
+          const snapshot = await firestore
+            .collection("users")
+            .doc(recipient.recipientId)
+            .collection("devices")
+            .get();
+
+          return {
+            recipient,
+            snapshot,
+          };
         },
-      },
-    });
-
-    const invalidTokenCodes = new Set([
-      "messaging/invalid-registration-token",
-      "messaging/registration-token-not-registered",
-    ]);
-
-    const invalidTokenDeletes = response.responses.flatMap(
-      (sendResponse, index) => {
-        const errorCode = sendResponse.error?.code;
-
-        if (!errorCode || !invalidTokenCodes.has(errorCode)) {
-          return [];
-        }
-
-        return [tokenDocuments[index].reference.delete()];
-      },
+      ),
     );
 
-    await Promise.all(invalidTokenDeletes);
+    const tokenDocuments:
+      NotificationTokenDocument[] = [];
+
+    for (const result of deviceResults) {
+      for (const document of result.snapshot.docs) {
+        const token = document.data().token;
+
+        if (
+          typeof token !== "string" ||
+          token.length === 0
+        ) {
+          continue;
+        }
+
+        tokenDocuments.push({
+          reference: document.ref,
+          token,
+          mode: result.recipient.mode,
+        });
+      }
+    }
+
+    if (tokenDocuments.length === 0) {
+      logger.info("No recipient tokens found", {
+        chatId,
+      });
+
+      return;
+    }
+
+    const invalidTokenReferences:
+      FirebaseFirestore.DocumentReference[] = [];
+
+    let successCount = 0;
+    let failureCount = 0;
+
+    const deliveryModes:
+      EnabledNotificationDeliveryMode[] = [
+        "sound",
+        "silent",
+      ];
+
+    for (const mode of deliveryModes) {
+      const modeTokenDocuments =
+        tokenDocuments.filter(
+          (device) => device.mode === mode,
+        );
+
+      for (
+        let start = 0;
+        start < modeTokenDocuments.length;
+        start += FCM_MULTICAST_TOKEN_LIMIT
+      ) {
+        const batch = modeTokenDocuments.slice(
+          start,
+          start + FCM_MULTICAST_TOKEN_LIMIT,
+        );
+
+        const channelId =
+          mode === "silent" ?
+            SILENT_MESSAGE_NOTIFICATION_CHANNEL_ID :
+            MESSAGE_NOTIFICATION_CHANNEL_ID;
+
+        const response =
+          await getMessaging().sendEachForMulticast({
+            tokens: batch.map(
+              (device) => device.token,
+            ),
+            notification: {
+              title:
+                senderName?.trim() || "Epistola",
+              body: notificationBody,
+            },
+            data: {
+              chatId,
+              notificationMode: mode,
+            },
+            android: {
+              priority: "high",
+              notification: {
+                channelId,
+                ...(mode === "sound" ?
+                  {
+                    sound: "seagull_notification",
+                    vibrateTimingsMillis: [0, 250, 100, 250],
+                  } :
+                  {}),
+              },
+            },
+          });
+
+        successCount += response.successCount;
+        failureCount += response.failureCount;
+
+        response.responses.forEach(
+          (sendResponse, index) => {
+            const errorCode =
+              sendResponse.error?.code;
+
+            if (
+              !errorCode ||
+              !INVALID_FCM_TOKEN_CODES.has(
+                errorCode,
+              )
+            ) {
+              return;
+            }
+
+            invalidTokenReferences.push(
+              batch[index].reference,
+            );
+          },
+        );
+      }
+    }
+
+    await Promise.all(
+      invalidTokenReferences.map(
+        (reference) => reference.delete(),
+      ),
+    );
+
+    const soundRecipientCount =
+      enabledRecipients.filter(
+        (recipient) =>
+          recipient.mode === "sound",
+      ).length;
+
+    const silentRecipientCount =
+      enabledRecipients.filter(
+        (recipient) =>
+          recipient.mode === "silent",
+      ).length;
 
     logger.info("Push notification processed", {
       chatId,
       recipients: recipientIds.length,
+      soundRecipients: soundRecipientCount,
+      silentRecipients: silentRecipientCount,
+      disabledRecipients: disabledRecipientCount,
       tokens: tokenDocuments.length,
-      successCount: response.successCount,
-      failureCount: response.failureCount,
-      removedInvalidTokens: invalidTokenDeletes.length,
+      successCount,
+      failureCount,
+      removedInvalidTokens:
+        invalidTokenReferences.length,
     });
   },
 );
