@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../domain/models/chat_notification_settings.dart';
+import '../../models/chat_notification_settings.dart';
 import '../../services/chat/chat_notification_settings_service.dart';
 
 class ChatNotificationSettingsSheet extends StatefulWidget {

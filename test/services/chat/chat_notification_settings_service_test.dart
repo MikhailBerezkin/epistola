@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:epistola/domain/models/chat_notification_settings.dart';
+import 'package:epistola/models/chat_notification_settings.dart';
 import 'package:epistola/services/chat/chat_notification_settings_service.dart';
 
 void main() {

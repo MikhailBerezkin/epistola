@@ -30,7 +30,7 @@ import '../widgets/messages_list.dart';
 import '../services/avatar/group_avatar_metadata_mapper.dart';
 import 'group_info_screen.dart';
 import '../widgets/chat/chat_identity_action_button.dart';
-import '../domain/models/chat_notification_settings.dart';
+import '../models/chat_notification_settings.dart';
 import '../widgets/chat/chat_notification_settings_sheet.dart';
 
 class ChatScreen extends StatefulWidget {
