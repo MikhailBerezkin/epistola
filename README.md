@@ -2,18 +2,18 @@
 
 Корпоративный мессенджер на Flutter и Firebase.
 
-Epistola — Android-first корпоративный мессенджер и основа будущей внутренней коммуникационной платформы компании. Проект развивается небольшими проверяемыми этапами с разделением UI, application services, domain-моделей и Firebase infrastructure.
+Epistola — Android-first корпоративный мессенджер и основа будущей внутренней коммуникационной платформы компании. Проект развивается небольшими проверяемыми этапами с разделением UI, presentation, application services, domain-моделей и Firebase infrastructure.
 
 ## Статус проекта
 
 | Параметр | Значение |
 |---|---|
-| Последний стабильный релиз | `v0.7.3` |
-| Release merge commit | `81eb9f4` |
-| Последний завершённый этап | `v0.7.3 Messaging Feedback Foundation` |
+| Текущий release | `v0.7.4` |
+| Release merge commit | `d91270c` |
+| Feature commit | `526504c` |
+| Post-merge architecture cleanup | `730bab0` |
+| Последний завершённый этап | `v0.7.4 Avatar Interaction/Card + Notification Controls Foundation` |
 | Текущая ветка | `main` |
-| Functional HEAD | `60b3fef` |
-| Состояние этапа | завершён и слит в `main`; release tag — `v0.7.3` |
 | Основная платформа | Android |
 | Backend | Firebase |
 | Репозиторий | `MikhailBerezkin/epistola` |
@@ -22,45 +22,47 @@ Epistola — Android-first корпоративный мессенджер и о
 | Realtime Database region | `europe-west1` |
 | Cloud Functions region | `europe-west1` |
 | Android package | `com.epistola.app` |
-| Пилотная группа | около 40–50 пользователей |
+| Целевая пилотная группа | около 40–50 пользователей |
 
-`v0.7.3` создан поверх стабильного `v0.7.2 Chat Date Separator Foundation`.
+`v0.7.4` создан поверх стабильного `v0.7.3 Messaging Feedback Foundation`.
 
-Функциональные commits этапа:
+Основные commits текущего этапа:
 
 ```text
-f901c06 fix(chat): suppress active chat notifications
-8228f9a feat(chat): add private read receipts
-d10c110 feat(chat): add group message reactions
-60b3fef feat(chat): add private typing indicator
+526504c feat(chat): add avatar cards and notification controls
+d91270c merge: release v0.7.4 Avatar Interaction and Notification Controls
+730bab0 refactor(chat): move notification settings out of domain
 ```
 
-Финальные проверки релиза:
+Финальные проверки кода v0.7.4:
 
 ```text
 flutter.bat analyze
 → No issues found
 
 flutter.bat test
-→ 535 tests passed
-
-Realtime Database Rules
-→ 15 tests passed
+→ 543 tests passed
 
 Firestore Rules
-→ 53 tests passed
+→ 65 tests passed
+→ 6 suites
+→ 0 failed
 
-Storage Rules
-→ 42 tests passed
+functions lint
+→ passed
 
-Security Rules total
-→ 110 tests passed
-
-functions lint / build
+functions build
 → passed
 
 flutter.bat build apk --release
-→ успешно, 55.7 MB
+→ успешно, 55.8 MB
+```
+
+В финальной серии v0.7.4 отдельно не перезапускались неизменённые RTDB и Storage suites. Их последний подтверждённый baseline из v0.7.3:
+
+```text
+Realtime Database Rules → 15 passed
+Storage Rules → 42 passed
 ```
 
 Release APK:
@@ -69,13 +71,13 @@ Release APK:
 build\app\outputs\flutter-apk\app-release.apk
 ```
 
-Функциональность проверена вручную на Android Emulator и физическом Android-устройстве.
+Функциональность v0.7.4 проверена вручную на Android Emulator и физическом Android-устройстве.
 
 ## Что такое Epistola
 
 Краткосрочная цель — стабильный корпоративный мессенджер для пилотной группы 40–50 пользователей.
 
-Долгосрочная цель — коммуникационная платформа для компании на 600–700 сотрудников:
+Долгосрочная цель — коммуникационная платформа компании на 600–700 сотрудников:
 
 - личные и групповые чаты;
 - роли и модерация;
@@ -88,7 +90,7 @@ build\app\outputs\flutter-apk\app-release.apk
 - корпоративные сервисы;
 - возможный собственный backend.
 
-Spaces не рассматриваются как обычный тип чата.
+Spaces не рассматриваются как обычный тип чата:
 
 ```text
 Spaces → внутренние приложения Epistola
@@ -111,10 +113,10 @@ Spaces → внутренние приложения Epistola
 - запоминание последнего E-mail;
 - профиль и редактирование профиля;
 - публичный контактный E-mail;
-- карточка контакта;
 - поиск пользователей;
 - экран контактов;
-- пользовательские аватары.
+- пользовательские аватары;
+- fallback на инициалы.
 
 ### Личные чаты
 
@@ -126,28 +128,34 @@ Spaces → внутренние приложения Epistola
 - первая фотография новому контакту;
 - персональная очистка private chat;
 - поиск private chat по данным собеседника;
-- аватары в списке, поиске, draft и заголовке;
+- аватар в списке и шапке;
 - переход в конкретный private chat по нажатию на push;
-- одинарная и двойная галочка доставки/прочтения;
-- realtime-индикатор `Пишет...` только для собеседника.
+- `✓` / `✓✓` для исходящих сообщений;
+- realtime typing indicator;
+- раскрывающаяся identity-card из шапки открытого чата;
+- индивидуальные настройки уведомлений для чата.
 
 ### Групповые чаты
 
 - создание групп;
 - добавление участников;
 - информация о группе;
-- список участников и карточки;
+- список участников;
+- роли и permissions;
 - передача прав;
 - защита последнего администратора;
 - безопасный выход и роспуск;
-- настройки и ограничения по ролям;
 - групповые аватары;
-- управление аватаром для owner и admin;
-- переход в конкретный group chat по нажатию на push;
-- реакции `👍` и `👎` под сообщениями;
-- только одно значение реакции на пользователя.
+- управление аватаром для owner/admin;
+- переход в конкретный group chat по push;
+- реакции `👍` и `👎`;
+- одно значение реакции на UID;
+- раскрывающаяся group identity-card из шапки;
+- быстрый переход к участникам;
+- быстрый переход к управлению для admin/owner;
+- индивидуальные настройки уведомлений.
 
-Image Message Foundation проверен для личных чатов. Отправка изображений в групповые чаты пока не заявлена завершённой.
+Image Message Foundation подтверждён для private chats. Group image sending пока не заявлен как завершённый отдельный foundation.
 
 ### История сообщений
 
@@ -155,26 +163,14 @@ Image Message Foundation проверен для личных чатов. Отп
 - дозагрузка старой истории;
 - сохранение позиции прокрутки;
 - realtime без потери старых страниц;
-- объединение по document ID;
-- корректный autoscroll;
-- учёт крупных изображений;
+- merge по document ID;
+- near-bottom-only autoscroll;
+- учёт изображений переменной высоты;
 - keyboard-aware scroll;
-- постоянные разделители календарных дней;
-- плавающий индикатор даты при прокрутке;
+- разделители календарных дней;
+- плавающий индикатор даты;
 - форматы `Сегодня`, `Вчера`, `3 августа`, `28 декабря 2025`;
-- плавная смена плавающей даты;
-- исчезновение плавающего индикатора после остановки прокрутки;
-- корректная работа разделителей после пагинации и удаления сообщений.
-
-### Уведомления
-
-- Firebase Cloud Messaging;
-- foreground/background/terminated;
-- переход из push в конкретный private или group chat;
-- sender exclusion;
-- удаление невалидных tokens;
-- подавление foreground-уведомления, если пользователь уже находится в этом чате;
-- уведомления из других чатов не подавляются.
+- корректная работа после пагинации и logical deletion.
 
 ### Удаление сообщений
 
@@ -193,9 +189,9 @@ deletedForEveryone
 - sender-only delete for everyone;
 - logical deletion;
 - поиск предыдущего видимого preview;
-- отсутствие повторного push при логическом удалении;
-- немедленное локальное скрытие сообщений из ранее загруженных страниц;
-- перестройка разделителя даты после удаления.
+- отсутствие повторного push при logical deletion;
+- локальное скрытие ранее загруженного сообщения;
+- перестройка date separator после удаления.
 
 ### Роли и модерация
 
@@ -207,133 +203,319 @@ member
 guest
 ```
 
-Поддерживаются mute, ban, permissions, управление участниками, last-admin protection, передача прав и безопасный выход. Owner сохраняет максимальный приоритет.
+Поддерживаются mute, ban, permissions, управление участниками, last-admin protection, передача прав и безопасный выход.
+
+Owner сохраняет максимальный приоритет.
+
+## Avatar Interaction/Card Foundation — v0.7.4
+
+### Текущий scope
+
+v0.7.4 создаёт единую identity-card основу **внутри открытого private или group chat**.
+
+Нажатие на шапку чата:
+
+```text
+ChatAppBarTitle
+→ ChatScreen
+→ ChatIdentityOverlay
+→ ChatIdentityBackground
+→ ChatIdentityCardContent
+```
+
+Панель открывается сверху примерно на 64% высоты экрана.
+
+Свойства:
+
+- плавное раскрытие;
+- нижняя часть чата остаётся видимой;
+- тап по затемнённой части закрывает карточку;
+- системный Back сначала закрывает карточку;
+- draft сообщения и состояние чата не пересоздаются;
+- в карточке используется full avatar;
+- path-first загрузка через существующий avatar pipeline;
+- legacy URL fallback;
+- при отсутствии изображения — стабильный gradient + инициалы;
+- поверх фотографии используется gradient для читаемости текста.
+
+### Private identity-card
+
+Показывает:
+
+```text
+имя
+about
+телефон
+```
+
+Действие:
+
+```text
+Уведомления
+```
+
+### Group identity-card
+
+Показывает:
+
+```text
+название группы
+количество участников
+```
+
+Действия:
+
+```text
+Уведомления
+Участники
+Управление   // только admin / owner
+```
+
+`Участники` открывает `GroupInfoScreen(membersOnly: true)`.
+
+`Управление` использует существующий `GroupInfoScreen` и остаётся доступным только admin/owner.
+
+### Что ещё не входит в v0.7.4
+
+v0.7.4 не утверждает, что все аватары приложения уже кликабельны.
+
+Дальнейшая унификация требуется для:
+
+- списка чатов;
+- поиска чатов;
+- Contacts;
+- User Search / New Message;
+- Create Group;
+- Add Members;
+- group member list;
+- group member screen;
+- профиля и других avatar contexts.
+
+## Per-chat Notification Controls — v0.7.4
+
+Настройки хранятся в документе чата отдельно для каждого пользователя:
+
+```text
+notificationSettingsByUser: {
+  uid: {
+    mode: "sound" | "silent" | "disabled",
+    expiresAt?: timestamp,
+    permanent?: true
+  }
+}
+```
+
+Отсутствующая, повреждённая или истёкшая настройка трактуется как:
+
+```text
+sound
+```
+
+### Режим «Со звуком»
+
+```text
+push
++ custom sound
++ vibration
+```
+
+Стандартный звук Epistola:
+
+```text
+android/app/src/main/res/raw/seagull_notification.mp3
+```
+
+Android channel:
+
+```text
+epistola_messages_seagull_v3
+```
+
+Вибрационный pattern для background/terminated FCM:
+
+```text
+0 ms
+250 ms vibration
+100 ms pause
+250 ms vibration
+```
+
+### Режим «Без звука»
+
+Push остаётся, но:
+
+```text
+sound = off
+vibration = off
+```
+
+Доступные сроки:
+
+```text
+На 1 час
+На 24 часа
+Навсегда
+```
+
+Silent Android channel:
+
+```text
+epistola_messages_silent
+```
+
+### Режим «Отключить уведомления»
+
+Для выбранного чата сервер не отправляет push текущему пользователю.
+
+При этом:
+
+- сообщение сохраняется;
+- realtime chat state работает;
+- unread counter продолжает обновляться;
+- другие чаты не затрагиваются.
+
+### Security
+
+Пользователь может менять только собственный ключ:
+
+```text
+notificationSettingsByUser.{auth.uid}
+```
+
+Даже admin/owner группы не может менять notification settings другого участника.
+
+Firestore Rules валидируют mode и допустимую форму silent-настройки.
+
+### Server delivery
+
+`sendMessageNotification`:
+
+```text
+new message
+→ read chat once
+→ exclude sender
+→ resolve notification mode for each recipient
+→ disabled: skip recipient before device-token read
+→ sound/silent: read recipient devices
+→ split by delivery mode
+→ send FCM batches
+→ delete invalid tokens
+```
+
+FCM multicast остаётся ограничен 500 tokens на batch.
+
+### Foreground / active chat
+
+Если приложение открыто, но пользователь находится не в целевом чате:
+
+```text
+sound mode → local push + seagull + vibration
+silent mode → local push only
+```
+
+Если открыт именно целевой chat:
+
+```text
+local push suppressed
+```
+
+Дополнительно `ChatScreen` делает короткую in-chat vibration только в effective `sound` mode.
+
+Таким образом:
+
+```text
+active target chat + sound → без push, без чайки, с vibration
+active target chat + silent → без push, без sound, без vibration
+active target chat + disabled → без push, без sound, без vibration
+```
+
+### Android resource protection
+
+`epistola_keep.xml` защищает custom sound и launcher icon от resource shrinking:
+
+```xml
+tools:keep="@raw/seagull_notification,@mipmap/ic_launcher"
+```
+
+`AndroidManifest.xml` использует финальный fallback channel:
+
+```text
+epistola_messages_seagull_v3
+```
+
+### Что пока не реализовано
+
+Пункт `Звук уведомлений` отображается в UI, но выбор мелодии пока является placeholder:
+
+```text
+Пока в разработке
+```
+
+Глобальный пользовательский контроль громкости внутри Epistola также пока не реализован. Фактическая громкость notification channel зависит от системных настроек Android; будущий UI управления звуком требует отдельного Android-specific design.
 
 ## Messaging Feedback Foundation — v0.7.3
 
-### Подавление уведомлений активного чата
+### Active Chat Notification Suppression
 
 `ActiveChatTracker` хранит текущий открытый chat route.
 
 ```text
-foreground FCM received
-→ payload converted to PushDeepLinkRequest
-→ activeChatTracker checks chatId
-→ same active chat: local notification suppressed
-→ another chat: notification shown normally
+foreground FCM
+→ PushDeepLinkRequest
+→ activeChatTracker
+→ same target chat: local push suppressed
+→ another chat: local push shown
 ```
-
-Подавление действует только для активного чата. Background и terminated delivery не отключаются.
 
 ### Private Read Receipt Foundation
 
-Только в личных чатах:
+Только private chats:
 
 ```text
 ✓  сообщение сохранено
 ✓✓ собеседник прочитал
 ```
 
-Read cursor хранится в документе чата и содержит:
+Read state:
 
 ```text
-privateReadState/{uid}
-  messageId
-  messageCreatedAt
-  readAt
+privateReadState: {
+  uid: {
+    messageId
+    messageCreatedAt
+    readAt
+  }
+}
 ```
 
-Свойства решения:
-
-- только private chats;
-- только исходящие сообщения получают галочки;
-- text и image используют один read cursor;
-- cursor монотонный и не откатывается назад;
-- запись объединяется debounce-механизмом;
-- финальная запись запускается при выходе из чата;
-- группы не получают read receipt UI;
-- Firestore Rules разрешают пользователю менять только собственный cursor.
+Cursor монотонный, debounce уменьшает число writes.
 
 ### Group Message Reactions
 
-Только в групповых чатах:
+Только group chats:
 
 ```text
-👍 like
-👎 dislike
+reactions.{uid} = like | dislike
 ```
 
-В сообщении хранится map:
+Один UID имеет максимум одно значение.
+
+### Private Typing Indicator
+
+Только private chats через Realtime Database:
 
 ```text
-reactions/{uid} = like | dislike
+privateChatAccess/{chatId}/{uid}
+privateTyping/{chatId}/{uid}
 ```
 
-Один пользователь не может одновременно иметь `like` и `dislike`.
+`privateChatAccess` создаётся trusted callable-функцией `ensurePrivateTypingAccess`.
 
-```text
-none + like → like
-like + like → none
-like + dislike → dislike
-none + dislike → dislike
-dislike + dislike → none
-dislike + like → like
-```
-
-Свойства решения:
-
-- transaction-based toggle;
-- optimistic UI;
-- counters под сообщением;
-- выбранная пользователем реакция визуально выделяется;
-- поддерживаются text и image presentation;
-- private chats не получают реакции;
-- реакции не создают push-уведомления;
-- Firestore Rules разрешают менять только ключ текущего UID.
-
-### Private Typing Indicator Foundation
-
-Только в личных чатах через Firebase Realtime Database.
-
-```text
-пользователь вводит текст
-→ в шапке собеседника появляется «Пишет...»
-
-нет активности / поле очищено / сообщение отправлено / выход
-→ снова «личный чат»
-```
-
-RTDB paths:
-
-```text
-privateChatAccess/{chatId}/{uid} = true
-privateTyping/{chatId}/{uid} = server timestamp
-```
-
-`privateChatAccess` создаётся только серверной callable-функцией `ensurePrivateTypingAccess`, которая проверяет Firestore chat, тип чата, membership и состояние роспуска.
-
-Client lifecycle:
-
-```text
-450 ms initial debounce
-3 s heartbeat while typing
-4 s inactivity stop
-6 s peer timestamp freshness guard
-onDisconnect remove
-```
-
-Дополнительно:
-
-- клиент слушает только точный путь текущего собеседника;
-- пользователь пишет только собственный typing node;
-- очистка выполняется при send, clear, leave и dispose;
-- stale timestamp автоматически скрывается;
-- групповые чаты не создают typing state;
-- feature flags не используются.
+Typing использует debounce, heartbeat, inactivity stop, `onDisconnect` и local freshness guard.
 
 ## Chat Date Separator Foundation — v0.7.2
 
-Первое видимое сообщение каждого календарного дня получает разделитель:
+Первое видимое сообщение календарного дня получает separator:
 
 ```text
 Сегодня
@@ -342,14 +524,12 @@ onDisconnect remove
 28 декабря 2025
 ```
 
-Во время прокрутки показывается плавающая дата верхнего видимого сообщения. Пагинация, удаление и элементы переменной высоты поддерживаются без дополнительных Firestore reads.
+Floating date indicator вычисляется по реальным позициям сообщений и не создаёт дополнительных Firestore reads.
 
 ## Push Deep Link Foundation — v0.7.1
 
-Notification tap открывает конкретный private или group chat.
-
 ```text
-RemoteMessage или local notification payload
+RemoteMessage / local payload
 → PushDeepLinkRequest
 → PushDeepLinkCoordinator
 → PushDeepLinkResolver
@@ -357,17 +537,15 @@ RemoteMessage или local notification payload
 → ChatScreen
 ```
 
-Поддерживаются foreground, background, terminated, cold start, membership validation, private/group resolution и duplicate route protection.
+Notification payload считается недоверенным до resolver validation.
 
 ## Image Message Foundation — v0.7.0
 
-Изображение можно отправить в существующий private chat или как первое сообщение новому контакту, из галереи или камеры.
-
-Поддерживаются crop, поворот, сброс, отмена и варианты пропорций. Приложение создаёт `thumbnail` и `full`, но не загружает исходный оригинал.
+Поддерживаются gallery, camera, crop, resize и fullscreen viewer.
 
 ```text
-thumbnail: до 128 KB, до 480 px
-full: target 512 KB, absolute max 1 MB, до 1920 px
+thumbnail: max 128 KB, max side 480 px
+full: target 512 KB, absolute max 1 MB, max side 1920 px
 ```
 
 Canonical paths:
@@ -377,24 +555,7 @@ chat_media/{chatId}/messages/{messageId}/v{version}/thumb.jpg
 chat_media/{chatId}/messages/{messageId}/v{version}/full.jpg
 ```
 
-Для первой фотографии используется `createFirstPrivateImageUploadGrant`. Chat и первое image message создаются атомарно. Partial uploads очищаются best-effort.
-
-## Push Notification Foundation — v0.6.3
-
-Реализованы Firebase Cloud Messaging, локальные Android-уведомления, foreground/background/terminated, регистрация и обновление tokens, удаление token при logout, sender exclusion, private/group push и cleanup невалидных tokens.
-
-Начиная с `v0.7.1`, notification tap открывает конкретный chat. Начиная с `v0.7.3`, foreground notification не показывается поверх уже открытого целевого чата.
-
-## Message Deletion Foundation — v0.6.4
-
-```text
-Firestore message state
-→ MessagePresentation
-→ MessageItem
-→ MessageBubble
-```
-
-Image messages используют ту же logical deletion модель. Assets не удаляются немедленно; retention cleanup проектируется отдельно.
+Для первой фотографии новому private peer используется trusted upload grant.
 
 ## Avatar Foundation — v0.6.5
 
@@ -406,7 +567,7 @@ group_avatars/{chatId}/v{version}/thumb.jpg
 group_avatars/{chatId}/v{version}/full.jpg
 ```
 
-Поддерживаются gallery, camera, crop, compression, versioned paths, atomic replacement, rollback, cleanup и cache key `path@version`.
+Поддерживаются gallery, camera, crop, compression, versioned replacement, rollback, cleanup и cache key `path@version`.
 
 ## Android Toolchain Foundation — v0.6.6
 
@@ -432,7 +593,7 @@ android.builtInKotlin=false
 kotlin.incremental=false
 ```
 
-Built-in Kotlin warning связан с plugin internals и не блокирует release build.
+Built-in Kotlin warning связан с plugin internals и пока не блокирует release build.
 
 ## Архитектура
 
@@ -450,6 +611,8 @@ Infrastructure Gateways / Adapters
 Firebase
 ```
 
+`ChatNotificationSettings` находится в `lib/models`, а не в `lib/domain`, потому что persistence mapping использует Firestore `Timestamp`. Это сохраняет правило: pure domain не зависит от Firebase.
+
 ## Структура проекта
 
 ```text
@@ -465,6 +628,7 @@ lib/
 │   └── push/
 ├── theme/
 ├── widgets/
+│   └── chat/
 ├── firebase_options.dart
 └── main.dart
 
@@ -493,7 +657,7 @@ test/
 ## Firebase infrastructure
 
 ```text
-Authentication
+Firebase Authentication
 Cloud Firestore
 Realtime Database
 Cloud Storage
@@ -517,20 +681,33 @@ ensurePrivateTypingAccess
 
 ## Сборка и проверки
 
+Flutter:
+
 ```powershell
 flutter.bat analyze
 flutter.bat test
 flutter.bat build apk --release
 ```
 
-Rules:
+Firestore Rules:
+
+```powershell
+firebase.cmd emulators:exec --only firestore `
+  "npm.cmd --prefix test/rules run test:firestore"
+```
+
+Functions:
+
+```powershell
+npm.cmd --prefix functions run lint
+npm.cmd --prefix functions run build
+```
+
+RTDB и Storage suites при изменении соответствующих rules:
 
 ```powershell
 firebase.cmd emulators:exec --only database --project epistola-434b7 `
   "npm.cmd --prefix test/rules run test:database"
-
-firebase.cmd emulators:exec --only firestore --project epistola-434b7 `
-  "npm.cmd --prefix test/rules run test:firestore"
 
 firebase.cmd emulators:exec --only firestore,storage --project epistola-434b7 `
   "npm.cmd --prefix test/rules run test:storage"
@@ -539,7 +716,7 @@ firebase.cmd emulators:exec --only firestore,storage --project epistola-434b7 `
 Generated plugin files после последней серии Flutter-команд восстанавливаются один раз:
 
 ```powershell
-git restore -- `
+git restore `
   linux/flutter/generated_plugins.cmake `
   macos/Flutter/GeneratedPluginRegistrant.swift `
   windows/flutter/generated_plugin_registrant.cc `
@@ -548,23 +725,29 @@ git restore -- `
 
 ## Известные ограничения
 
-- Group image sending не заявлен завершённым.
-- Подписи к фотографиям ещё не реализованы.
+- Group image sending не завершён как отдельный foundation.
+- Caption к изображению отсутствует.
 - File messages не реализованы.
 - Voice messages не реализованы.
-- Кликабельные аватары и единая profile card навигация реализованы не во всех точках UI.
+- Clickable identity-card сейчас унифицирована только для шапки открытого private/group chat.
+- Аватары в User Search / New Message / Create Group / Add Members / member contexts требуют отдельного аудита и унификации.
+- Выбор собственного notification sound пока не реализован.
+- Глобальный in-app volume control пока не реализован.
 - Production retention cleanup отсутствует.
 - App Check не завершён.
-- Release signing требует отдельной настройки.
-- Built-in Kotlin warning остаётся предупреждением plugin internals и не блокирует APK.
+- Release signing требует отдельной production-настройки.
+- Built-in Kotlin warning остаётся предупреждением plugin internals.
+- Существующее TypeScript/ESLint compatibility warning не блокирует Functions build.
 
-## Roadmap после v0.7.3
+## Roadmap после v0.7.4
 
-1. Attachment Composer Foundation: единый draft вложения и подпись к фотографии без временного обходного решения.
+1. Attachment Composer Foundation: общий attachment draft и optional caption.
 2. File Message Foundation поверх общего attachment contract.
 3. Voice Message Foundation.
-4. Clickable Avatar and Profile Card Foundation во всех ключевых списках и экранах.
-5. Retention cleanup, App Check и production hardening.
+4. Avatar Interaction/Card expansion: сделать аватары кликабельными во всех оставшихся ключевых местах.
+5. Branding pass: фирменная иконка чайки вместо текущей иконки отправки сообщения.
+6. Notification sound UX: выбор звука и отдельный Android-specific дизайн глобального управления звуком.
+7. Retention cleanup, App Check, release signing и production hardening.
 
 ## Git workflow
 
@@ -580,10 +763,6 @@ git status --short
 git diff --check
 ```
 
-После commit:
-
-```powershell
-git push origin <feature-branch>
-```
+После последней серии Flutter-команд generated plugin files восстанавливаются один раз.
 
 Release merge и tag выполняются только после зелёных автоматических проверок и ручного Android-сценария.
