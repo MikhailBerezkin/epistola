@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-class ChatIdentityOverlay extends StatelessWidget {
+class ChatIdentityOverlay extends StatefulWidget {
   const ChatIdentityOverlay({
     super.key,
     required this.isOpen,
@@ -9,33 +9,57 @@ class ChatIdentityOverlay extends StatelessWidget {
     this.heightFactor = 0.64,
   });
 
-  static const _animationDuration = Duration(milliseconds: 340);
-
   final bool isOpen;
   final VoidCallback onClose;
   final Widget child;
   final double heightFactor;
 
   @override
+  State<ChatIdentityOverlay> createState() {
+    return _ChatIdentityOverlayState();
+  }
+}
+
+class _ChatIdentityOverlayState extends State<ChatIdentityOverlay> {
+  static const _animationDuration = Duration(milliseconds: 340);
+
+  late bool _hasOpened;
+
+  @override
+  void initState() {
+    super.initState();
+    _hasOpened = widget.isOpen;
+  }
+
+  @override
+  void didUpdateWidget(covariant ChatIdentityOverlay oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    if (!_hasOpened && widget.isOpen) {
+      _hasOpened = true;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Positioned.fill(
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final effectiveHeightFactor = heightFactor.clamp(0.45, 0.85);
+          final effectiveHeightFactor = widget.heightFactor.clamp(0.45, 0.85);
           final panelHeight = constraints.maxHeight * effectiveHeightFactor;
 
           return IgnorePointer(
-            ignoring: !isOpen,
+            ignoring: !widget.isOpen,
             child: Stack(
               children: [
                 Positioned.fill(
                   child: AnimatedOpacity(
                     duration: _animationDuration,
                     curve: Curves.easeOutCubic,
-                    opacity: isOpen ? 1 : 0,
+                    opacity: widget.isOpen ? 1 : 0,
                     child: GestureDetector(
                       behavior: HitTestBehavior.opaque,
-                      onTap: onClose,
+                      onTap: widget.onClose,
                       child: ColoredBox(
                         color: Colors.black.withValues(alpha: 0.16),
                       ),
@@ -45,7 +69,7 @@ class ChatIdentityOverlay extends StatelessWidget {
                 AnimatedPositioned(
                   duration: _animationDuration,
                   curve: Curves.easeOutCubic,
-                  top: isOpen ? 0 : -panelHeight,
+                  top: widget.isOpen ? 0 : -panelHeight,
                   left: 0,
                   right: 0,
                   height: panelHeight,
@@ -56,7 +80,7 @@ class ChatIdentityOverlay extends StatelessWidget {
                     borderRadius: const BorderRadius.vertical(
                       bottom: Radius.circular(28),
                     ),
-                    child: child,
+                    child: _hasOpened ? widget.child : const SizedBox.expand(),
                   ),
                 ),
               ],
