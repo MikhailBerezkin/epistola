@@ -32,6 +32,9 @@ Epistola — Android-first корпоративный мессенджер и о
 526504c feat(chat): add avatar cards and notification controls
 d91270c merge: release v0.7.4 Avatar Interaction and Notification Controls
 730bab0 refactor(chat): move notification settings out of domain
+a4adf4d docs: finalize v0.7.4 release
+5313fbd fix(push): support image notification preview
+7f12f40 perf(chat): lazy-load identity card content
 ```
 
 Финальные проверки кода v0.7.4:
@@ -41,7 +44,7 @@ flutter.bat analyze
 → No issues found
 
 flutter.bat test
-→ 543 tests passed
+→ 544 tests passed
 
 Firestore Rules
 → 65 tests passed
@@ -234,6 +237,7 @@ ChatAppBarTitle
 - draft сообщения и состояние чата не пересоздаются;
 - в карточке используется full avatar;
 - path-first загрузка через существующий avatar pipeline;
+- содержимое identity-card монтируется лениво только при первом открытии, поэтому full avatar не загружается просто при входе в чат;
 - legacy URL fallback;
 - при отсутствии изображения — стабильный gradient + инициалы;
 - поверх фотографии используется gradient для читаемости текста.

@@ -30,10 +30,13 @@
 v0.7.4 — Avatar Interaction/Card + Notification Controls Foundation
 ```
 
-Текущий local `main` до документационного commit:
+Текущий code HEAD:
 
 ```text
-730bab0 refactor(chat): move notification settings out of domain
+Текущий code HEAD:
+
+```text
+7f12f40 perf(chat): lazy-load identity card content
 ```
 
 Release merge:
@@ -56,7 +59,9 @@ feat/v0.7.4-avatar-interaction-card-foundation
 
 Feature branch отправлена в origin.
 
-`main` пока не публиковать до замены документации, docs commit и создания release tag.
+`main` синхронизирован с `origin/main` на commit `7f12f40`.
+
+Release tag `v0.7.4` пока не создан. Перед tag остаётся только финальная синхронизация документации.
 
 Целевой tag:
 
@@ -77,6 +82,8 @@ v0.7.4
 6. Custom Epistola seagull notification sound
 7. Android background/lock-screen vibration hardening
 8. Final architecture cleanup
+9. Image message push preview fix
+10. Lazy identity-card content / full-avatar loading
 ```
 
 Важное ограничение scope:
@@ -165,6 +172,21 @@ BoxFit.cover
 ```
 
 Поверх изображения добавлен gradient.
+Identity-card content монтируется лениво:
+
+```text
+chat opened
+→ identity-card content not mounted
+→ full avatar not requested
+
+first identity-card open
+→ content mounted
+→ full avatar load starts
+→ fallback visible while loading
+
+next opens in the same chat route
+→ mounted content reused
+→ loaded avatar reused
 
 ### 3.4 Private card
 
@@ -246,6 +268,9 @@ screen title:
 - participants navigation;
 - management navigation;
 - admin vs ordinary member action set.
+- first open starts full-avatar loading only when identity-card is actually opened;
+- fallback is shown during first full-avatar load;
+- repeated opening reuses already loaded identity-card content.
 
 ## 4. Per-chat Notification Settings
 
@@ -448,6 +473,17 @@ sendMessageNotification
 ```
 
 Delivery mode type:
+Push body resolution:
+
+```text
+text
+→ buildPushPreview(text)
+
+image
+→ "Фотография"
+
+unsupported / incomplete
+→ safe return
 
 ```text
 sound
@@ -499,7 +535,23 @@ Silent:
 channelId: epistola_messages_silent
 ```
 
-Targeted deploy `sendMessageNotification` выполнен успешно после final vibration change.
+Targeted deploy `sendMessageNotification` выполнен после final vibration change и повторно после исправления image message push preview.
+
+Release-blocker fix:
+
+```text
+5313fbd fix(push): support image notification preview
+```
+
+Ручная проверка после deploy:
+
+```text
+private image message
+→ push received
+→ body "Фотография"
+→ seagull sound
+→ vibration
+```
 
 ## 7. Android notification layer
 
@@ -697,7 +749,7 @@ flutter.bat analyze
 → No issues found
 
 flutter.bat test
-→ 543 tests passed
+→ 544 tests passed
 ```
 
 Ожидаемый diagnostic JPEG output:
@@ -740,7 +792,7 @@ TypeScript version compatibility with eslint parser
 
 ### Release APK
 
-Последняя сборка после architecture cleanup:
+Последняя сборка после lazy identity-card optimization:
 
 ```text
 flutter.bat build apk --release
@@ -798,6 +850,15 @@ d91270c merge: release v0.7.4 Avatar Interaction and Notification Controls
 post-merge cleanup:
 730bab0 refactor(chat): move notification settings out of domain
 
+docs finalize:
+a4adf4d docs: finalize v0.7.4 release
+
+image push release-blocker fix:
+5313fbd fix(push): support image notification preview
+
+identity-card performance cleanup:
+7f12f40 perf(chat): lazy-load identity card content
+
 current branch:
 main
 
@@ -808,19 +869,24 @@ v0.7.4
 На момент подготовки документации:
 
 ```text
+Текущее состояние перед release tag:
+
+```text
 feature branch pushed
-release merged locally
+release merged
 architecture cleanup committed
-main/tag push pending documentation replacement
+documentation committed
+image push fix committed and deployed
+lazy identity-card optimization committed
+main synchronized with origin/main at 7f12f40
+release tag v0.7.4 pending
 ```
 
 ## 13. Deploy state
 
 Подтверждено:
 
-```text
-Firestore Rules deployed
-sendMessageNotification deployed
+sendMessageNotification deployed after image push preview fix
 ```
 
 Existing infrastructure preserved:
@@ -881,7 +947,18 @@ createFirstPrivateImageUploadGrant
 
 Используется существующий `ChatScreen` snapshot.
 
-Full avatar может потребовать обычную avatar image load.
+Full avatar не загружается при простом входе в chat.
+
+```text
+chat opened
+→ no identity-card mount
+→ no full-avatar request
+
+identity-card opened first time
+→ full-avatar load
+
+subsequent opens on same chat route
+→ mounted content / loaded avatar reused
 
 ### Notification settings
 
@@ -1076,18 +1153,15 @@ v0.7.4   Avatar Interaction/Card + Notification Controls Foundation
 
 Сейчас:
 
-```text
-create README_NEW.md
-create ARCHITECTURE_NEW.md
-create PROJECT_CONTEXT_NEW.md
-→ compare
-→ replace originals
+final documentation sync
 → git diff --check
 → docs-only commit
-→ create tag v0.7.4
 → push main
+→ verify origin/main
+→ create tag v0.7.4
 → push tag
-→ verify remote
+→ verify remote tag
+→ verify clean working tree
 ```
 
 После публикации:

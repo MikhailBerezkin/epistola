@@ -42,7 +42,10 @@ Per-chat Notification Controls
 Финальный кодовый HEAD перед документацией:
 
 ```text
-730bab0 refactor(chat): move notification settings out of domain
+Финальный code HEAD перед release tag:
+
+```text
+7f12f40 perf(chat): lazy-load identity card content
 ```
 
 Архитектурный cleanup выполнен после release merge, потому что `ChatNotificationSettings` использует Firestore `Timestamp` для persistence mapping и поэтому не должен находиться в pure domain.
@@ -209,6 +212,7 @@ chat document
 
 ```text
 chat/user avatar metadata
+→ ChatIdentityOverlay mounts identity content on first open
 → ChatIdentityBackground
 → full image / legacy URL / initials fallback
 ```
