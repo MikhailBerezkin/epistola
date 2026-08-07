@@ -61,7 +61,7 @@ Feature branch отправлена в origin.
 
 `main` синхронизирован с `origin/main` на commit `7f12f40`.
 
-Release tag `v0.7.4` пока не создан. Перед tag остаётся только финальная синхронизация документации.
+Release tag: `v0.7.4`. Tag создаётся на финальном release state после синхронизации документации.
 
 Целевой tag:
 
@@ -879,7 +879,7 @@ documentation committed
 image push fix committed and deployed
 lazy identity-card optimization committed
 main synchronized with origin/main at 7f12f40
-release tag v0.7.4 pending
+release tag: v0.7.4
 ```
 
 ## 13. Deploy state
