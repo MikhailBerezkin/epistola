@@ -674,10 +674,13 @@ export const sendMessageNotification = onDocumentCreated(
     const senderName =
       messageData.senderName as string | undefined;
 
-    const text =
-      messageData.text as string | undefined;
+    const messageType =
+  messageData.messageType as string | undefined;
 
-    if (!senderId || !text) {
+    const text =
+  messageData.text as string | undefined;
+
+    if (!senderId) {
       logger.warn("Message data is incomplete", {
         chatId,
         messageId: event.params.messageId,
@@ -686,8 +689,25 @@ export const sendMessageNotification = onDocumentCreated(
       return;
     }
 
-    const notificationBody =
-      buildPushPreview(text);
+    let notificationBody: string;
+
+    if (messageType === "image") {
+      notificationBody = "Фотография";
+    } else if (
+      (messageType === "text" || messageType === undefined) &&
+  typeof text === "string" &&
+  text.length > 0
+    ) {
+      notificationBody = buildPushPreview(text);
+    } else {
+      logger.warn("Message content is unsupported or incomplete", {
+        chatId,
+        messageId: event.params.messageId,
+        messageType,
+      });
+
+      return;
+    }
 
     const firestore = getFirestore();
 
