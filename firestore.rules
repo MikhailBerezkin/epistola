@@ -1394,6 +1394,193 @@ function isDeleteLastMessageForEveryoneUpdate(chatId) {
     function isPrivateChatIdParticipant(chatId) {
       return chatId.matches('.*' + request.auth.uid + '.*');
     }
+    function isSpacesOwner() {
+  return signedIn()
+      && exists(
+        /databases/$(database)/documents/spaces_access/$(request.auth.uid)
+      )
+      && get(
+        /databases/$(database)/documents/spaces_access/$(request.auth.uid)
+      ).data.get('role', '') == 'owner';
+}
+
+function isValidBrigadierAccessCreate(userId) {
+  return request.resource.data.keys().hasOnly([
+        'role'
+      ])
+      && request.resource.data.role == 'brigadier'
+      && userId != request.auth.uid
+      && exists(
+        /databases/$(database)/documents/users/$(userId)
+      );
+}
+
+match /spaces_access/{userId} {
+  allow get: if signedIn()
+      && (
+        request.auth.uid == userId
+        || isSpacesOwner()
+      );
+
+  allow list: if isSpacesOwner();
+
+  allow create: if isSpacesOwner()
+      && isValidBrigadierAccessCreate(userId);
+
+  // Role mutation is intentionally not supported.
+  // member = no document.
+  // brigadier is revoked by deleting the document.
+  // owner is created/changed only through trusted administration.
+  allow update: if false;
+
+  allow delete: if isSpacesOwner()
+      && resource.data.keys().hasOnly([
+        'role'
+      ])
+      && resource.data.role == 'brigadier';
+}
+function isSpacesManager() {
+  return signedIn()
+      && exists(
+        /databases/$(database)/documents/spaces_access/$(request.auth.uid)
+      )
+      && (
+        get(
+          /databases/$(database)/documents/spaces_access/$(request.auth.uid)
+        ).data.get('role', '') == 'owner'
+        ||
+        get(
+          /databases/$(database)/documents/spaces_access/$(request.auth.uid)
+        ).data.get('role', '') == 'brigadier'
+      );
+}
+
+function hasValidSubstitutionParticipantData(data) {
+  return data.keys().hasAll([
+        'rotationOrder',
+        'availability',
+        'status'
+      ])
+      && data.keys().hasOnly([
+        'rotationOrder',
+        'availability',
+        'status'
+      ])
+
+      && data.rotationOrder is int
+      && data.rotationOrder >= 0
+
+      && (
+        data.availability == 'green'
+        || data.availability == 'yellow'
+        || data.availability == 'red'
+      )
+
+      && (
+        data.status == 'active'
+        || data.status == 'vacation'
+        || data.status == 'sick'
+      );
+}
+
+function isValidNewSubstitutionParticipant() {
+  return hasValidSubstitutionParticipantData(
+        request.resource.data
+      )
+      && request.resource.data.availability == 'green'
+      && request.resource.data.status == 'active';
+}
+
+function isOwnSubstitutionParticipantStateUpdate(userId) {
+  return signedIn()
+      && request.auth.uid == userId
+
+      && hasValidSubstitutionParticipantData(
+        request.resource.data
+      )
+
+      && request.resource.data.rotationOrder
+          == resource.data.rotationOrder
+
+      && changedKeys().hasAny([
+        'availability',
+        'status'
+      ])
+
+      && changedKeys().hasOnly([
+        'availability',
+        'status'
+      ]);
+}
+
+function isManagedSubstitutionParticipantStatusUpdate() {
+  return isSpacesManager()
+
+      && hasValidSubstitutionParticipantData(
+        request.resource.data
+      )
+
+      && request.resource.data.rotationOrder
+          == resource.data.rotationOrder
+
+      && changedKeys().hasAny([
+        'status'
+      ])
+
+      && changedKeys().hasOnly([
+        'status'
+      ]);
+}
+
+function hasValidInitialSubstitutionModule() {
+  return request.resource.data.keys().hasAll([
+        'nextRotationOrder'
+      ])
+      && request.resource.data.keys().hasOnly([
+        'nextRotationOrder'
+      ])
+      && request.resource.data.nextRotationOrder is int
+      && request.resource.data.nextRotationOrder > 0;
+}
+
+function isSubstitutionNextOrderUpdate() {
+  return isSpacesManager()
+
+      && changedKeys().hasOnly([
+        'nextRotationOrder'
+      ])
+
+      && request.resource.data.nextRotationOrder is int
+      && resource.data.nextRotationOrder is int
+
+      && request.resource.data.nextRotationOrder
+          > resource.data.nextRotationOrder;
+}
+
+match /spaces/substitution {
+  allow get: if isSpacesManager();
+  allow list: if false;
+
+  allow create: if isSpacesManager()
+      && hasValidInitialSubstitutionModule();
+
+  allow update: if isSubstitutionNextOrderUpdate();
+
+  allow delete: if false;
+
+  match /participants/{userId} {
+    allow get, list: if signedIn();
+
+    allow create: if isSpacesManager()
+        && isValidNewSubstitutionParticipant();
+
+    allow update: if
+    isOwnSubstitutionParticipantStateUpdate(userId)
+    || isManagedSubstitutionParticipantStatusUpdate();
+
+    allow delete: if isSpacesManager();
+  }
+}
 
     match /users/{userId} {
       allow read: if signedIn();

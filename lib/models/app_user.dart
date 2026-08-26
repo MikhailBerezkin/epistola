@@ -7,6 +7,7 @@ class AppUser {
   final String uid;
   final String email;
   final String name;
+  final String workDisplayName;
   final String phone;
   final String about;
 
@@ -21,12 +22,22 @@ class AppUser {
     required this.uid,
     required this.email,
     required this.name,
+    this.workDisplayName = '',
     required this.phone,
     required this.about,
     this.avatarUrl = '',
     this.avatar,
     this.createdAt,
   });
+  String get effectiveWorkDisplayName {
+    final officialName = workDisplayName.trim();
+
+    if (officialName.isNotEmpty) {
+      return officialName;
+    }
+
+    return name.trim();
+  }
 
   UserAvatar? get effectiveAvatar {
     final currentAvatar = avatar;
@@ -70,6 +81,7 @@ class AppUser {
       uid: uid,
       email: _readString(data['email']),
       name: _readString(data['name']),
+      workDisplayName: _readString(data['workDisplayName']),
       phone: _readString(data['phone']),
       about: _readString(data['about']),
       avatarUrl: _readString(data['avatarUrl']),
@@ -99,6 +111,7 @@ class AppUser {
       'uid': uid,
       'email': email,
       'name': name,
+      'workDisplayName': workDisplayName,
       'phone': phone,
       'about': about,
       'avatarUrl': avatarUrl,

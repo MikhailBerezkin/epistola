@@ -36,6 +36,7 @@ void main() {
 
     test('reads path-first avatar metadata without bearer URLs', () {
       final updatedAt = DateTime.utc(2026, 7, 26, 12, 45);
+
       final user = AppUser.fromMap({
         'uid': 'user-1',
         'email': 'user@example.com',
@@ -82,6 +83,7 @@ void main() {
 
     test('serializes exactly the established avatar metadata fields', () {
       final updatedAt = DateTime.utc(2026, 7, 26, 13, 45);
+
       final avatar = UserAvatar(
         thumbnail: MediaAsset(
           id: 'thumb',
@@ -140,6 +142,7 @@ void main() {
       final serialized = user.toMap();
 
       expect(serialized['avatarUrl'], 'https://example.com/legacy.jpg');
+
       for (final field in const <String>[
         'avatarProvider',
         'avatarThumbStoragePath',
@@ -151,11 +154,13 @@ void main() {
       ]) {
         expect(serialized.containsKey(field), isFalse, reason: field);
       }
+
       expect(AppUser.fromMap(serialized).avatarUrl, user.avatarUrl);
     });
 
     test('toMap round-trips complete path-first metadata', () {
       final updatedAt = DateTime.utc(2026, 7, 26, 14);
+
       final user = AppUser.fromMap({
         'uid': 'user-1',
         'email': 'user@example.com',
@@ -204,6 +209,7 @@ void main() {
         'uid',
         'email',
         'name',
+        'workDisplayName',
         'phone',
         'about',
         'avatarUrl',
@@ -239,9 +245,71 @@ void main() {
       expect(user.uid, isEmpty);
       expect(user.email, isEmpty);
       expect(user.name, isEmpty);
+      expect(user.workDisplayName, isEmpty);
+      expect(user.effectiveWorkDisplayName, isEmpty);
       expect(user.avatarUrl, isEmpty);
       expect(user.avatar, isNull);
       expect(user.hasAvatar, isFalse);
+    });
+  });
+
+  group('AppUser work display name', () {
+    test('uses workDisplayName in spaces when it is present', () {
+      final user = AppUser.fromMap(const {
+        'uid': 'user-1',
+        'email': 'ivan@example.com',
+        'name': 'Vanya',
+        'workDisplayName': 'Иванов Иван Иванович',
+        'phone': '',
+        'about': '',
+      });
+
+      expect(user.name, 'Vanya');
+      expect(user.workDisplayName, 'Иванов Иван Иванович');
+      expect(user.effectiveWorkDisplayName, 'Иванов Иван Иванович');
+    });
+
+    test('falls back to regular name for existing users', () {
+      final user = AppUser.fromMap(const {
+        'uid': 'user-1',
+        'email': 'ivan@example.com',
+        'name': 'Vanya',
+        'phone': '',
+        'about': '',
+      });
+
+      expect(user.workDisplayName, isEmpty);
+      expect(user.effectiveWorkDisplayName, 'Vanya');
+    });
+
+    test('falls back when workDisplayName contains only whitespace', () {
+      final user = AppUser.fromMap(const {
+        'uid': 'user-1',
+        'email': 'ivan@example.com',
+        'name': 'Иван Иванов',
+        'workDisplayName': '   ',
+        'phone': '',
+        'about': '',
+      });
+
+      expect(user.workDisplayName, isEmpty);
+      expect(user.effectiveWorkDisplayName, 'Иван Иванов');
+    });
+
+    test('toMap persists workDisplayName', () {
+      const user = AppUser(
+        uid: 'user-1',
+        email: 'ivan@example.com',
+        name: 'Vanya',
+        workDisplayName: 'Иванов Иван Иванович',
+        phone: '',
+        about: '',
+      );
+
+      final data = user.toMap();
+
+      expect(data['name'], 'Vanya');
+      expect(data['workDisplayName'], 'Иванов Иван Иванович');
     });
   });
 }
