@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
-class ChatIdentityOverlay extends StatefulWidget {
+import '../identity/identity_overlay.dart';
+
+class ChatIdentityOverlay extends StatelessWidget {
   const ChatIdentityOverlay({
     super.key,
     required this.isOpen,
@@ -15,79 +17,12 @@ class ChatIdentityOverlay extends StatefulWidget {
   final double heightFactor;
 
   @override
-  State<ChatIdentityOverlay> createState() {
-    return _ChatIdentityOverlayState();
-  }
-}
-
-class _ChatIdentityOverlayState extends State<ChatIdentityOverlay> {
-  static const _animationDuration = Duration(milliseconds: 340);
-
-  late bool _hasOpened;
-
-  @override
-  void initState() {
-    super.initState();
-    _hasOpened = widget.isOpen;
-  }
-
-  @override
-  void didUpdateWidget(covariant ChatIdentityOverlay oldWidget) {
-    super.didUpdateWidget(oldWidget);
-
-    if (!_hasOpened && widget.isOpen) {
-      _hasOpened = true;
-    }
-  }
-
-  @override
   Widget build(BuildContext context) {
-    return Positioned.fill(
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final effectiveHeightFactor = widget.heightFactor.clamp(0.45, 0.85);
-          final panelHeight = constraints.maxHeight * effectiveHeightFactor;
-
-          return IgnorePointer(
-            ignoring: !widget.isOpen,
-            child: Stack(
-              children: [
-                Positioned.fill(
-                  child: AnimatedOpacity(
-                    duration: _animationDuration,
-                    curve: Curves.easeOutCubic,
-                    opacity: widget.isOpen ? 1 : 0,
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: widget.onClose,
-                      child: ColoredBox(
-                        color: Colors.black.withValues(alpha: 0.16),
-                      ),
-                    ),
-                  ),
-                ),
-                AnimatedPositioned(
-                  duration: _animationDuration,
-                  curve: Curves.easeOutCubic,
-                  top: widget.isOpen ? 0 : -panelHeight,
-                  left: 0,
-                  right: 0,
-                  height: panelHeight,
-                  child: Material(
-                    elevation: 12,
-                    clipBehavior: Clip.antiAlias,
-                    color: Theme.of(context).colorScheme.surface,
-                    borderRadius: const BorderRadius.vertical(
-                      bottom: Radius.circular(28),
-                    ),
-                    child: _hasOpened ? widget.child : const SizedBox.expand(),
-                  ),
-                ),
-              ],
-            ),
-          );
-        },
-      ),
+    return IdentityOverlay(
+      isOpen: isOpen,
+      onClose: onClose,
+      heightFactor: heightFactor,
+      child: child,
     );
   }
 }
