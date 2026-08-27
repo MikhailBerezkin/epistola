@@ -6,6 +6,7 @@ import {
   describe,
   test,
 } from 'node:test';
+import assert from 'node:assert/strict';
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -20,11 +21,13 @@ import {
 import {
   collection,
   deleteDoc,
+  deleteField,
   doc,
   getDoc,
   getDocs,
   setDoc,
   updateDoc,
+  writeBatch,
 } from 'firebase/firestore';
 
 const currentFilePath = fileURLToPath(import.meta.url);
@@ -474,6 +477,340 @@ test(
       await assertFails(
         deleteDoc(
           participantDoc(db, secondMember.uid),
+        ),
+      );
+    },
+  );
+    test(
+    'allows brigadier to atomically call active participant',
+    async () => {
+      const db = authenticatedFirestore(brigadier);
+      const batch = writeBatch(db);
+
+      batch.update(
+        participantDoc(db, member.uid),
+        {
+          rotationOrder: 2,
+        },
+      );
+
+      batch.update(
+        doc(db, 'spaces', 'substitution'),
+        {
+          nextRotationOrder: 3,
+          revision: 1,
+          lastCall: {
+            userId: member.uid,
+            previousRotationOrder: 0,
+            revision: 1,
+          },
+        },
+      );
+
+      await assertSucceeds(batch.commit());
+    },
+  );
+
+  test(
+    'allows owner to atomically call active participant',
+    async () => {
+      const db = authenticatedFirestore(owner);
+      const batch = writeBatch(db);
+
+      batch.update(
+        participantDoc(db, secondMember.uid),
+        {
+          rotationOrder: 2,
+        },
+      );
+
+      batch.update(
+        doc(db, 'spaces', 'substitution'),
+        {
+          nextRotationOrder: 3,
+          revision: 1,
+          lastCall: {
+            userId: secondMember.uid,
+            previousRotationOrder: 1,
+            revision: 1,
+          },
+        },
+      );
+
+      await assertSucceeds(batch.commit());
+    },
+  );
+
+  test(
+    'rejects ordinary member calling participant',
+    async () => {
+      const db = authenticatedFirestore(member);
+      const batch = writeBatch(db);
+
+      batch.update(
+        participantDoc(db, secondMember.uid),
+        {
+          rotationOrder: 2,
+        },
+      );
+
+      batch.update(
+        doc(db, 'spaces', 'substitution'),
+        {
+          nextRotationOrder: 3,
+          revision: 1,
+          lastCall: {
+            userId: secondMember.uid,
+            previousRotationOrder: 1,
+            revision: 1,
+          },
+        },
+      );
+
+      await assertFails(batch.commit());
+    },
+  );
+
+  test(
+    'rejects calling inactive participant',
+    async () => {
+      await setParticipantStatusWithoutRules({
+        userId: member.uid,
+        status: 'vacation',
+      });
+
+      const db = authenticatedFirestore(brigadier);
+      const batch = writeBatch(db);
+
+      batch.update(
+        participantDoc(db, member.uid),
+        {
+          rotationOrder: 2,
+        },
+      );
+
+      batch.update(
+        doc(db, 'spaces', 'substitution'),
+        {
+          nextRotationOrder: 3,
+          revision: 1,
+          lastCall: {
+            userId: member.uid,
+            previousRotationOrder: 0,
+            revision: 1,
+          },
+        },
+      );
+
+      await assertFails(batch.commit());
+    },
+  );
+
+  test(
+    'rejects call module update without participant rotation update',
+    async () => {
+      const db = authenticatedFirestore(brigadier);
+
+      await assertFails(
+        updateDoc(
+          doc(db, 'spaces', 'substitution'),
+          {
+            nextRotationOrder: 3,
+            revision: 1,
+            lastCall: {
+              userId: member.uid,
+              previousRotationOrder: 0,
+              revision: 1,
+            },
+          },
+        ),
+      );
+    },
+  );
+
+  test(
+    'rejects participant rotation update without call module update',
+    async () => {
+      const db = authenticatedFirestore(brigadier);
+
+      await assertFails(
+        updateDoc(
+          participantDoc(db, member.uid),
+          {
+            rotationOrder: 2,
+          },
+        ),
+      );
+    },
+  );
+
+  test(
+    'allows brigadier to undo latest call atomically',
+    async () => {
+      const db = authenticatedFirestore(brigadier);
+
+      const callBatch = writeBatch(db);
+
+      callBatch.update(
+        participantDoc(db, member.uid),
+        {
+          rotationOrder: 2,
+        },
+      );
+
+      callBatch.update(
+        doc(db, 'spaces', 'substitution'),
+        {
+          nextRotationOrder: 3,
+          revision: 1,
+          lastCall: {
+            userId: member.uid,
+            previousRotationOrder: 0,
+            revision: 1,
+          },
+        },
+      );
+
+      await assertSucceeds(callBatch.commit());
+
+      const undoBatch = writeBatch(db);
+
+      undoBatch.update(
+        participantDoc(db, member.uid),
+        {
+          rotationOrder: 0,
+        },
+      );
+
+      undoBatch.update(
+        doc(db, 'spaces', 'substitution'),
+        {
+          lastCall: deleteField(),
+        },
+      );
+
+      await assertSucceeds(undoBatch.commit());
+
+      const moduleSnapshot = await assertSucceeds(
+        getDoc(
+          doc(db, 'spaces', 'substitution'),
+        ),
+      );
+
+      const moduleData = moduleSnapshot.data();
+
+      assert.equal(
+        moduleData.nextRotationOrder,
+        3,
+      );
+
+      assert.equal(
+        moduleData.revision,
+        1,
+      );
+
+      assert.equal(
+        Object.hasOwn(moduleData, 'lastCall'),
+        false,
+      );
+
+      const participantSnapshot = await assertSucceeds(
+        getDoc(
+          participantDoc(db, member.uid),
+        ),
+      );
+
+      assert.equal(
+        participantSnapshot.data().rotationOrder,
+        0,
+      );
+    },
+  );
+
+  test(
+    'rejects undo with wrong previous rotation order',
+    async () => {
+      const db = authenticatedFirestore(owner);
+
+      const callBatch = writeBatch(db);
+
+      callBatch.update(
+        participantDoc(db, member.uid),
+        {
+          rotationOrder: 2,
+        },
+      );
+
+      callBatch.update(
+        doc(db, 'spaces', 'substitution'),
+        {
+          nextRotationOrder: 3,
+          revision: 1,
+          lastCall: {
+            userId: member.uid,
+            previousRotationOrder: 0,
+            revision: 1,
+          },
+        },
+      );
+
+      await assertSucceeds(callBatch.commit());
+
+      const undoBatch = writeBatch(db);
+
+      undoBatch.update(
+        participantDoc(db, member.uid),
+        {
+          rotationOrder: 1,
+        },
+      );
+
+      undoBatch.update(
+        doc(db, 'spaces', 'substitution'),
+        {
+          lastCall: deleteField(),
+        },
+      );
+
+      await assertFails(undoBatch.commit());
+    },
+  );
+
+  test(
+    'rejects deleting lastCall without restoring participant rotation',
+    async () => {
+      const db = authenticatedFirestore(brigadier);
+
+      const callBatch = writeBatch(db);
+
+      callBatch.update(
+        participantDoc(db, member.uid),
+        {
+          rotationOrder: 2,
+        },
+      );
+
+      callBatch.update(
+        doc(db, 'spaces', 'substitution'),
+        {
+          nextRotationOrder: 3,
+          revision: 1,
+          lastCall: {
+            userId: member.uid,
+            previousRotationOrder: 0,
+            revision: 1,
+          },
+        },
+      );
+
+      await assertSucceeds(callBatch.commit());
+
+      await assertFails(
+        updateDoc(
+          doc(db, 'spaces', 'substitution'),
+          {
+            lastCall: deleteField(),
+          },
         ),
       );
     },

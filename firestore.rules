@@ -1557,6 +1557,312 @@ function isSubstitutionNextOrderUpdate() {
           > resource.data.nextRotationOrder;
 }
 
+function isSubstitutionCallModuleUpdate() {
+  let moduleBefore = resource.data;
+  let moduleAfter = request.resource.data;
+
+  let lastCall = moduleAfter.get('lastCall', {});
+  let calledUserId = lastCall.get('userId', '');
+
+  let participantPath =
+      /databases/$(database)/documents/spaces/substitution/participants/$(calledUserId);
+
+  let participantBefore = get(participantPath).data;
+  let participantAfter = getAfter(participantPath).data;
+
+  let previousRevision =
+      moduleBefore.get('revision', 0);
+
+  return isSpacesManager()
+
+      && changedKeys().hasAll([
+        'nextRotationOrder',
+        'revision',
+        'lastCall'
+      ])
+
+      && changedKeys().hasOnly([
+        'nextRotationOrder',
+        'revision',
+        'lastCall'
+      ])
+
+      && moduleAfter.keys().hasAll([
+        'nextRotationOrder',
+        'revision',
+        'lastCall'
+      ])
+
+      && moduleAfter.keys().hasOnly([
+        'nextRotationOrder',
+        'revision',
+        'lastCall'
+      ])
+
+      && moduleBefore.nextRotationOrder is int
+      && moduleAfter.nextRotationOrder is int
+
+      && moduleAfter.nextRotationOrder
+          == moduleBefore.nextRotationOrder + 1
+
+      && previousRevision is int
+      && previousRevision >= 0
+
+      && moduleAfter.revision is int
+      && moduleAfter.revision == previousRevision + 1
+
+      && lastCall is map
+
+      && lastCall.keys().hasAll([
+        'userId',
+        'previousRotationOrder',
+        'revision'
+      ])
+
+      && lastCall.keys().hasOnly([
+        'userId',
+        'previousRotationOrder',
+        'revision'
+      ])
+
+      && calledUserId is string
+      && calledUserId.size() > 0
+
+      && lastCall.previousRotationOrder is int
+      && lastCall.previousRotationOrder >= 0
+
+      && lastCall.revision is int
+      && lastCall.revision == moduleAfter.revision
+
+      && exists(participantPath)
+
+      && hasValidSubstitutionParticipantData(
+        participantBefore
+      )
+
+      && hasValidSubstitutionParticipantData(
+        participantAfter
+      )
+
+      && participantBefore.status == 'active'
+
+      && participantAfter.status
+          == participantBefore.status
+
+      && participantAfter.availability
+          == participantBefore.availability
+
+      && participantAfter.rotationOrder
+          == moduleBefore.nextRotationOrder
+
+      && participantAfter.rotationOrder
+          != participantBefore.rotationOrder
+
+      && lastCall.previousRotationOrder
+          == participantBefore.rotationOrder;
+}
+
+function isSubstitutionUndoModuleUpdate() {
+  let moduleBefore = resource.data;
+  let moduleAfter = request.resource.data;
+
+  let lastCall = moduleBefore.get('lastCall', {});
+  let calledUserId = lastCall.get('userId', '');
+
+  let participantPath =
+      /databases/$(database)/documents/spaces/substitution/participants/$(calledUserId);
+
+  let participantBefore = get(participantPath).data;
+  let participantAfter = getAfter(participantPath).data;
+
+  return isSpacesManager()
+
+      && changedKeys().hasOnly([
+        'lastCall'
+      ])
+
+      && moduleBefore.keys().hasAll([
+        'nextRotationOrder',
+        'revision',
+        'lastCall'
+      ])
+
+      && moduleBefore.keys().hasOnly([
+        'nextRotationOrder',
+        'revision',
+        'lastCall'
+      ])
+
+      && moduleAfter.keys().hasAll([
+        'nextRotationOrder',
+        'revision'
+      ])
+
+      && moduleAfter.keys().hasOnly([
+        'nextRotationOrder',
+        'revision'
+      ])
+
+      && !moduleAfter.keys().hasAny([
+        'lastCall'
+      ])
+
+      && moduleAfter.nextRotationOrder
+          == moduleBefore.nextRotationOrder
+
+      && moduleAfter.revision
+          == moduleBefore.revision
+
+      && moduleBefore.nextRotationOrder is int
+      && moduleBefore.revision is int
+
+      && lastCall is map
+
+      && lastCall.keys().hasAll([
+        'userId',
+        'previousRotationOrder',
+        'revision'
+      ])
+
+      && lastCall.keys().hasOnly([
+        'userId',
+        'previousRotationOrder',
+        'revision'
+      ])
+
+      && calledUserId is string
+      && calledUserId.size() > 0
+
+      && lastCall.previousRotationOrder is int
+      && lastCall.previousRotationOrder >= 0
+
+      && lastCall.revision is int
+      && lastCall.revision == moduleBefore.revision
+
+      && exists(participantPath)
+
+      && hasValidSubstitutionParticipantData(
+        participantBefore
+      )
+
+      && hasValidSubstitutionParticipantData(
+        participantAfter
+      )
+
+      && participantAfter.status
+          == participantBefore.status
+
+      && participantAfter.availability
+          == participantBefore.availability
+
+      && participantAfter.rotationOrder
+          == lastCall.previousRotationOrder
+
+      && participantAfter.rotationOrder
+          != participantBefore.rotationOrder;
+}
+
+function isManagedSubstitutionCallParticipantUpdate(userId) {
+  let modulePath =
+      /databases/$(database)/documents/spaces/substitution;
+
+  let moduleBefore = get(modulePath).data;
+  let moduleAfter = getAfter(modulePath).data;
+
+  let lastCall = moduleAfter.get('lastCall', {});
+  let previousRevision =
+      moduleBefore.get('revision', 0);
+
+  return isSpacesManager()
+
+      && hasValidSubstitutionParticipantData(
+        request.resource.data
+      )
+
+      && changedKeys().hasOnly([
+        'rotationOrder'
+      ])
+
+      && request.resource.data.availability
+          == resource.data.availability
+
+      && request.resource.data.status
+          == resource.data.status
+
+      && resource.data.status == 'active'
+
+      && request.resource.data.rotationOrder
+          != resource.data.rotationOrder
+
+      && moduleAfter.nextRotationOrder
+          == moduleBefore.nextRotationOrder + 1
+
+      && moduleAfter.revision
+          == previousRevision + 1
+
+      && lastCall is map
+
+      && lastCall.get('userId', '') == userId
+
+      && lastCall.get('previousRotationOrder', -1)
+          == resource.data.rotationOrder
+
+      && lastCall.get('revision', -1)
+          == moduleAfter.revision
+
+      && request.resource.data.rotationOrder
+          == moduleBefore.nextRotationOrder;
+}
+
+function isManagedSubstitutionUndoParticipantUpdate(userId) {
+  let modulePath =
+      /databases/$(database)/documents/spaces/substitution;
+
+  let moduleBefore = get(modulePath).data;
+  let moduleAfter = getAfter(modulePath).data;
+
+  let lastCall = moduleBefore.get('lastCall', {});
+
+  return isSpacesManager()
+
+      && hasValidSubstitutionParticipantData(
+        request.resource.data
+      )
+
+      && changedKeys().hasOnly([
+        'rotationOrder'
+      ])
+
+      && request.resource.data.availability
+          == resource.data.availability
+
+      && request.resource.data.status
+          == resource.data.status
+
+      && request.resource.data.rotationOrder
+          != resource.data.rotationOrder
+
+      && lastCall is map
+
+      && lastCall.get('userId', '') == userId
+
+      && lastCall.get('revision', -1)
+          == moduleBefore.get('revision', -2)
+
+      && request.resource.data.rotationOrder
+          == lastCall.get('previousRotationOrder', -1)
+
+      && moduleAfter.nextRotationOrder
+          == moduleBefore.nextRotationOrder
+
+      && moduleAfter.revision
+          == moduleBefore.revision
+
+      && !moduleAfter.keys().hasAny([
+        'lastCall'
+      ]);
+}
+
 match /spaces/substitution {
   allow get: if isSpacesManager();
   allow list: if false;
@@ -1564,7 +1870,10 @@ match /spaces/substitution {
   allow create: if isSpacesManager()
       && hasValidInitialSubstitutionModule();
 
-  allow update: if isSubstitutionNextOrderUpdate();
+  allow update: if
+      isSubstitutionNextOrderUpdate()
+      || isSubstitutionCallModuleUpdate()
+      || isSubstitutionUndoModuleUpdate();
 
   allow delete: if false;
 
@@ -1575,8 +1884,10 @@ match /spaces/substitution {
         && isValidNewSubstitutionParticipant();
 
     allow update: if
-    isOwnSubstitutionParticipantStateUpdate(userId)
-    || isManagedSubstitutionParticipantStatusUpdate();
+        isOwnSubstitutionParticipantStateUpdate(userId)
+        || isManagedSubstitutionParticipantStatusUpdate()
+        || isManagedSubstitutionCallParticipantUpdate(userId)
+        || isManagedSubstitutionUndoParticipantUpdate(userId);
 
     allow delete: if isSpacesManager();
   }
