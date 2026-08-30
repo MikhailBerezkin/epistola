@@ -1455,6 +1455,30 @@ function isSpacesManager() {
       );
 }
 
+function isManagedSubstitutionWorkDisplayNameUpdate(userId) {
+  return isSpacesManager()
+
+      && exists(
+        /databases/$(database)/documents/spaces/substitution/participants/$(userId)
+      )
+
+      && changedKeys().hasAny([
+        'workDisplayName'
+      ])
+
+      && changedKeys().hasOnly([
+        'workDisplayName'
+      ])
+
+      && request.resource.data.keys().hasAny([
+        'workDisplayName'
+      ])
+
+      && request.resource.data.workDisplayName is string
+
+      && request.resource.data.workDisplayName.size() <= 80;
+}
+
 function hasValidSubstitutionParticipantData(data) {
   return data.keys().hasAll([
         'rotationOrder',
@@ -1901,8 +1925,14 @@ match /spaces/substitution {
           && hasValidAvatarMetadataOnCreate(userId);
 
       allow update: if signedIn()
-          && request.auth.uid == userId
-          && hasValidUserUpdate(userId);
+    && (
+      (
+        request.auth.uid == userId
+        && hasValidUserUpdate(userId)
+      )
+      ||
+      isManagedSubstitutionWorkDisplayNameUpdate(userId)
+    );
 
       allow delete: if false;
       match /devices/{deviceId} {

@@ -43,6 +43,42 @@ final class SubstitutionUserCache {
     return _usersById[userId.trim()];
   }
 
+  Future<bool> refresh(String userId) async {
+    final normalizedUserId = userId.trim();
+
+    if (normalizedUserId.isEmpty ||
+        _loadingUserIds.contains(normalizedUserId)) {
+      return false;
+    }
+
+    _loadingUserIds.add(normalizedUserId);
+
+    try {
+      final users = await _loadUsers(<String>[normalizedUserId]);
+
+      AppUser? refreshedUser;
+
+      for (final user in users) {
+        if (user.uid.trim() == normalizedUserId) {
+          refreshedUser = user;
+          break;
+        }
+      }
+
+      if (refreshedUser == null) {
+        _usersById.remove(normalizedUserId);
+      } else {
+        _usersById[normalizedUserId] = refreshedUser;
+      }
+
+      _resolvedUserIds.add(normalizedUserId);
+
+      return true;
+    } finally {
+      _loadingUserIds.remove(normalizedUserId);
+    }
+  }
+
   Future<bool> loadMissing(Iterable<String> userIds) async {
     final missingUserIds =
         userIds

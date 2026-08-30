@@ -13,8 +13,10 @@ import '../services/spaces/substitution/substitution_dependencies.dart';
 import '../services/spaces/substitution/substitution_participant_actions_service.dart';
 import '../services/spaces/substitution/substitution_participants_service.dart';
 import '../services/spaces/substitution/substitution_user_cache.dart';
-import '../widgets/avatar/user_avatar_view.dart';
+import '../widgets/spaces/substitution/substitution_participant_overlay.dart';
+import '../widgets/spaces/substitution/substitution_participant_row.dart';
 import 'substitution_add_participants_screen.dart';
+import '../services/spaces/substitution/substitution_work_display_name_service.dart';
 
 class SubstitutionSpaceScreen extends StatefulWidget {
   const SubstitutionSpaceScreen({super.key});
@@ -24,16 +26,23 @@ class SubstitutionSpaceScreen extends StatefulWidget {
       _SubstitutionSpaceScreenState();
 }
 
-class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen> {
+class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
+    with SingleTickerProviderStateMixin {
   late final SubstitutionParticipantsService _participantsService;
   late final SubstitutionUserCache _userCache;
   late final SubstitutionCallService _callService;
   late final SubstitutionParticipantActionsService _participantActionsService;
+  late final SubstitutionWorkDisplayNameService _workDisplayNameService;
+  late final TabController _tabController;
+
+  int _currentTabIndex = 0;
 
   SpacesAccessRole _accessRole = SpacesAccessRole.member;
+
   bool _isAccessRoleLoading = true;
   bool _isRotationActionInProgress = false;
   bool _isAvailabilityActionInProgress = false;
+  bool _isWorkDisplayNameActionInProgress = false;
 
   StreamSubscription<List<SubstitutionParticipant>>? _participantsSubscription;
 
@@ -41,28 +50,72 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen> {
       const <SubstitutionParticipant>[];
 
   bool _isLoading = true;
+
   Object? _participantsError;
   Object? _usersError;
+
+  String? _selectedParticipantId;
+  bool _isParticipantOverlayOpen = false;
 
   String get _currentUserId {
     return FirebaseAuth.instance.currentUser?.uid.trim() ?? '';
   }
 
   bool get _isActionInProgress {
-    return _isRotationActionInProgress || _isAvailabilityActionInProgress;
+    return _isRotationActionInProgress ||
+        _isAvailabilityActionInProgress ||
+        _isWorkDisplayNameActionInProgress;
   }
 
   @override
   void initState() {
     super.initState();
 
+    _tabController = TabController(length: 3, vsync: this);
+    _tabController.addListener(_handleTabChanged);
+
     _participantsService = SubstitutionParticipantsService.firebase();
     _userCache = SubstitutionUserCache.firebase();
     _callService = createSubstitutionCallService();
     _participantActionsService = createSubstitutionParticipantActionsService();
+    _workDisplayNameService = createSubstitutionWorkDisplayNameService();
 
     unawaited(_loadAccessRole());
     _watchParticipants();
+  }
+
+  void _handleTabChanged() {
+    final index = _tabController.index;
+
+    if (_currentTabIndex == index) {
+      return;
+    }
+
+    setState(() {
+      _currentTabIndex = index;
+    });
+  }
+
+  void _goToParticipantList() {
+    if (_tabController.index == 0) {
+      return;
+    }
+
+    _tabController.animateTo(0);
+  }
+
+  void _handleAppBarBack() {
+    if (_isParticipantOverlayOpen) {
+      _closeParticipantCard();
+      return;
+    }
+
+    if (_currentTabIndex != 0) {
+      _goToParticipantList();
+      return;
+    }
+
+    Navigator.of(context).maybePop();
   }
 
   @override
@@ -72,6 +125,8 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen> {
     if (subscription != null) {
       unawaited(subscription.cancel());
     }
+    _tabController.removeListener(_handleTabChanged);
+    _tabController.dispose();
 
     super.dispose();
   }
@@ -173,6 +228,7 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen> {
 
   void _retryParticipants() {
     final subscription = _participantsSubscription;
+
     _participantsSubscription = null;
 
     if (subscription != null) {
@@ -242,6 +298,103 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Не удалось добавить участников')),
       );
+    }
+  }
+
+  Future<void> _editParticipantWorkDisplayName(
+    SubstitutionParticipant participant,
+    AppUser user,
+  ) async {
+    if (_isActionInProgress || !_accessRole.canManageSubstitution) {
+      return;
+    }
+
+    var editedName = user.workDisplayName.trim();
+    final defaultName = user.name.trim();
+
+    final newWorkDisplayName = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Рабочее имя'),
+          content: TextFormField(
+            initialValue: editedName,
+            autofocus: true,
+            maxLength:
+                SubstitutionWorkDisplayNameService.maxWorkDisplayNameLength,
+            decoration: InputDecoration(
+              labelText: 'Имя в подсменке',
+              hintText: defaultName.isEmpty ? null : defaultName,
+              helperText: 'Пустое поле вернёт обычное имя пользователя',
+            ),
+            textCapitalization: TextCapitalization.words,
+            textInputAction: TextInputAction.done,
+            onChanged: (value) {
+              editedName = value;
+            },
+            onFieldSubmitted: (value) {
+              Navigator.of(dialogContext).pop(value);
+            },
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop();
+              },
+              child: const Text('Отмена'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop(editedName);
+              },
+              child: const Text('Сохранить'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (!mounted || newWorkDisplayName == null) {
+      return;
+    }
+
+    final normalizedName = newWorkDisplayName.trim();
+
+    if (normalizedName == user.workDisplayName.trim()) {
+      return;
+    }
+
+    setState(() {
+      _isWorkDisplayNameActionInProgress = true;
+    });
+
+    try {
+      await _workDisplayNameService.updateWorkDisplayName(
+        userId: participant.userId,
+        workDisplayName: normalizedName,
+      );
+
+      await _userCache.refresh(participant.userId);
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {});
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Не удалось изменить рабочее имя')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isWorkDisplayNameActionInProgress = false;
+        });
+      }
     }
   }
 
@@ -397,77 +550,14 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen> {
     }
   }
 
-  Future<void> _openAvailabilityPicker(
+  Future<void> _updateParticipantAvailability(
     SubstitutionParticipant participant,
+    SubstitutionAvailability availability,
   ) async {
     if (_isActionInProgress ||
         !participant.isActive ||
-        participant.userId != _currentUserId) {
-      return;
-    }
-
-    final selectedAvailability =
-        await showModalBottomSheet<SubstitutionAvailability>(
-          context: context,
-          showDragHandle: true,
-          builder: (sheetContext) {
-            return SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
-                      child: Text(
-                        'Доступность',
-                        style: Theme.of(sheetContext).textTheme.titleLarge,
-                      ),
-                    ),
-                    _AvailabilityOption(
-                      availability: SubstitutionAvailability.green,
-                      selected:
-                          participant.availability ==
-                          SubstitutionAvailability.green,
-                      onTap: () {
-                        Navigator.of(
-                          sheetContext,
-                        ).pop(SubstitutionAvailability.green);
-                      },
-                    ),
-                    _AvailabilityOption(
-                      availability: SubstitutionAvailability.yellow,
-                      selected:
-                          participant.availability ==
-                          SubstitutionAvailability.yellow,
-                      onTap: () {
-                        Navigator.of(
-                          sheetContext,
-                        ).pop(SubstitutionAvailability.yellow);
-                      },
-                    ),
-                    _AvailabilityOption(
-                      availability: SubstitutionAvailability.red,
-                      selected:
-                          participant.availability ==
-                          SubstitutionAvailability.red,
-                      onTap: () {
-                        Navigator.of(
-                          sheetContext,
-                        ).pop(SubstitutionAvailability.red);
-                      },
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-
-    if (!mounted ||
-        selectedAvailability == null ||
-        selectedAvailability == participant.availability) {
+        participant.userId != _currentUserId ||
+        participant.availability == availability) {
       return;
     }
 
@@ -478,7 +568,7 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen> {
     try {
       await _participantActionsService.updateAvailability(
         userId: participant.userId,
-        availability: selectedAvailability,
+        availability: availability,
       );
     } catch (_) {
       if (!mounted) {
@@ -495,6 +585,184 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen> {
         });
       }
     }
+  }
+
+  Future<void> _updateParticipantStatus(
+    SubstitutionParticipant participant,
+    SubstitutionParticipantStatus status,
+  ) async {
+    if (_isActionInProgress ||
+        !_accessRole.canManageSubstitution ||
+        participant.status == status) {
+      return;
+    }
+
+    setState(() {
+      _isRotationActionInProgress = true;
+    });
+
+    try {
+      await _participantActionsService.updateStatus(
+        userId: participant.userId,
+        status: status,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      _closeParticipantCard();
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Не удалось изменить статус участника')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isRotationActionInProgress = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _confirmRemoveParticipant(
+    SubstitutionParticipant participant,
+  ) async {
+    if (_isActionInProgress || !_accessRole.canManageSubstitution) {
+      return;
+    }
+
+    final displayName = _displayNameForParticipant(participant);
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Удалить участника?'),
+          content: Text(
+            '$displayName будет удалён из подсменки. '
+            'Позже его можно будет добавить снова.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop(false);
+              },
+              child: const Text('Отмена'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop(true);
+              },
+              child: const Text('Удалить'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (!mounted || confirmed != true) {
+      return;
+    }
+
+    await _removeParticipant(participant, displayName: displayName);
+  }
+
+  Future<void> _removeParticipant(
+    SubstitutionParticipant participant, {
+    required String displayName,
+  }) async {
+    if (_isActionInProgress || !_accessRole.canManageSubstitution) {
+      return;
+    }
+
+    setState(() {
+      _isRotationActionInProgress = true;
+    });
+
+    try {
+      await _participantActionsService.removeParticipant(
+        userId: participant.userId,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      _closeParticipantCard();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$displayName удалён из подсменки')),
+      );
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Не удалось удалить участника')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isRotationActionInProgress = false;
+        });
+      }
+    }
+  }
+
+  void _openParticipantCard(SubstitutionParticipant participant) {
+    setState(() {
+      _selectedParticipantId = participant.userId;
+      _isParticipantOverlayOpen = true;
+    });
+  }
+
+  void _closeParticipantCard() {
+    if (!_isParticipantOverlayOpen) {
+      return;
+    }
+
+    setState(() {
+      _isParticipantOverlayOpen = false;
+    });
+  }
+
+  SubstitutionParticipant? _participantById(String? userId) {
+    if (userId == null || userId.isEmpty) {
+      return null;
+    }
+
+    for (final participant in _participants) {
+      if (participant.userId == userId) {
+        return participant;
+      }
+    }
+
+    return null;
+  }
+
+  int? _queuePositionForParticipant(
+    SubstitutionParticipant? participant,
+    List<SubstitutionParticipant> activeParticipants,
+  ) {
+    if (participant == null || !participant.isActive) {
+      return null;
+    }
+
+    final index = activeParticipants.indexWhere(
+      (candidate) => candidate.userId == participant.userId,
+    );
+
+    if (index < 0) {
+      return null;
+    }
+
+    return index + 1;
   }
 
   String _displayNameForParticipant(SubstitutionParticipant participant) {
@@ -538,34 +806,155 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen> {
     final canManageSubstitution =
         !_isAccessRoleLoading && _accessRole.canManageSubstitution;
 
-    return DefaultTabController(
-      length: 3,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Подсменка'),
-          actions: [
-            if (canManageSubstitution)
-              IconButton(
-                tooltip: 'Добавить участников',
-                onPressed: _isActionInProgress ? null : _openAddParticipants,
-                icon: const Icon(Icons.person_add_alt_1_outlined),
+    final selectedParticipant = _participantById(_selectedParticipantId);
+
+    final selectedUser = selectedParticipant == null
+        ? null
+        : usersById[selectedParticipant.userId];
+
+    final selectedQueuePosition = _queuePositionForParticipant(
+      selectedParticipant,
+      activeParticipants,
+    );
+
+    final canChangeSelectedAvailability =
+        selectedParticipant != null &&
+        selectedParticipant.isActive &&
+        selectedParticipant.userId == _currentUserId &&
+        !_isActionInProgress;
+
+    return PopScope<Object?>(
+      canPop: !_isParticipantOverlayOpen && _currentTabIndex == 0,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) {
+          return;
+        }
+
+        if (_isParticipantOverlayOpen) {
+          _closeParticipantCard();
+          return;
+        }
+
+        if (_currentTabIndex != 0) {
+          _goToParticipantList();
+        }
+      },
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Scaffold(
+            appBar: AppBar(
+              leading: BackButton(onPressed: _handleAppBarBack),
+              title: const Text('Подсменка'),
+              actions: [
+                if (canManageSubstitution)
+                  IconButton(
+                    tooltip: 'Добавить участников',
+                    onPressed: _isActionInProgress
+                        ? null
+                        : _openAddParticipants,
+                    icon: const Icon(Icons.person_add_alt_1_outlined),
+                  ),
+              ],
+              bottom: TabBar(
+                controller: _tabController,
+                tabs: [
+                  Tab(text: 'Список ${activeParticipants.length}'),
+                  Tab(text: 'Отпуск ${vacationParticipants.length}'),
+                  Tab(text: 'Больничный ${sickParticipants.length}'),
+                ],
               ),
-          ],
-          bottom: TabBar(
-            tabs: [
-              Tab(text: 'Список ${activeParticipants.length}'),
-              Tab(text: 'Отпуск ${vacationParticipants.length}'),
-              Tab(text: 'Больничный ${sickParticipants.length}'),
-            ],
+            ),
+            body: _buildBody(
+              activeParticipants: activeParticipants,
+              vacationParticipants: vacationParticipants,
+              sickParticipants: sickParticipants,
+              usersById: usersById,
+              canManageSubstitution: canManageSubstitution,
+            ),
           ),
-        ),
-        body: _buildBody(
-          activeParticipants: activeParticipants,
-          vacationParticipants: vacationParticipants,
-          sickParticipants: sickParticipants,
-          usersById: usersById,
-          canManageSubstitution: canManageSubstitution,
-        ),
+          SubstitutionParticipantOverlay(
+            isOpen: _isParticipantOverlayOpen,
+            participant: selectedParticipant,
+            user: selectedUser,
+            queuePosition: selectedQueuePosition,
+            onClose: _closeParticipantCard,
+            onEditName:
+                canManageSubstitution &&
+                    selectedParticipant != null &&
+                    selectedUser != null &&
+                    !_isActionInProgress
+                ? () {
+                    unawaited(
+                      _editParticipantWorkDisplayName(
+                        selectedParticipant,
+                        selectedUser,
+                      ),
+                    );
+                  }
+                : null,
+            onAvailabilityChanged: canChangeSelectedAvailability
+                ? (availability) {
+                    unawaited(
+                      _updateParticipantAvailability(
+                        selectedParticipant,
+                        availability,
+                      ),
+                    );
+                  }
+                : null,
+            onVacation:
+                canManageSubstitution &&
+                    selectedParticipant != null &&
+                    selectedParticipant.isActive &&
+                    !_isActionInProgress
+                ? () {
+                    unawaited(
+                      _updateParticipantStatus(
+                        selectedParticipant,
+                        SubstitutionParticipantStatus.vacation,
+                      ),
+                    );
+                  }
+                : null,
+            onSick:
+                canManageSubstitution &&
+                    selectedParticipant != null &&
+                    selectedParticipant.isActive &&
+                    !_isActionInProgress
+                ? () {
+                    unawaited(
+                      _updateParticipantStatus(
+                        selectedParticipant,
+                        SubstitutionParticipantStatus.sick,
+                      ),
+                    );
+                  }
+                : null,
+            onReturnToList:
+                canManageSubstitution &&
+                    selectedParticipant != null &&
+                    !selectedParticipant.isActive &&
+                    !_isActionInProgress
+                ? () {
+                    unawaited(
+                      _updateParticipantStatus(
+                        selectedParticipant,
+                        SubstitutionParticipantStatus.active,
+                      ),
+                    );
+                  }
+                : null,
+            onRemove:
+                canManageSubstitution &&
+                    selectedParticipant != null &&
+                    !_isActionInProgress
+                ? () {
+                    unawaited(_confirmRemoveParticipant(selectedParticipant));
+                  }
+                : null,
+          ),
+        ],
       ),
     );
   }
@@ -607,37 +996,33 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen> {
           ),
         Expanded(
           child: TabBarView(
+            controller: _tabController,
             children: [
               _ParticipantListTab(
                 participants: activeParticipants,
                 usersById: usersById,
-                currentUserId: _currentUserId,
                 emptyText: 'В ротации пока нет участников',
                 showQueueNumber: true,
-                onParticipantTap: canManageSubstitution && !_isActionInProgress
+                onCall: canManageSubstitution && !_isActionInProgress
                     ? (participant) {
                         unawaited(_confirmCallParticipant(participant));
                       }
                     : null,
-                onAvailabilityTap: !_isActionInProgress
-                    ? (participant) {
-                        unawaited(_openAvailabilityPicker(participant));
-                      }
-                    : null,
+                onOpenCard: _openParticipantCard,
               ),
               _ParticipantListTab(
                 participants: vacationParticipants,
                 usersById: usersById,
-                currentUserId: _currentUserId,
                 emptyText: 'В отпуске никого нет',
                 showQueueNumber: false,
+                onOpenCard: _openParticipantCard,
               ),
               _ParticipantListTab(
                 participants: sickParticipants,
                 usersById: usersById,
-                currentUserId: _currentUserId,
                 emptyText: 'На больничном никого нет',
                 showQueueNumber: false,
+                onOpenCard: _openParticipantCard,
               ),
             ],
           ),
@@ -651,20 +1036,20 @@ class _ParticipantListTab extends StatelessWidget {
   const _ParticipantListTab({
     required this.participants,
     required this.usersById,
-    required this.currentUserId,
     required this.emptyText,
     required this.showQueueNumber,
-    this.onParticipantTap,
-    this.onAvailabilityTap,
+    required this.onOpenCard,
+    this.onCall,
   });
 
   final List<SubstitutionParticipant> participants;
   final Map<String, AppUser> usersById;
-  final String currentUserId;
+
   final String emptyText;
   final bool showQueueNumber;
-  final ValueChanged<SubstitutionParticipant>? onParticipantTap;
-  final ValueChanged<SubstitutionParticipant>? onAvailabilityTap;
+
+  final ValueChanged<SubstitutionParticipant> onOpenCard;
+  final ValueChanged<SubstitutionParticipant>? onCall;
 
   @override
   Widget build(BuildContext context) {
@@ -682,201 +1067,22 @@ class _ParticipantListTab extends StatelessWidget {
         final participant = participants[index];
         final user = usersById[participant.userId];
 
-        final canChangeOwnAvailability =
-            showQueueNumber &&
-            currentUserId.isNotEmpty &&
-            participant.userId == currentUserId &&
-            onAvailabilityTap != null;
-
-        return _ParticipantRow(
+        return SubstitutionParticipantRow(
           participant: participant,
           user: user,
           queuePosition: showQueueNumber ? index + 1 : null,
-          onTap: onParticipantTap == null
+          onCall: onCall == null
               ? null
               : () {
-                  onParticipantTap!(participant);
+                  onCall!(participant);
                 },
-          onAvailabilityTap: canChangeOwnAvailability
-              ? () {
-                  onAvailabilityTap!(participant);
-                }
-              : null,
+          onOpenCard: () {
+            onOpenCard(participant);
+          },
         );
       },
     );
   }
-}
-
-class _ParticipantRow extends StatelessWidget {
-  const _ParticipantRow({
-    required this.participant,
-    required this.user,
-    required this.queuePosition,
-    this.onTap,
-    this.onAvailabilityTap,
-  });
-
-  final SubstitutionParticipant participant;
-  final AppUser? user;
-  final int? queuePosition;
-  final VoidCallback? onTap;
-  final VoidCallback? onAvailabilityTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final resolvedUser = user;
-
-    final displayName = resolvedUser == null
-        ? participant.userId
-        : _resolveDisplayName(resolvedUser, participant.userId);
-
-    final avatar = resolvedUser == null
-        ? const CircleAvatar(radius: 22, child: Icon(Icons.person_outline))
-        : UserAvatarView(user: resolvedUser, radius: 22);
-
-    return ListTile(
-      onTap: onTap,
-      leading: _QueueAvatar(
-        avatar: avatar,
-        queuePosition: queuePosition,
-        availability: participant.availability,
-        onAvailabilityTap: onAvailabilityTap,
-      ),
-      title: Text(displayName, maxLines: 2, overflow: TextOverflow.ellipsis),
-    );
-  }
-
-  String _resolveDisplayName(AppUser user, String fallbackUserId) {
-    final workDisplayName = user.effectiveWorkDisplayName.trim();
-
-    if (workDisplayName.isNotEmpty) {
-      return workDisplayName;
-    }
-
-    return fallbackUserId;
-  }
-}
-
-class _QueueAvatar extends StatelessWidget {
-  const _QueueAvatar({
-    required this.avatar,
-    required this.queuePosition,
-    required this.availability,
-    required this.onAvailabilityTap,
-  });
-
-  final Widget avatar;
-  final int? queuePosition;
-  final SubstitutionAvailability availability;
-  final VoidCallback? onAvailabilityTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final position = queuePosition;
-
-    if (position == null) {
-      return avatar;
-    }
-
-    final colorScheme = Theme.of(context).colorScheme;
-    final label = _availabilityLabel(availability);
-
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        avatar,
-        Positioned(
-          right: -3,
-          bottom: -3,
-          child: Tooltip(
-            message: onAvailabilityTap == null
-                ? label
-                : '$label — нажмите для изменения',
-            child: Semantics(
-              button: onAvailabilityTap != null,
-              label: onAvailabilityTap == null
-                  ? 'Доступность: $label'
-                  : 'Изменить доступность. Сейчас: $label',
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: onAvailabilityTap,
-                child: Container(
-                  constraints: const BoxConstraints(
-                    minWidth: 18,
-                    minHeight: 18,
-                  ),
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: _availabilityColor(availability),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: colorScheme.surface, width: 2),
-                  ),
-                  child: Text(
-                    '$position',
-                    style: TextStyle(
-                      color: _availabilityTextColor(availability),
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                      height: 1,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _AvailabilityOption extends StatelessWidget {
-  const _AvailabilityOption({
-    required this.availability,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final SubstitutionAvailability availability;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return ListTile(
-      onTap: onTap,
-      leading: Icon(Icons.circle, color: _availabilityColor(availability)),
-      title: Text(_availabilityLabel(availability)),
-      trailing: selected ? const Icon(Icons.check) : null,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-    );
-  }
-}
-
-String _availabilityLabel(SubstitutionAvailability availability) {
-  return switch (availability) {
-    SubstitutionAvailability.green => 'Готов',
-    SubstitutionAvailability.yellow => 'Не в приоритете',
-    SubstitutionAvailability.red => 'Не вызывать',
-  };
-}
-
-Color _availabilityColor(SubstitutionAvailability availability) {
-  return switch (availability) {
-    SubstitutionAvailability.green => Colors.green,
-    SubstitutionAvailability.yellow => Colors.amber,
-    SubstitutionAvailability.red => Colors.red,
-  };
-}
-
-Color _availabilityTextColor(SubstitutionAvailability availability) {
-  return switch (availability) {
-    SubstitutionAvailability.green => Colors.white,
-    SubstitutionAvailability.yellow => Colors.black87,
-    SubstitutionAvailability.red => Colors.white,
-  };
 }
 
 class _EmptySubstitutionTab extends StatelessWidget {

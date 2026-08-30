@@ -132,6 +132,69 @@ void main() {
     expect(cache.userById('user-1')?.effectiveWorkDisplayName, 'Иван Иванов');
   });
 
+  test('refreshes already resolved user', () async {
+    var workDisplayName = 'Старое имя';
+    final loadRequests = <List<String>>[];
+
+    final cache = SubstitutionUserCache((userIds) async {
+      loadRequests.add(List<String>.from(userIds));
+
+      return [
+        AppUser(
+          uid: 'user-1',
+          email: 'user-1@example.com',
+          name: 'Иван Иванов',
+          workDisplayName: workDisplayName,
+          phone: '',
+          about: '',
+        ),
+      ];
+    });
+
+    await cache.loadMissing(['user-1']);
+
+    expect(cache.userById('user-1')?.effectiveWorkDisplayName, 'Старое имя');
+
+    workDisplayName = 'Новое имя';
+
+    final refreshed = await cache.refresh(' user-1 ');
+
+    expect(refreshed, isTrue);
+    expect(loadRequests, hasLength(2));
+    expect(loadRequests[1], ['user-1']);
+    expect(cache.userById('user-1')?.effectiveWorkDisplayName, 'Новое имя');
+  });
+
+  test('refresh removes stale user when loader no longer returns it', () async {
+    var exists = true;
+
+    final cache = SubstitutionUserCache((userIds) async {
+      if (!exists) {
+        return const [];
+      }
+
+      return const [
+        AppUser(
+          uid: 'user-1',
+          email: 'user-1@example.com',
+          name: 'Иван Иванов',
+          phone: '',
+          about: '',
+        ),
+      ];
+    });
+
+    await cache.loadMissing(['user-1']);
+
+    expect(cache.userById('user-1'), isNotNull);
+
+    exists = false;
+
+    await cache.refresh('user-1');
+
+    expect(cache.userById('user-1'), isNull);
+  });
+
   test('unmodifiable usersById cannot be changed externally', () async {
     final cache = SubstitutionUserCache((userIds) async {
       return const [

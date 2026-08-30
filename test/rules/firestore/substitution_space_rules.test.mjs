@@ -457,6 +457,86 @@ test(
   );
 
   test(
+  'allows brigadier to change participant work display name',
+  async () => {
+    const db = authenticatedFirestore(brigadier);
+
+    await assertSucceeds(
+      updateDoc(
+        doc(db, 'users', member.uid),
+        {
+          workDisplayName: 'Михаил',
+        },
+      ),
+    );
+  },
+);
+
+test(
+  'allows owner to change participant work display name',
+  async () => {
+    const db = authenticatedFirestore(owner);
+
+    await assertSucceeds(
+      updateDoc(
+        doc(db, 'users', secondMember.uid),
+        {
+          workDisplayName: 'Александр',
+        },
+      ),
+    );
+  },
+);
+
+test(
+  'rejects member changing another participant work display name',
+  async () => {
+    const db = authenticatedFirestore(member);
+
+    await assertFails(
+      updateDoc(
+        doc(db, 'users', secondMember.uid),
+        {
+          workDisplayName: 'Чужое имя',
+        },
+      ),
+    );
+  },
+);
+
+test(
+  'rejects brigadier changing unrelated participant user fields',
+  async () => {
+    const db = authenticatedFirestore(brigadier);
+
+    await assertFails(
+      updateDoc(
+        doc(db, 'users', member.uid),
+        {
+          phone: '+79999999999',
+        },
+      ),
+    );
+  },
+);
+
+test(
+  'rejects brigadier changing work display name outside substitution',
+  async () => {
+    const db = authenticatedFirestore(brigadier);
+
+    await assertFails(
+      updateDoc(
+        doc(db, 'users', candidate.uid),
+        {
+          workDisplayName: 'Кандидат',
+        },
+      ),
+    );
+  },
+);
+
+  test(
     'allows owner to remove participant',
     async () => {
       const db = authenticatedFirestore(owner);

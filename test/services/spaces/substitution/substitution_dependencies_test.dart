@@ -4,6 +4,7 @@ import 'package:epistola/services/spaces/substitution/substitution_call_firestor
 import 'package:epistola/services/spaces/substitution/substitution_dependencies.dart';
 import 'package:epistola/services/spaces/substitution/substitution_participant_firestore_gateway.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:epistola/services/spaces/substitution/substitution_work_display_name_firestore_gateway.dart';
 
 void main() {
   group('participant actions dependencies', () {
@@ -50,6 +51,72 @@ void main() {
       await service.removeParticipant(userId: ' user-7 ');
 
       expect(deletedUserIds, ['user-7']);
+    });
+  });
+
+  group('work display name dependencies', () {
+    test('wires work display name through firestore gateway', () async {
+      final updates = <_Update>[];
+
+      final gateway = SubstitutionWorkDisplayNameFirestoreGateway(
+        documentUpdater:
+            ({
+              required String userId,
+              required Map<String, dynamic> data,
+            }) async {
+              updates.add(
+                _Update(userId: userId, data: Map<String, dynamic>.from(data)),
+              );
+            },
+      );
+
+      final service = createSubstitutionWorkDisplayNameService(
+        gateway: gateway,
+      );
+
+      await service.updateWorkDisplayName(
+        userId: ' user-1 ',
+        workDisplayName: '  Михаил  ',
+      );
+
+      expect(updates, [
+        const _Update(
+          userId: 'user-1',
+          data: <String, dynamic>{'workDisplayName': 'Михаил'},
+        ),
+      ]);
+    });
+
+    test('wires empty work display name reset', () async {
+      final updates = <_Update>[];
+
+      final gateway = SubstitutionWorkDisplayNameFirestoreGateway(
+        documentUpdater:
+            ({
+              required String userId,
+              required Map<String, dynamic> data,
+            }) async {
+              updates.add(
+                _Update(userId: userId, data: Map<String, dynamic>.from(data)),
+              );
+            },
+      );
+
+      final service = createSubstitutionWorkDisplayNameService(
+        gateway: gateway,
+      );
+
+      await service.updateWorkDisplayName(
+        userId: 'user-1',
+        workDisplayName: '   ',
+      );
+
+      expect(updates, [
+        const _Update(
+          userId: 'user-1',
+          data: <String, dynamic>{'workDisplayName': ''},
+        ),
+      ]);
     });
   });
 
