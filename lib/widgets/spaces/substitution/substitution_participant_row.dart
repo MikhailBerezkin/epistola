@@ -4,6 +4,7 @@ import '../../../domain/models/substitution_participant.dart';
 import '../../../models/app_user.dart';
 import '../../avatar/user_avatar_view.dart';
 import 'substitution_queue_badge.dart';
+import 'substitution_statistics_badge.dart';
 
 class SubstitutionParticipantRow extends StatelessWidget {
   const SubstitutionParticipantRow({
@@ -12,15 +13,19 @@ class SubstitutionParticipantRow extends StatelessWidget {
     required this.user,
     required this.queuePosition,
     required this.onOpenCard,
+    this.queueDisplayMode = SubstitutionQueueDisplayMode.avatarWithNumber,
     this.secondaryText,
+    this.statisticsCount,
     this.onCall,
   });
 
   final SubstitutionParticipant participant;
   final AppUser? user;
   final int? queuePosition;
+  final SubstitutionQueueDisplayMode queueDisplayMode;
   final String? secondaryText;
   final VoidCallback? onCall;
+  final int? statisticsCount;
   final VoidCallback onOpenCard;
 
   @override
@@ -37,6 +42,7 @@ class SubstitutionParticipantRow extends StatelessWidget {
         avatar: avatar,
         queuePosition: queuePosition,
         availability: participant.availability,
+        displayMode: queueDisplayMode,
       ),
       title: Text(displayName, maxLines: 2, overflow: TextOverflow.ellipsis),
       subtitle: _buildSubtitle(),
@@ -44,7 +50,19 @@ class SubstitutionParticipantRow extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           if (onCall != null) ...[
-            FilledButton.tonal(onPressed: onCall, child: const Text('Вызвать')),
+            FilledButton.tonal(
+              onPressed: onCall,
+              style: FilledButton.styleFrom(
+                minimumSize: const Size(0, 20),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 8,
+                ),
+                textStyle: const TextStyle(fontSize: 13),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: const Text('Вызвать'),
+            ),
             const SizedBox(width: 4),
           ],
           IconButton(
@@ -52,6 +70,10 @@ class SubstitutionParticipantRow extends StatelessWidget {
             onPressed: onOpenCard,
             icon: const Icon(Icons.more_vert),
           ),
+          if (statisticsCount != null) ...[
+            const SizedBox(width: 2),
+            SubstitutionStatisticsBadge(count: statisticsCount!),
+          ],
         ],
       ),
     );

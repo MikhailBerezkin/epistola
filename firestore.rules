@@ -1901,6 +1901,15 @@ match /spaces/substitution {
 
   allow delete: if false;
 
+    match /statistics/test {
+    allow get: if signedIn();
+    allow list: if false;
+
+    // TEST statistics are read-only at this stage.
+    // Finalize/write rules will be added separately.
+    allow create, update, delete: if false;
+  }
+
   match /participants/{userId} {
     allow get, list: if signedIn();
 

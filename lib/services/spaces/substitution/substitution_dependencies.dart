@@ -4,6 +4,8 @@ import 'substitution_call_firestore_gateway.dart';
 import 'substitution_call_service.dart';
 import 'substitution_participant_actions_service.dart';
 import 'substitution_participant_firestore_gateway.dart';
+import 'substitution_test_statistics_firestore_gateway.dart';
+import 'substitution_test_statistics_service.dart';
 import 'substitution_work_display_name_firestore_gateway.dart';
 import 'substitution_work_display_name_service.dart';
 
@@ -34,6 +36,19 @@ SubstitutionCallService createSubstitutionCallService({
   return SubstitutionCallService(
     participantCaller: resolvedGateway.callParticipant,
     callUndoer: resolvedGateway.undoLastCall,
+  );
+}
+
+SubstitutionTestStatisticsService createSubstitutionTestStatisticsService({
+  FirebaseFirestore? firestore,
+  SubstitutionTestStatisticsFirestoreGateway? gateway,
+}) {
+  final resolvedGateway =
+      gateway ??
+      SubstitutionTestStatisticsFirestoreGateway.firebase(firestore: firestore);
+
+  return SubstitutionTestStatisticsService(
+    statisticsLoader: resolvedGateway.load,
   );
 }
 

@@ -15,8 +15,13 @@ import '../services/spaces/substitution/substitution_participants_service.dart';
 import '../services/spaces/substitution/substitution_user_cache.dart';
 import '../widgets/spaces/substitution/substitution_participant_overlay.dart';
 import '../widgets/spaces/substitution/substitution_participant_row.dart';
+import '../widgets/spaces/substitution/substitution_queue_badge.dart';
+import '../widgets/spaces/substitution/substitution_settings_sheet.dart';
 import 'substitution_add_participants_screen.dart';
 import '../services/spaces/substitution/substitution_work_display_name_service.dart';
+import '../services/spaces/substitution/substitution_ui_preferences.dart';
+import '../domain/models/substitution_test_statistics.dart';
+import '../services/spaces/substitution/substitution_test_statistics_service.dart';
 
 class SubstitutionSpaceScreen extends StatefulWidget {
   const SubstitutionSpaceScreen({super.key});
@@ -33,9 +38,19 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
   late final SubstitutionCallService _callService;
   late final SubstitutionParticipantActionsService _participantActionsService;
   late final SubstitutionWorkDisplayNameService _workDisplayNameService;
+  late final SubstitutionUiPreferences _uiPreferences;
+  late final SubstitutionTestStatisticsService _testStatisticsService;
   late final TabController _tabController;
 
   int _currentTabIndex = 0;
+  SubstitutionQueueDisplayMode _queueDisplayMode =
+      SubstitutionQueueDisplayMode.numberOnly;
+
+  bool _showStatistics = false;
+
+  SubstitutionTestStatistics? _testStatistics;
+  bool _isTestStatisticsLoading = false;
+  Object? _testStatisticsError;
 
   SpacesAccessRole _accessRole = SpacesAccessRole.member;
 
@@ -79,8 +94,11 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
     _callService = createSubstitutionCallService();
     _participantActionsService = createSubstitutionParticipantActionsService();
     _workDisplayNameService = createSubstitutionWorkDisplayNameService();
+    _testStatisticsService = createSubstitutionTestStatisticsService();
+    _uiPreferences = SubstitutionUiPreferences();
 
     unawaited(_loadAccessRole());
+    unawaited(_loadUiPreferences());
     _watchParticipants();
   }
 
@@ -168,6 +186,129 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
         _isAccessRoleLoading = false;
       });
     }
+  }
+
+  Future<void> _loadUiPreferences() async {
+    try {
+      final preferences = await _uiPreferences.load();
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _queueDisplayMode = preferences.useNumberOnly
+            ? SubstitutionQueueDisplayMode.numberOnly
+            : SubstitutionQueueDisplayMode.avatarWithNumber;
+
+        _showStatistics = preferences.showStatistics;
+      });
+      if (preferences.showStatistics) {
+        await _ensureTestStatisticsLoaded();
+      }
+    } catch (_) {
+      // Локальные настройки не должны мешать работе Подсменки.
+      // При ошибке остаются значения по умолчанию.
+    }
+  }
+
+  void _setQueueDisplayMode(SubstitutionQueueDisplayMode mode) {
+    if (_queueDisplayMode == mode) {
+      return;
+    }
+
+    setState(() {
+      _queueDisplayMode = mode;
+    });
+
+    unawaited(_saveQueueDisplayMode(mode));
+  }
+
+  Future<void> _saveQueueDisplayMode(SubstitutionQueueDisplayMode mode) async {
+    try {
+      await _uiPreferences.saveUseNumberOnly(
+        mode == SubstitutionQueueDisplayMode.numberOnly,
+      );
+    } catch (_) {
+      // Сам UI уже переключён. Ошибка локального сохранения
+      // не должна блокировать работу Подсменки.
+    }
+  }
+
+  void _setShowStatistics(bool value) {
+    if (_showStatistics == value) {
+      return;
+    }
+
+    setState(() {
+      _showStatistics = value;
+    });
+
+    unawaited(_saveShowStatistics(value));
+
+    if (value) {
+      unawaited(_ensureTestStatisticsLoaded());
+    }
+  }
+
+  Future<void> _saveShowStatistics(bool value) async {
+    try {
+      await _uiPreferences.saveShowStatistics(value);
+    } catch (_) {
+      // Пока статистика является только UI-настройкой.
+    }
+  }
+
+  Future<void> _ensureTestStatisticsLoaded() async {
+    if (!_showStatistics ||
+        _testStatistics != null ||
+        _isTestStatisticsLoading) {
+      return;
+    }
+
+    setState(() {
+      _isTestStatisticsLoading = true;
+      _testStatisticsError = null;
+    });
+
+    try {
+      final statistics = await _testStatisticsService.load();
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _testStatistics = statistics;
+        _testStatisticsError = null;
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _testStatisticsError = error;
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isTestStatisticsLoading = false;
+        });
+      }
+    }
+  }
+
+  void _retryTestStatistics() {
+    if (!_showStatistics || _isTestStatisticsLoading) {
+      return;
+    }
+
+    setState(() {
+      _testStatisticsError = null;
+    });
+
+    unawaited(_ensureTestStatisticsLoaded());
   }
 
   void _watchParticipants() {
@@ -299,6 +440,33 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
         const SnackBar(content: Text('Не удалось добавить участников')),
       );
     }
+  }
+
+  Future<void> _openSubstitutionSettings({
+    required bool canManageSubstitution,
+  }) async {
+    if (_isActionInProgress) {
+      return;
+    }
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) {
+        return SubstitutionSettingsSheet(
+          queueDisplayMode: _queueDisplayMode,
+          showStatistics: _showStatistics,
+          onQueueDisplayModeChanged: _setQueueDisplayMode,
+          onShowStatisticsChanged: _setShowStatistics,
+          onAddParticipants: canManageSubstitution
+              ? () {
+                  Navigator.of(sheetContext).pop();
+                  unawaited(_openAddParticipants());
+                }
+              : null,
+        );
+      },
+    );
   }
 
   Future<void> _editParticipantWorkDisplayName(
@@ -847,14 +1015,19 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
               leading: BackButton(onPressed: _handleAppBarBack),
               title: const Text('Подсменка'),
               actions: [
-                if (canManageSubstitution)
-                  IconButton(
-                    tooltip: 'Добавить участников',
-                    onPressed: _isActionInProgress
-                        ? null
-                        : _openAddParticipants,
-                    icon: const Icon(Icons.person_add_alt_1_outlined),
-                  ),
+                IconButton(
+                  tooltip: 'Настройки подсменки',
+                  onPressed: _isActionInProgress
+                      ? null
+                      : () {
+                          unawaited(
+                            _openSubstitutionSettings(
+                              canManageSubstitution: canManageSubstitution,
+                            ),
+                          );
+                        },
+                  icon: const Icon(Icons.settings_outlined),
+                ),
               ],
               bottom: TabBar(
                 controller: _tabController,
@@ -878,6 +1051,12 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
             participant: selectedParticipant,
             user: selectedUser,
             queuePosition: selectedQueuePosition,
+            monthlyCallCount:
+                _showStatistics &&
+                    selectedParticipant != null &&
+                    _testStatistics != null
+                ? _testStatistics!.callsFor(selectedParticipant.userId)
+                : null,
             onClose: _closeParticipantCard,
             onEditName:
                 canManageSubstitution &&
@@ -994,6 +1173,22 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
               ),
             ),
           ),
+        if (_showStatistics && _isTestStatisticsLoading)
+          const LinearProgressIndicator(minHeight: 2),
+
+        if (_showStatistics && _testStatisticsError != null)
+          Material(
+            color: Theme.of(context).colorScheme.errorContainer,
+            child: ListTile(
+              dense: true,
+              leading: const Icon(Icons.warning_amber_rounded),
+              title: const Text('Не удалось загрузить тестовую статистику'),
+              trailing: TextButton(
+                onPressed: _retryTestStatistics,
+                child: const Text('Повторить'),
+              ),
+            ),
+          ),
         Expanded(
           child: TabBarView(
             controller: _tabController,
@@ -1003,6 +1198,9 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
                 usersById: usersById,
                 emptyText: 'В ротации пока нет участников',
                 showQueueNumber: true,
+                queueDisplayMode: _queueDisplayMode,
+                showStatistics: _showStatistics,
+                statistics: _testStatistics,
                 onCall: canManageSubstitution && !_isActionInProgress
                     ? (participant) {
                         unawaited(_confirmCallParticipant(participant));
@@ -1015,6 +1213,9 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
                 usersById: usersById,
                 emptyText: 'В отпуске никого нет',
                 showQueueNumber: false,
+                queueDisplayMode: _queueDisplayMode,
+                showStatistics: _showStatistics,
+                statistics: _testStatistics,
                 onOpenCard: _openParticipantCard,
               ),
               _ParticipantListTab(
@@ -1022,6 +1223,9 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
                 usersById: usersById,
                 emptyText: 'На больничном никого нет',
                 showQueueNumber: false,
+                queueDisplayMode: _queueDisplayMode,
+                showStatistics: _showStatistics,
+                statistics: _testStatistics,
                 onOpenCard: _openParticipantCard,
               ),
             ],
@@ -1038,6 +1242,9 @@ class _ParticipantListTab extends StatelessWidget {
     required this.usersById,
     required this.emptyText,
     required this.showQueueNumber,
+    required this.queueDisplayMode,
+    required this.showStatistics,
+    required this.statistics,
     required this.onOpenCard,
     this.onCall,
   });
@@ -1047,6 +1254,9 @@ class _ParticipantListTab extends StatelessWidget {
 
   final String emptyText;
   final bool showQueueNumber;
+  final SubstitutionQueueDisplayMode queueDisplayMode;
+  final bool showStatistics;
+  final SubstitutionTestStatistics? statistics;
 
   final ValueChanged<SubstitutionParticipant> onOpenCard;
   final ValueChanged<SubstitutionParticipant>? onCall;
@@ -1071,6 +1281,10 @@ class _ParticipantListTab extends StatelessWidget {
           participant: participant,
           user: user,
           queuePosition: showQueueNumber ? index + 1 : null,
+          queueDisplayMode: queueDisplayMode,
+          statisticsCount: showStatistics && statistics != null
+              ? statistics!.callsFor(participant.userId)
+              : null,
           onCall: onCall == null
               ? null
               : () {

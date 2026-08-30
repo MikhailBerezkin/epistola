@@ -14,6 +14,7 @@ class SubstitutionParticipantOverlay extends StatelessWidget {
     required this.user,
     required this.queuePosition,
     required this.onClose,
+    this.monthlyCallCount,
     this.onEditName,
     this.onAvailabilityChanged,
     this.onVacation,
@@ -26,7 +27,7 @@ class SubstitutionParticipantOverlay extends StatelessWidget {
   final SubstitutionParticipant? participant;
   final AppUser? user;
   final int? queuePosition;
-
+  final int? monthlyCallCount;
   final VoidCallback onClose;
   final VoidCallback? onEditName;
   final ValueChanged<SubstitutionAvailability>? onAvailabilityChanged;
@@ -89,6 +90,15 @@ class SubstitutionParticipantOverlay extends StatelessWidget {
                   participant: currentParticipant,
                   queuePosition: queuePosition,
                 ),
+                if (monthlyCallCount != null) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    'Вызовов за месяц: $monthlyCallCount',
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                      color: Colors.white.withValues(alpha: 0.88),
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 20),
                 if (currentParticipant.isActive) ...[
                   if (onAvailabilityChanged != null) ...[
