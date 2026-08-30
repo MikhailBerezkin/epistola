@@ -1,7 +1,12 @@
 import '../../../domain/models/substitution_call_receipt.dart';
+import '../../../domain/models/substitution_shift.dart';
 
 typedef SubstitutionParticipantCaller =
-    Future<SubstitutionCallReceipt> Function({required String userId});
+    Future<SubstitutionCallReceipt> Function({
+      required String userId,
+      required String calledByUserId,
+      required SubstitutionShift shift,
+    });
 
 typedef SubstitutionCallUndoer =
     Future<bool> Function({required SubstitutionCallReceipt receipt});
@@ -16,8 +21,16 @@ final class SubstitutionCallService {
   final SubstitutionParticipantCaller _callParticipant;
   final SubstitutionCallUndoer _undoCall;
 
-  Future<SubstitutionCallReceipt> callParticipant({required String userId}) {
-    return _callParticipant(userId: _normalizeUserId(userId));
+  Future<SubstitutionCallReceipt> callParticipant({
+    required String userId,
+    required String calledByUserId,
+    required SubstitutionShift shift,
+  }) {
+    return _callParticipant(
+      userId: _normalizeUserId(userId),
+      calledByUserId: _normalizeUserId(calledByUserId),
+      shift: shift,
+    );
   }
 
   Future<bool> undoLastCall({required SubstitutionCallReceipt receipt}) {

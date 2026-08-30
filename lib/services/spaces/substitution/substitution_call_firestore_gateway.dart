@@ -1,11 +1,14 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../../domain/models/substitution_call_receipt.dart';
+import 'substitution_pending_call_mapper.dart';
+import '../../../domain/models/substitution_shift.dart';
 
 abstract interface class SubstitutionCallTransactionContext {
   Future<Map<String, dynamic>?> readModule();
 
   Future<Map<String, dynamic>?> readParticipant({required String userId});
+  Future<Map<String, dynamic>?> readPendingCall({required String callId});
 
   void updateModule(Map<String, dynamic> data);
 
@@ -13,6 +16,12 @@ abstract interface class SubstitutionCallTransactionContext {
     required String userId,
     required Map<String, dynamic> data,
   });
+
+  void createPendingCall({
+    required String callId,
+    required Map<String, dynamic> data,
+  });
+  void deletePendingCall({required String callId});
 
   void clearLastCall();
 }
@@ -50,8 +59,13 @@ final class SubstitutionCallFirestoreGateway {
       'previousRotationOrder';
   static const String lastCallRevisionField = 'revision';
 
-  Future<SubstitutionCallReceipt> callParticipant({required String userId}) {
+  Future<SubstitutionCallReceipt> callParticipant({
+    required String userId,
+    required String calledByUserId,
+    required SubstitutionShift shift,
+  }) {
     final normalizedUserId = _normalizeUserId(userId);
+    final normalizedCalledByUserId = _normalizeUserId(calledByUserId);
 
     return _transactionRunner.run((context) async {
       final moduleData = await context.readModule();
@@ -97,6 +111,18 @@ final class SubstitutionCallFirestoreGateway {
       }
 
       final nextRevision = currentRevision + 1;
+      final callId = nextRevision.toString();
+
+      context.createPendingCall(
+        callId: callId,
+        data: SubstitutionPendingCallMapper.toCreateMap(
+          callId: callId,
+          shift: shift,
+          userId: normalizedUserId,
+          revision: nextRevision,
+          calledByUserId: normalizedCalledByUserId,
+        ),
+      );
 
       context.updateParticipant(
         userId: normalizedUserId,
@@ -166,6 +192,30 @@ final class SubstitutionCallFirestoreGateway {
         return false;
       }
 
+      final pendingCallData = await context.readPendingCall(
+        callId: receipt.callId,
+      );
+
+      if (pendingCallData == null) {
+        return false;
+      }
+
+      final pendingCall = SubstitutionPendingCallMapper.fromMap(
+        pendingCallData,
+      );
+
+      if (pendingCall == null) {
+        throw StateError(
+          'Substitution pending call document contains invalid data.',
+        );
+      }
+
+      if (pendingCall.callId != receipt.callId ||
+          pendingCall.userId != normalizedUserId ||
+          pendingCall.revision != receipt.revision) {
+        return false;
+      }
+
       final participantData = await context.readParticipant(
         userId: normalizedUserId,
       );
@@ -180,6 +230,7 @@ final class SubstitutionCallFirestoreGateway {
       );
 
       context.clearLastCall();
+      context.deletePendingCall(callId: receipt.callId);
 
       return true;
     });
@@ -253,6 +304,10 @@ final class _FirebaseSubstitutionCallTransactionContext
     return _moduleReference.collection('participants').doc(userId);
   }
 
+  DocumentReference<Map<String, dynamic>> _pendingCallReference(String callId) {
+    return _moduleReference.collection('pendingCalls').doc(callId);
+  }
+
   @override
   Future<Map<String, dynamic>?> readModule() async {
     final snapshot = await _transaction.get(_moduleReference);
@@ -278,6 +333,19 @@ final class _FirebaseSubstitutionCallTransactionContext
   }
 
   @override
+  Future<Map<String, dynamic>?> readPendingCall({
+    required String callId,
+  }) async {
+    final snapshot = await _transaction.get(_pendingCallReference(callId));
+
+    if (!snapshot.exists) {
+      return null;
+    }
+
+    return snapshot.data();
+  }
+
+  @override
   void updateModule(Map<String, dynamic> data) {
     _transaction.update(_moduleReference, data);
   }
@@ -288,6 +356,19 @@ final class _FirebaseSubstitutionCallTransactionContext
     required Map<String, dynamic> data,
   }) {
     _transaction.update(_participantReference(userId), data);
+  }
+
+  @override
+  void createPendingCall({
+    required String callId,
+    required Map<String, dynamic> data,
+  }) {
+    _transaction.set(_pendingCallReference(callId), data);
+  }
+
+  @override
+  void deletePendingCall({required String callId}) {
+    _transaction.delete(_pendingCallReference(callId));
   }
 
   @override

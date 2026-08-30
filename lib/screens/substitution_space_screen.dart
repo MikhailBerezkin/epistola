@@ -22,6 +22,7 @@ import '../services/spaces/substitution/substitution_work_display_name_service.d
 import '../services/spaces/substitution/substitution_ui_preferences.dart';
 import '../domain/models/substitution_test_statistics.dart';
 import '../services/spaces/substitution/substitution_test_statistics_service.dart';
+import '../domain/models/substitution_shift.dart';
 
 class SubstitutionSpaceScreen extends StatefulWidget {
   const SubstitutionSpaceScreen({super.key});
@@ -575,44 +576,91 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
       return;
     }
 
-    final displayName = _displayNameForParticipant(participant);
+    final now = DateTime.now();
 
-    final confirmed = await showDialog<bool>(
+    final today = DateTime(now.year, now.month, now.day);
+
+    final tomorrow = DateTime(now.year, now.month, now.day + 1);
+
+    final selectedShift = await showDialog<SubstitutionShift>(
       context: context,
       builder: (dialogContext) {
+        const buttonHeight = 48.0;
+
         return AlertDialog(
-          title: const Text('Вызвать участника?'),
-          content: Text(
-            '$displayName будет перемещён в конец активной очереди.',
+          contentPadding: const EdgeInsets.all(24),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: double.infinity,
+                height: buttonHeight,
+                child: FilledButton(
+                  onPressed: () {
+                    Navigator.of(dialogContext).pop(
+                      SubstitutionShift(
+                        year: today.year,
+                        month: today.month,
+                        day: today.day,
+                        kind: SubstitutionShiftKind.night,
+                      ),
+                    );
+                  },
+                  child: const Text('Сегодня в ночь'),
+                ),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                height: buttonHeight,
+                child: FilledButton(
+                  onPressed: () {
+                    Navigator.of(dialogContext).pop(
+                      SubstitutionShift(
+                        year: tomorrow.year,
+                        month: tomorrow.month,
+                        day: tomorrow.day,
+                        kind: SubstitutionShiftKind.day,
+                      ),
+                    );
+                  },
+                  child: const Text('Завтра в день'),
+                ),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                height: buttonHeight,
+                child: OutlinedButton(
+                  onPressed: () {
+                    Navigator.of(dialogContext).pop();
+                  },
+                  child: const Text('Отмена'),
+                ),
+              ),
+            ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(dialogContext).pop(false);
-              },
-              child: const Text('Отмена'),
-            ),
-            FilledButton(
-              onPressed: () {
-                Navigator.of(dialogContext).pop(true);
-              },
-              child: const Text('Вызвать'),
-            ),
-          ],
         );
       },
     );
 
-    if (!mounted || confirmed != true) {
+    if (!mounted || selectedShift == null) {
       return;
     }
 
-    await _callParticipant(participant: participant, displayName: displayName);
+    final displayName = _displayNameForParticipant(participant);
+
+    await _callParticipant(
+      participant: participant,
+      displayName: displayName,
+      shift: selectedShift,
+    );
   }
 
   Future<void> _callParticipant({
     required SubstitutionParticipant participant,
     required String displayName,
+    required SubstitutionShift shift,
   }) async {
     if (_isActionInProgress) {
       return;
@@ -625,6 +673,8 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
     try {
       final receipt = await _callService.callParticipant(
         userId: participant.userId,
+        calledByUserId: _currentUserId,
+        shift: shift,
       );
 
       if (!mounted) {

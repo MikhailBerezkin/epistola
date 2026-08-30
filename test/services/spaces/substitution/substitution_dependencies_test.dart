@@ -1,10 +1,13 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:epistola/domain/models/substitution_call_receipt.dart';
 import 'package:epistola/domain/models/substitution_participant.dart';
+import 'package:epistola/domain/models/substitution_shift.dart';
 import 'package:epistola/services/spaces/substitution/substitution_call_firestore_gateway.dart';
 import 'package:epistola/services/spaces/substitution/substitution_dependencies.dart';
 import 'package:epistola/services/spaces/substitution/substitution_participant_firestore_gateway.dart';
-import 'package:flutter_test/flutter_test.dart';
+import 'package:epistola/services/spaces/substitution/substitution_test_statistics_firestore_gateway.dart';
 import 'package:epistola/services/spaces/substitution/substitution_work_display_name_firestore_gateway.dart';
+import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('participant actions dependencies', () {
@@ -22,7 +25,9 @@ void main() {
 
       expect(updates, hasLength(1));
       expect(updates.single.userId, 'user-1');
-      expect(updates.single.data, const {'availability': 'red'});
+      expect(updates.single.data, const <String, dynamic>{
+        'availability': 'red',
+      });
     });
 
     test('wires status updates through firestore gateway', () async {
@@ -38,7 +43,9 @@ void main() {
       );
 
       expect(updates, hasLength(1));
-      expect(updates.single.data, const {'status': 'vacation'});
+      expect(updates.single.data, const <String, dynamic>{
+        'status': 'vacation',
+      });
     });
 
     test('wires participant removal through firestore gateway', () async {
@@ -79,8 +86,8 @@ void main() {
         workDisplayName: '  Михаил  ',
       );
 
-      expect(updates, [
-        const _Update(
+      expect(updates, const <_Update>[
+        _Update(
           userId: 'user-1',
           data: <String, dynamic>{'workDisplayName': 'Михаил'},
         ),
@@ -111,12 +118,30 @@ void main() {
         workDisplayName: '   ',
       );
 
-      expect(updates, [
-        const _Update(
+      expect(updates, const <_Update>[
+        _Update(
           userId: 'user-1',
           data: <String, dynamic>{'workDisplayName': ''},
         ),
       ]);
+    });
+  });
+
+  group('test statistics dependencies', () {
+    test('wires TEST statistics through firestore gateway', () async {
+      final gateway = SubstitutionTestStatisticsFirestoreGateway(
+        documentReader: () async {
+          return <String, dynamic>{
+            'callCounts': <String, int>{'user-1': 3},
+          };
+        },
+      );
+
+      final service = createSubstitutionTestStatisticsService(gateway: gateway);
+
+      final statistics = await service.load();
+
+      expect(statistics.callsFor('user-1'), 3);
     });
   });
 
@@ -139,19 +164,21 @@ void main() {
         ),
       );
 
-      final receipt = await service.callParticipant(userId: 'user-1');
+      final receipt = await service.callParticipant(
+        userId: 'user-1',
+        calledByUserId: 'brigadier-1',
+        shift: _testShift(),
+      );
 
       expect(receipt.userId, 'user-1');
       expect(receipt.revision, 8);
+      expect(receipt.callId, '8');
 
-      expect(context.participantUpdates, [
-        const _Update(
-          userId: 'user-1',
-          data: <String, dynamic>{'rotationOrder': 41},
-        ),
+      expect(context.participantUpdates, const <_Update>[
+        _Update(userId: 'user-1', data: <String, dynamic>{'rotationOrder': 41}),
       ]);
 
-      expect(context.moduleUpdates, [
+      expect(context.moduleUpdates, <Map<String, dynamic>>[
         <String, dynamic>{
           'nextRotationOrder': 42,
           'revision': 8,
@@ -162,6 +189,18 @@ void main() {
           },
         },
       ]);
+
+      expect(context.pendingCallCreates, hasLength(1));
+      expect(context.pendingCallCreates.single.callId, '8');
+      expect(
+        context.pendingCallCreates.single.data['calledByUserId'],
+        'brigadier-1',
+      );
+      expect(context.pendingCallCreates.single.data['shiftKind'], 'night');
+      expect(
+        context.pendingCallCreates.single.data['calledAt'],
+        isA<FieldValue>(),
+      );
     });
 
     test('wires undo through firestore gateway', () async {
@@ -182,6 +221,7 @@ void main() {
             'status': 'active',
           },
         },
+        pendingCalls: <String, Map<String, dynamic>>{'8': _pendingCallData()},
       );
 
       final service = createSubstitutionCallService(
@@ -196,14 +236,12 @@ void main() {
 
       expect(undone, isTrue);
 
-      expect(context.participantUpdates, [
-        const _Update(
-          userId: 'user-1',
-          data: <String, dynamic>{'rotationOrder': 15},
-        ),
+      expect(context.participantUpdates, const <_Update>[
+        _Update(userId: 'user-1', data: <String, dynamic>{'rotationOrder': 15}),
       ]);
 
       expect(context.clearLastCallCount, 1);
+      expect(context.pendingCallDeletes, ['8']);
     });
   });
 }
@@ -225,6 +263,29 @@ SubstitutionParticipantFirestoreGateway _participantGateway({
   );
 }
 
+SubstitutionShift _testShift() {
+  return SubstitutionShift(
+    year: 2026,
+    month: 8,
+    day: 31,
+    kind: SubstitutionShiftKind.night,
+  );
+}
+
+Map<String, dynamic> _pendingCallData() {
+  return <String, dynamic>{
+    'callId': '8',
+    'userId': 'user-1',
+    'revision': 8,
+    'calledByUserId': 'brigadier-1',
+    'calledAt': Timestamp.fromDate(DateTime.utc(2026, 8, 31, 10)),
+    'shiftYear': 2026,
+    'shiftMonth': 8,
+    'shiftDay': 31,
+    'shiftKind': 'night',
+  };
+}
+
 final class _FakeCallTransactionRunner
     implements SubstitutionCallTransactionRunner {
   _FakeCallTransactionRunner(this.context);
@@ -244,17 +305,27 @@ final class _FakeCallTransactionContext
   _FakeCallTransactionContext({
     required Map<String, dynamic> moduleData,
     required Map<String, Map<String, dynamic>> participants,
+    Map<String, Map<String, dynamic>> pendingCalls =
+        const <String, Map<String, dynamic>>{},
   }) : _moduleData = Map<String, dynamic>.from(moduleData),
        _participants = participants.map(
          (userId, data) => MapEntry(userId, Map<String, dynamic>.from(data)),
+       ),
+       _pendingCalls = pendingCalls.map(
+         (callId, data) => MapEntry(callId, Map<String, dynamic>.from(data)),
        );
 
   final Map<String, dynamic> _moduleData;
   final Map<String, Map<String, dynamic>> _participants;
+  final Map<String, Map<String, dynamic>> _pendingCalls;
 
   final List<Map<String, dynamic>> moduleUpdates = <Map<String, dynamic>>[];
 
   final List<_Update> participantUpdates = <_Update>[];
+
+  final List<_PendingCallCreate> pendingCallCreates = <_PendingCallCreate>[];
+
+  final List<String> pendingCallDeletes = <String>[];
 
   int clearLastCallCount = 0;
 
@@ -268,6 +339,19 @@ final class _FakeCallTransactionContext
     required String userId,
   }) async {
     final data = _participants[userId];
+
+    if (data == null) {
+      return null;
+    }
+
+    return Map<String, dynamic>.from(data);
+  }
+
+  @override
+  Future<Map<String, dynamic>?> readPendingCall({
+    required String callId,
+  }) async {
+    final data = _pendingCalls[callId];
 
     if (data == null) {
       return null;
@@ -292,9 +376,31 @@ final class _FakeCallTransactionContext
   }
 
   @override
+  void createPendingCall({
+    required String callId,
+    required Map<String, dynamic> data,
+  }) {
+    pendingCallCreates.add(
+      _PendingCallCreate(callId: callId, data: Map<String, dynamic>.from(data)),
+    );
+  }
+
+  @override
+  void deletePendingCall({required String callId}) {
+    pendingCallDeletes.add(callId);
+  }
+
+  @override
   void clearLastCall() {
     clearLastCallCount += 1;
   }
+}
+
+final class _PendingCallCreate {
+  const _PendingCallCreate({required this.callId, required this.data});
+
+  final String callId;
+  final Map<String, dynamic> data;
 }
 
 final class _Update {
