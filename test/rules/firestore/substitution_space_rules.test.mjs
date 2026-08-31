@@ -1176,17 +1176,19 @@ async function seedCalledStateWithoutRules({
       );
 
       await setDoc(
-        doc(db, 'spaces', 'substitution'),
-        {
-          nextRotationOrder: 3,
-          revision: 1,
-          lastCall: {
-            userId: member.uid,
-            previousRotationOrder: 0,
-            revision: 1,
-          },
-        },
-      );
+  pendingCallDoc(db, '1'),
+  {
+    callId: '1',
+    userId: member.uid,
+    revision: 1,
+    calledByUserId: brigadier.uid,
+    calledAt,
+    shiftYear: 2026,
+    shiftMonth: 8,
+    shiftDay: 31,
+    shiftKind: 'night',
+  },
+);
 
       await setDoc(
         pendingCallDoc(db, '1'),

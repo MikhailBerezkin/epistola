@@ -16,19 +16,21 @@ class SubstitutionAvailabilitySelector extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: SubstitutionAvailability.values
-          .map((value) {
-            return _AvailabilityChoice(
-              availability: value,
-              selected: availability == value,
-              onTap: onChanged == null
-                  ? null
-                  : () {
-                      onChanged!(value);
-                    },
-            );
-          })
+          .map(
+            (value) => Expanded(
+              child: _AvailabilityChoice(
+                availability: value,
+                selected: availability == value,
+                onTap: onChanged == null
+                    ? null
+                    : () {
+                        onChanged!(value);
+                      },
+              ),
+            ),
+          )
           .toList(growable: false),
     );
   }
@@ -59,31 +61,54 @@ class _AvailabilityChoice extends StatelessWidget {
         label: label,
         child: InkResponse(
           onTap: onTap,
-          radius: 30,
+          radius: 34,
           child: Padding(
-            padding: const EdgeInsets.all(8),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 160),
-              width: 42,
-              height: 42,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: selected ? colorScheme.onSurface : Colors.transparent,
-                  width: 2,
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 160),
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: selected
+                          ? colorScheme.onSurface
+                          : Colors.transparent,
+                      width: 2,
+                    ),
+                  ),
+                  padding: const EdgeInsets.all(5),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: color,
+                      shape: BoxShape.circle,
+                    ),
+                    child: selected
+                        ? Icon(
+                            Icons.check,
+                            size: 20,
+                            color: substitutionAvailabilityTextColor(
+                              availability,
+                            ),
+                          )
+                        : null,
+                  ),
                 ),
-              ),
-              padding: const EdgeInsets.all(5),
-              child: DecoratedBox(
-                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-                child: selected
-                    ? Icon(
-                        Icons.check,
-                        size: 20,
-                        color: substitutionAvailabilityTextColor(availability),
-                      )
-                    : null,
-              ),
+                const SizedBox(height: 5),
+                Text(
+                  label,
+                  maxLines: 2,
+                  textAlign: TextAlign.center,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Colors.white.withValues(alpha: 0.88),
+                    fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                  ),
+                ),
+              ],
             ),
           ),
         ),

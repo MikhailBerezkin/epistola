@@ -28,8 +28,7 @@ class SpacesPage extends StatelessWidget {
         childAspectRatio: 1.15,
         children: [
           _SpaceTile(
-            title: '"Подсменка"',
-            subtitle: '"Список"',
+            title: '"Список"',
             icon: Icons.groups_2_outlined,
             onTap: () {
               Navigator.of(context).push(
@@ -128,13 +127,13 @@ class SpacesPage extends StatelessWidget {
 class _SpaceTile extends StatelessWidget {
   const _SpaceTile({
     required this.title,
-    required this.subtitle,
+    this.subtitle,
     required this.icon,
     required this.onTap,
   });
 
   final String title;
-  final String subtitle;
+  final String? subtitle;
   final IconData icon;
   final VoidCallback onTap;
 
@@ -159,15 +158,17 @@ class _SpaceTile extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.titleMedium,
               ),
-              const SizedBox(height: 4),
-              Text(
-                subtitle,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
+              if (subtitle != null) ...[
+                const SizedBox(height: 4),
+                Text(
+                  subtitle!,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
                 ),
-              ),
+              ],
             ],
           ),
         ),

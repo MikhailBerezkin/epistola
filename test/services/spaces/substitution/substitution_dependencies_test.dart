@@ -5,7 +5,7 @@ import 'package:epistola/domain/models/substitution_shift.dart';
 import 'package:epistola/services/spaces/substitution/substitution_call_firestore_gateway.dart';
 import 'package:epistola/services/spaces/substitution/substitution_dependencies.dart';
 import 'package:epistola/services/spaces/substitution/substitution_participant_firestore_gateway.dart';
-import 'package:epistola/services/spaces/substitution/substitution_test_statistics_firestore_gateway.dart';
+import 'package:epistola/services/spaces/substitution/substitution_statistics_firestore_gateway.dart';
 import 'package:epistola/services/spaces/substitution/substitution_work_display_name_firestore_gateway.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -57,7 +57,7 @@ void main() {
 
       await service.removeParticipant(userId: ' user-7 ');
 
-      expect(deletedUserIds, ['user-7']);
+      expect(deletedUserIds, <String>['user-7']);
     });
   });
 
@@ -127,21 +127,41 @@ void main() {
     });
   });
 
-  group('test statistics dependencies', () {
-    test('wires TEST statistics through firestore gateway', () async {
-      final gateway = SubstitutionTestStatisticsFirestoreGateway(
-        documentReader: () async {
+  group('production statistics dependencies', () {
+    test('wires production statistics through firestore gateway', () async {
+      int? requestedYear;
+
+      final gateway = SubstitutionStatisticsFirestoreGateway(
+        documentReader: ({required int year}) async {
+          requestedYear = year;
+
           return <String, dynamic>{
-            'callCounts': <String, int>{'user-1': 3},
+            'year': 2026,
+            'monthCallCounts': <String, dynamic>{
+              '8': <String, dynamic>{'user-1': 2},
+            },
+            'monthShifts': <String, dynamic>{
+              '8': <String, dynamic>{
+                'user-1': <String>['day', 'night'],
+              },
+            },
+            'yearCallCounts': <String, dynamic>{'user-1': 2},
+            'lastFinalizedCallId': '2',
+            'updatedAt': Timestamp.fromDate(DateTime.utc(2026, 8, 31, 12)),
           };
         },
       );
 
-      final service = createSubstitutionTestStatisticsService(gateway: gateway);
+      final service = createSubstitutionStatisticsService(gateway: gateway);
 
-      final statistics = await service.load();
+      final statistics = await service.load(year: 2026);
 
-      expect(statistics.callsFor('user-1'), 3);
+      expect(requestedYear, 2026);
+      expect(statistics, isNotNull);
+
+      expect(statistics!.callsForMonth(month: 8, userId: 'user-1'), 2);
+
+      expect(statistics.callsForYear('user-1'), 2);
     });
   });
 
@@ -191,12 +211,16 @@ void main() {
       ]);
 
       expect(context.pendingCallCreates, hasLength(1));
+
       expect(context.pendingCallCreates.single.callId, '8');
+
       expect(
         context.pendingCallCreates.single.data['calledByUserId'],
         'brigadier-1',
       );
+
       expect(context.pendingCallCreates.single.data['shiftKind'], 'night');
+
       expect(
         context.pendingCallCreates.single.data['calledAt'],
         isA<FieldValue>(),
@@ -241,7 +265,8 @@ void main() {
       ]);
 
       expect(context.clearLastCallCount, 1);
-      expect(context.pendingCallDeletes, ['8']);
+
+      expect(context.pendingCallDeletes, <String>['8']);
     });
   });
 }
@@ -316,7 +341,9 @@ final class _FakeCallTransactionContext
        );
 
   final Map<String, dynamic> _moduleData;
+
   final Map<String, Map<String, dynamic>> _participants;
+
   final Map<String, Map<String, dynamic>> _pendingCalls;
 
   final List<Map<String, dynamic>> moduleUpdates = <Map<String, dynamic>>[];

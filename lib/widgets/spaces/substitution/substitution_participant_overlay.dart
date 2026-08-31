@@ -5,6 +5,8 @@ import '../../../models/app_user.dart';
 import '../../identity/identity_background.dart';
 import '../../identity/identity_overlay.dart';
 import 'substitution_availability_selector.dart';
+import '../../../domain/models/substitution_shift.dart';
+import 'substitution_statistics_summary.dart';
 
 class SubstitutionParticipantOverlay extends StatelessWidget {
   const SubstitutionParticipantOverlay({
@@ -15,6 +17,9 @@ class SubstitutionParticipantOverlay extends StatelessWidget {
     required this.queuePosition,
     required this.onClose,
     this.monthlyCallCount,
+    this.statisticsMonth,
+    this.monthShifts = const <SubstitutionShiftKind>[],
+    this.yearCallCount,
     this.onEditName,
     this.onAvailabilityChanged,
     this.onVacation,
@@ -28,6 +33,9 @@ class SubstitutionParticipantOverlay extends StatelessWidget {
   final AppUser? user;
   final int? queuePosition;
   final int? monthlyCallCount;
+  final int? statisticsMonth;
+  final List<SubstitutionShiftKind> monthShifts;
+  final int? yearCallCount;
   final VoidCallback onClose;
   final VoidCallback? onEditName;
   final ValueChanged<SubstitutionAvailability>? onAvailabilityChanged;
@@ -90,7 +98,17 @@ class SubstitutionParticipantOverlay extends StatelessWidget {
                   participant: currentParticipant,
                   queuePosition: queuePosition,
                 ),
-                if (monthlyCallCount != null) ...[
+                if (monthlyCallCount != null &&
+                    statisticsMonth != null &&
+                    yearCallCount != null) ...[
+                  const SizedBox(height: 14),
+                  SubstitutionStatisticsSummary(
+                    month: statisticsMonth!,
+                    monthCallCount: monthlyCallCount!,
+                    monthShifts: monthShifts,
+                    yearCallCount: yearCallCount!,
+                  ),
+                ] else if (monthlyCallCount != null) ...[
                   const SizedBox(height: 6),
                   Text(
                     'Вызовов за месяц: $monthlyCallCount',

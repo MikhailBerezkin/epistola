@@ -1,11 +1,14 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import 'substitution_call_finalization_firestore_gateway.dart';
 import 'substitution_call_firestore_gateway.dart';
+import 'substitution_call_reconciliation_service.dart';
 import 'substitution_call_service.dart';
 import 'substitution_participant_actions_service.dart';
 import 'substitution_participant_firestore_gateway.dart';
-import 'substitution_test_statistics_firestore_gateway.dart';
-import 'substitution_test_statistics_service.dart';
+import 'substitution_pending_call_firestore_gateway.dart';
+import 'substitution_statistics_firestore_gateway.dart';
+import 'substitution_statistics_service.dart';
 import 'substitution_work_display_name_firestore_gateway.dart';
 import 'substitution_work_display_name_service.dart';
 
@@ -39,17 +42,37 @@ SubstitutionCallService createSubstitutionCallService({
   );
 }
 
-SubstitutionTestStatisticsService createSubstitutionTestStatisticsService({
+SubstitutionCallReconciliationService
+createSubstitutionCallReconciliationService({
   FirebaseFirestore? firestore,
-  SubstitutionTestStatisticsFirestoreGateway? gateway,
+  SubstitutionPendingCallFirestoreGateway? pendingCallGateway,
+  SubstitutionCallFinalizationFirestoreGateway? finalizationGateway,
+}) {
+  final resolvedPendingCallGateway =
+      pendingCallGateway ??
+      SubstitutionPendingCallFirestoreGateway.firebase(firestore: firestore);
+
+  final resolvedFinalizationGateway =
+      finalizationGateway ??
+      SubstitutionCallFinalizationFirestoreGateway.firebase(
+        firestore: firestore,
+      );
+
+  return SubstitutionCallReconciliationService(
+    pendingCallsLoader: resolvedPendingCallGateway.loadPendingCalls,
+    pendingCallFinalizer: resolvedFinalizationGateway.finalizePendingCall,
+  );
+}
+
+SubstitutionStatisticsService createSubstitutionStatisticsService({
+  FirebaseFirestore? firestore,
+  SubstitutionStatisticsFirestoreGateway? gateway,
 }) {
   final resolvedGateway =
       gateway ??
-      SubstitutionTestStatisticsFirestoreGateway.firebase(firestore: firestore);
+      SubstitutionStatisticsFirestoreGateway.firebase(firestore: firestore);
 
-  return SubstitutionTestStatisticsService(
-    statisticsLoader: resolvedGateway.load,
-  );
+  return SubstitutionStatisticsService(statisticsLoader: resolvedGateway.load);
 }
 
 SubstitutionWorkDisplayNameService createSubstitutionWorkDisplayNameService({

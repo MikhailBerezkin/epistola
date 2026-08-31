@@ -4,9 +4,9 @@ import '../../../domain/models/substitution_participant.dart';
 
 String substitutionAvailabilityLabel(SubstitutionAvailability availability) {
   return switch (availability) {
-    SubstitutionAvailability.green => 'Готов',
-    SubstitutionAvailability.yellow => 'Не в приоритете',
-    SubstitutionAvailability.red => 'Не вызывать',
+    SubstitutionAvailability.green => 'Всегда готов!',
+    SubstitutionAvailability.yellow => 'Только в день',
+    SubstitutionAvailability.red => 'Занят',
   };
 }
 

@@ -9,6 +9,7 @@ import '../domain/models/substitution_participant.dart';
 import '../models/app_user.dart';
 import '../services/spaces/spaces_dependencies.dart';
 import '../services/spaces/substitution/substitution_call_service.dart';
+import '../services/spaces/substitution/substitution_call_reconciliation_service.dart';
 import '../services/spaces/substitution/substitution_dependencies.dart';
 import '../services/spaces/substitution/substitution_participant_actions_service.dart';
 import '../services/spaces/substitution/substitution_participants_service.dart';
@@ -20,8 +21,8 @@ import '../widgets/spaces/substitution/substitution_settings_sheet.dart';
 import 'substitution_add_participants_screen.dart';
 import '../services/spaces/substitution/substitution_work_display_name_service.dart';
 import '../services/spaces/substitution/substitution_ui_preferences.dart';
-import '../domain/models/substitution_test_statistics.dart';
-import '../services/spaces/substitution/substitution_test_statistics_service.dart';
+import '../domain/models/substitution_statistics.dart';
+import '../services/spaces/substitution/substitution_statistics_service.dart';
 import '../domain/models/substitution_shift.dart';
 
 class SubstitutionSpaceScreen extends StatefulWidget {
@@ -37,10 +38,11 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
   late final SubstitutionParticipantsService _participantsService;
   late final SubstitutionUserCache _userCache;
   late final SubstitutionCallService _callService;
+  late final SubstitutionCallReconciliationService _callReconciliationService;
   late final SubstitutionParticipantActionsService _participantActionsService;
   late final SubstitutionWorkDisplayNameService _workDisplayNameService;
   late final SubstitutionUiPreferences _uiPreferences;
-  late final SubstitutionTestStatisticsService _testStatisticsService;
+  late final SubstitutionStatisticsService _statisticsService;
   late final TabController _tabController;
 
   int _currentTabIndex = 0;
@@ -49,9 +51,11 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
 
   bool _showStatistics = false;
 
-  SubstitutionTestStatistics? _testStatistics;
-  bool _isTestStatisticsLoading = false;
-  Object? _testStatisticsError;
+  SubstitutionStatistics? _statistics;
+  bool _statisticsLoaded = false;
+  bool _isStatisticsLoading = false;
+  Object? _statisticsError;
+  int? _statisticsYear;
 
   SpacesAccessRole _accessRole = SpacesAccessRole.member;
 
@@ -93,9 +97,10 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
     _participantsService = SubstitutionParticipantsService.firebase();
     _userCache = SubstitutionUserCache.firebase();
     _callService = createSubstitutionCallService();
+    _callReconciliationService = createSubstitutionCallReconciliationService();
     _participantActionsService = createSubstitutionParticipantActionsService();
     _workDisplayNameService = createSubstitutionWorkDisplayNameService();
-    _testStatisticsService = createSubstitutionTestStatisticsService();
+    _statisticsService = createSubstitutionStatisticsService();
     _uiPreferences = SubstitutionUiPreferences();
 
     unawaited(_loadAccessRole());
@@ -177,6 +182,9 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
         _accessRole = role;
         _isAccessRoleLoading = false;
       });
+      if (role.canManageSubstitution) {
+        unawaited(_reconcileExpiredPendingCalls());
+      }
     } catch (_) {
       if (!mounted) {
         return;
@@ -186,6 +194,23 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
         _accessRole = SpacesAccessRole.member;
         _isAccessRoleLoading = false;
       });
+    }
+  }
+
+  Future<void> _reconcileExpiredPendingCalls() async {
+    try {
+      final finalizedCount = await _callReconciliationService
+          .reconcileExpiredPendingCalls(now: DateTime.now());
+
+      if (!mounted || finalizedCount == 0) {
+        return;
+      }
+
+      _retryStatistics();
+    } catch (_) {
+      // Recovery не должен мешать открытию Подсменки.
+      // Следующий менеджер или следующее открытие
+      // повторит попытку безопасной финализации.
     }
   }
 
@@ -205,7 +230,7 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
         _showStatistics = preferences.showStatistics;
       });
       if (preferences.showStatistics) {
-        await _ensureTestStatisticsLoaded();
+        await _ensureStatisticsLoaded();
       }
     } catch (_) {
       // Локальные настройки не должны мешать работе Подсменки.
@@ -248,7 +273,7 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
     unawaited(_saveShowStatistics(value));
 
     if (value) {
-      unawaited(_ensureTestStatisticsLoaded());
+      unawaited(_ensureStatisticsLoaded());
     }
   }
 
@@ -260,28 +285,32 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
     }
   }
 
-  Future<void> _ensureTestStatisticsLoaded() async {
+  Future<void> _ensureStatisticsLoaded() async {
+    final year = DateTime.now().year;
+
     if (!_showStatistics ||
-        _testStatistics != null ||
-        _isTestStatisticsLoading) {
+        _isStatisticsLoading ||
+        (_statisticsLoaded && _statisticsYear == year)) {
       return;
     }
 
     setState(() {
-      _isTestStatisticsLoading = true;
-      _testStatisticsError = null;
+      _isStatisticsLoading = true;
+      _statisticsError = null;
     });
 
     try {
-      final statistics = await _testStatisticsService.load();
+      final statistics = await _statisticsService.load(year: year);
 
       if (!mounted) {
         return;
       }
 
       setState(() {
-        _testStatistics = statistics;
-        _testStatisticsError = null;
+        _statistics = statistics;
+        _statisticsLoaded = true;
+        _statisticsYear = year;
+        _statisticsError = null;
       });
     } catch (error) {
       if (!mounted) {
@@ -289,27 +318,73 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
       }
 
       setState(() {
-        _testStatisticsError = error;
+        _statisticsError = error;
       });
     } finally {
       if (mounted) {
         setState(() {
-          _isTestStatisticsLoading = false;
+          _isStatisticsLoading = false;
         });
       }
     }
   }
 
-  void _retryTestStatistics() {
-    if (!_showStatistics || _isTestStatisticsLoading) {
+  void _retryStatistics() {
+    if (!_showStatistics || _isStatisticsLoading) {
       return;
     }
 
     setState(() {
-      _testStatisticsError = null;
+      _statistics = null;
+      _statisticsLoaded = false;
+      _statisticsYear = null;
+      _statisticsError = null;
     });
 
-    unawaited(_ensureTestStatisticsLoaded());
+    unawaited(_ensureStatisticsLoaded());
+  }
+
+  int? _currentMonthStatisticsCountFor(String userId) {
+    if (!_showStatistics || !_statisticsLoaded || _statisticsError != null) {
+      return null;
+    }
+
+    final now = DateTime.now();
+
+    if (_statisticsYear != now.year) {
+      return null;
+    }
+
+    return _statistics?.callsForMonth(month: now.month, userId: userId) ?? 0;
+  }
+
+  List<SubstitutionShiftKind> _currentMonthStatisticsShiftsFor(String userId) {
+    if (!_showStatistics || !_statisticsLoaded || _statisticsError != null) {
+      return const <SubstitutionShiftKind>[];
+    }
+
+    final now = DateTime.now();
+
+    if (_statisticsYear != now.year) {
+      return const <SubstitutionShiftKind>[];
+    }
+
+    return _statistics?.shiftsForMonth(month: now.month, userId: userId) ??
+        const <SubstitutionShiftKind>[];
+  }
+
+  int? _currentYearStatisticsCountFor(String userId) {
+    if (!_showStatistics || !_statisticsLoaded || _statisticsError != null) {
+      return null;
+    }
+
+    final now = DateTime.now();
+
+    if (_statisticsYear != now.year) {
+      return null;
+    }
+
+    return _statistics?.callsForYear(userId) ?? 0;
   }
 
   void _watchParticipants() {
@@ -704,6 +779,8 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
         }
 
         messenger.hideCurrentSnackBar();
+
+        unawaited(_finalizePendingCallAfterUndoWindow(receipt));
       });
     } catch (_) {
       if (!mounted) {
@@ -719,6 +796,26 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
           _isRotationActionInProgress = false;
         });
       }
+    }
+  }
+
+  Future<void> _finalizePendingCallAfterUndoWindow(
+    SubstitutionCallReceipt receipt,
+  ) async {
+    try {
+      final finalized = await _callReconciliationService.finalizePendingCall(
+        callId: receipt.callId,
+      );
+
+      if (!mounted || !finalized) {
+        return;
+      }
+
+      _retryStatistics();
+    } catch (_) {
+      // Если финализация не удалась, pendingCall остаётся.
+      // Recovery при следующем открытии Подсменки
+      // безопасно повторит попытку.
     }
   }
 
@@ -1063,10 +1160,10 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
           Scaffold(
             appBar: AppBar(
               leading: BackButton(onPressed: _handleAppBarBack),
-              title: const Text('Подсменка'),
+              title: const Text('"Список"'),
               actions: [
                 IconButton(
-                  tooltip: 'Настройки подсменки',
+                  tooltip: 'Настройки списка',
                   onPressed: _isActionInProgress
                       ? null
                       : () {
@@ -1101,11 +1198,22 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
             participant: selectedParticipant,
             user: selectedUser,
             queuePosition: selectedQueuePosition,
-            monthlyCallCount:
-                _showStatistics &&
-                    selectedParticipant != null &&
-                    _testStatistics != null
-                ? _testStatistics!.callsFor(selectedParticipant.userId)
+            monthlyCallCount: selectedParticipant != null
+                ? _currentMonthStatisticsCountFor(selectedParticipant.userId)
+                : null,
+            statisticsMonth:
+                selectedParticipant != null &&
+                    _currentMonthStatisticsCountFor(
+                          selectedParticipant.userId,
+                        ) !=
+                        null
+                ? DateTime.now().month
+                : null,
+            monthShifts: selectedParticipant != null
+                ? _currentMonthStatisticsShiftsFor(selectedParticipant.userId)
+                : const <SubstitutionShiftKind>[],
+            yearCallCount: selectedParticipant != null
+                ? _currentYearStatisticsCountFor(selectedParticipant.userId)
                 : null,
             onClose: _closeParticipantCard,
             onEditName:
@@ -1223,18 +1331,18 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
               ),
             ),
           ),
-        if (_showStatistics && _isTestStatisticsLoading)
+        if (_showStatistics && _isStatisticsLoading)
           const LinearProgressIndicator(minHeight: 2),
 
-        if (_showStatistics && _testStatisticsError != null)
+        if (_showStatistics && _statisticsError != null)
           Material(
             color: Theme.of(context).colorScheme.errorContainer,
             child: ListTile(
               dense: true,
               leading: const Icon(Icons.warning_amber_rounded),
-              title: const Text('Не удалось загрузить тестовую статистику'),
+              title: const Text('Не удалось загрузить статистику'),
               trailing: TextButton(
-                onPressed: _retryTestStatistics,
+                onPressed: _retryStatistics,
                 child: const Text('Повторить'),
               ),
             ),
@@ -1246,11 +1354,11 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
               _ParticipantListTab(
                 participants: activeParticipants,
                 usersById: usersById,
-                emptyText: 'В ротации пока нет участников',
+                emptyText: '...',
                 showQueueNumber: true,
                 queueDisplayMode: _queueDisplayMode,
                 showStatistics: _showStatistics,
-                statistics: _testStatistics,
+                statisticsCountFor: _currentMonthStatisticsCountFor,
                 onCall: canManageSubstitution && !_isActionInProgress
                     ? (participant) {
                         unawaited(_confirmCallParticipant(participant));
@@ -1265,7 +1373,7 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
                 showQueueNumber: false,
                 queueDisplayMode: _queueDisplayMode,
                 showStatistics: _showStatistics,
-                statistics: _testStatistics,
+                statisticsCountFor: _currentMonthStatisticsCountFor,
                 onOpenCard: _openParticipantCard,
               ),
               _ParticipantListTab(
@@ -1275,7 +1383,7 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
                 showQueueNumber: false,
                 queueDisplayMode: _queueDisplayMode,
                 showStatistics: _showStatistics,
-                statistics: _testStatistics,
+                statisticsCountFor: _currentMonthStatisticsCountFor,
                 onOpenCard: _openParticipantCard,
               ),
             ],
@@ -1294,7 +1402,7 @@ class _ParticipantListTab extends StatelessWidget {
     required this.showQueueNumber,
     required this.queueDisplayMode,
     required this.showStatistics,
-    required this.statistics,
+    required this.statisticsCountFor,
     required this.onOpenCard,
     this.onCall,
   });
@@ -1306,7 +1414,7 @@ class _ParticipantListTab extends StatelessWidget {
   final bool showQueueNumber;
   final SubstitutionQueueDisplayMode queueDisplayMode;
   final bool showStatistics;
-  final SubstitutionTestStatistics? statistics;
+  final int? Function(String userId) statisticsCountFor;
 
   final ValueChanged<SubstitutionParticipant> onOpenCard;
   final ValueChanged<SubstitutionParticipant>? onCall;
@@ -1332,8 +1440,8 @@ class _ParticipantListTab extends StatelessWidget {
           user: user,
           queuePosition: showQueueNumber ? index + 1 : null,
           queueDisplayMode: queueDisplayMode,
-          statisticsCount: showStatistics && statistics != null
-              ? statistics!.callsFor(participant.userId)
+          statisticsCount: showStatistics
+              ? statisticsCountFor(participant.userId)
               : null,
           onCall: onCall == null
               ? null

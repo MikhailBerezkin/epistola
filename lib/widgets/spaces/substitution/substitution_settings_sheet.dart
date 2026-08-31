@@ -88,7 +88,7 @@ class _SubstitutionSettingsSheetState extends State<SubstitutionSettingsSheet> {
             ),
             const SizedBox(height: 18),
             Text(
-              'Настройки подсменки',
+              'Настройки списка',
               style: Theme.of(
                 context,
               ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),

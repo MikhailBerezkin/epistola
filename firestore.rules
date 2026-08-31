@@ -1998,6 +1998,353 @@ function isManagedSubstitutionUndoParticipantUpdate(userId) {
         'lastCall'
       ]);
 }
+function hasValidSubstitutionStatisticsData(data) {
+  return data.keys().hasAll([
+        'year',
+        'monthCallCounts',
+        'monthShifts',
+        'yearCallCounts',
+        'lastFinalizedCallId',
+        'updatedAt'
+      ])
+      && data.keys().hasOnly([
+        'year',
+        'monthCallCounts',
+        'monthShifts',
+        'yearCallCounts',
+        'lastFinalizedCallId',
+        'updatedAt'
+      ])
+
+      && data.year is int
+      && data.year > 0
+
+      && data.monthCallCounts is map
+      && data.monthShifts is map
+      && data.yearCallCounts is map
+
+      && data.lastFinalizedCallId is string
+      && data.lastFinalizedCallId.size() > 0
+      && !data.lastFinalizedCallId.matches('.*[/].*')
+
+      && data.updatedAt is timestamp
+      && data.updatedAt == request.time;
+}
+
+function isNewSubstitutionStatistics(
+  data,
+  pending
+) {
+  let monthKey = string(pending.shiftMonth);
+
+  let monthCounts =
+      data.monthCallCounts.get(monthKey, {});
+
+  let monthShiftUsers =
+      data.monthShifts.get(monthKey, {});
+
+  let userShifts =
+      monthShiftUsers.get(pending.userId, []);
+
+  return data.monthCallCounts.keys().hasAll([
+        monthKey
+      ])
+      && data.monthCallCounts.keys().hasOnly([
+        monthKey
+      ])
+
+      && monthCounts is map
+      && monthCounts.keys().hasAll([
+        pending.userId
+      ])
+      && monthCounts.keys().hasOnly([
+        pending.userId
+      ])
+      && monthCounts[pending.userId] == 1
+
+      && data.monthShifts.keys().hasAll([
+        monthKey
+      ])
+      && data.monthShifts.keys().hasOnly([
+        monthKey
+      ])
+
+      && monthShiftUsers is map
+      && monthShiftUsers.keys().hasAll([
+        pending.userId
+      ])
+      && monthShiftUsers.keys().hasOnly([
+        pending.userId
+      ])
+
+      && userShifts is list
+      && userShifts == [
+        pending.shiftKind
+      ]
+
+      && data.yearCallCounts.keys().hasAll([
+        pending.userId
+      ])
+      && data.yearCallCounts.keys().hasOnly([
+        pending.userId
+      ])
+      && data.yearCallCounts[pending.userId] == 1;
+}
+
+function isUpdatedSubstitutionStatistics(
+  before,
+  after,
+  pending
+) {
+  let monthKey = string(pending.shiftMonth);
+
+  let oldMonthCounts =
+      before.monthCallCounts.get(monthKey, {});
+
+  let newMonthCounts =
+      after.monthCallCounts.get(monthKey, {});
+
+  let oldMonthShiftUsers =
+      before.monthShifts.get(monthKey, {});
+
+  let newMonthShiftUsers =
+      after.monthShifts.get(monthKey, {});
+
+  let oldUserShifts =
+      oldMonthShiftUsers.get(pending.userId, []);
+
+  let newUserShifts =
+      newMonthShiftUsers.get(pending.userId, []);
+
+  let oldYearCount =
+      before.yearCallCounts.get(pending.userId, 0);
+
+  let newYearCount =
+      after.yearCallCounts.get(pending.userId, -1);
+
+  return before.year == after.year
+
+      && after.diff(before).affectedKeys().hasAll([
+        'monthCallCounts',
+        'monthShifts',
+        'yearCallCounts',
+        'lastFinalizedCallId',
+        'updatedAt'
+      ])
+
+      && after.diff(before).affectedKeys().hasOnly([
+        'monthCallCounts',
+        'monthShifts',
+        'yearCallCounts',
+        'lastFinalizedCallId',
+        'updatedAt'
+      ])
+
+      && oldMonthCounts is map
+      && newMonthCounts is map
+
+      && after.monthCallCounts
+          .diff(before.monthCallCounts)
+          .affectedKeys()
+          .hasAll([
+            monthKey
+          ])
+
+      && after.monthCallCounts
+          .diff(before.monthCallCounts)
+          .affectedKeys()
+          .hasOnly([
+            monthKey
+          ])
+
+      && newMonthCounts
+          .diff(oldMonthCounts)
+          .affectedKeys()
+          .hasAll([
+            pending.userId
+          ])
+
+      && newMonthCounts
+          .diff(oldMonthCounts)
+          .affectedKeys()
+          .hasOnly([
+            pending.userId
+          ])
+
+      && oldMonthCounts.get(
+        pending.userId,
+        0
+      ) is int
+
+      && newMonthCounts.get(
+        pending.userId,
+        -1
+      ) is int
+
+      && newMonthCounts[pending.userId]
+          == oldMonthCounts.get(
+            pending.userId,
+            0
+          ) + 1
+
+      && oldMonthShiftUsers is map
+      && newMonthShiftUsers is map
+
+      && after.monthShifts
+          .diff(before.monthShifts)
+          .affectedKeys()
+          .hasAll([
+            monthKey
+          ])
+
+      && after.monthShifts
+          .diff(before.monthShifts)
+          .affectedKeys()
+          .hasOnly([
+            monthKey
+          ])
+
+      && newMonthShiftUsers
+          .diff(oldMonthShiftUsers)
+          .affectedKeys()
+          .hasAll([
+            pending.userId
+          ])
+
+      && newMonthShiftUsers
+          .diff(oldMonthShiftUsers)
+          .affectedKeys()
+          .hasOnly([
+            pending.userId
+          ])
+
+      && oldUserShifts is list
+      && newUserShifts is list
+
+      && newUserShifts
+    == oldUserShifts.concat([
+      pending.shiftKind
+    ])
+
+      && before.yearCallCounts is map
+      && after.yearCallCounts is map
+
+      && after.yearCallCounts
+          .diff(before.yearCallCounts)
+          .affectedKeys()
+          .hasAll([
+            pending.userId
+          ])
+
+      && after.yearCallCounts
+          .diff(before.yearCallCounts)
+          .affectedKeys()
+          .hasOnly([
+            pending.userId
+          ])
+
+      && oldYearCount is int
+      && newYearCount is int
+
+      && newYearCount == oldYearCount + 1;
+}
+
+function isSubstitutionStatisticsFinalize(
+  statisticsId
+) {
+  let statistics = request.resource.data;
+
+  let callId =
+      statistics.get(
+        'lastFinalizedCallId',
+        ''
+      );
+
+  let pendingPath =
+      /databases/$(database)/documents/spaces/substitution/pendingCalls/$(callId);
+
+  let statisticsPath =
+      /databases/$(database)/documents/spaces/substitution/statistics/$(statisticsId);
+
+  return isSpacesManager()
+
+      && hasValidSubstitutionStatisticsData(
+        statistics
+      )
+
+      && statisticsId
+          == 'year_' + string(statistics.year)
+
+      && exists(pendingPath)
+      && !existsAfter(pendingPath)
+
+      && hasValidSubstitutionPendingCallData(
+        get(pendingPath).data,
+        callId
+      )
+
+      && get(pendingPath).data.shiftYear
+          == statistics.year
+
+      && get(pendingPath).data.calledAt
+          <= request.time
+
+      && request.time
+          >= get(pendingPath).data.calledAt
+              + duration.value(6, 's')
+
+      && (
+        !exists(statisticsPath)
+        ? isNewSubstitutionStatistics(
+            statistics,
+            get(pendingPath).data
+          )
+        : isUpdatedSubstitutionStatistics(
+            resource.data,
+            statistics,
+            get(pendingPath).data
+          )
+      );
+}
+
+function isSubstitutionFinalizationPendingDelete(
+  callId
+) {
+  let pending = resource.data;
+
+  let statisticsId =
+      'year_' + string(pending.shiftYear);
+
+  let statisticsPath =
+      /databases/$(database)/documents/spaces/substitution/statistics/$(statisticsId);
+
+  return isSpacesManager()
+
+      && hasValidSubstitutionPendingCallData(
+        pending,
+        callId
+      )
+
+      && pending.calledAt <= request.time
+
+      && request.time
+          >= pending.calledAt
+              + duration.value(6, 's')
+
+      && existsAfter(statisticsPath)
+
+      && getAfter(statisticsPath)
+          .data.lastFinalizedCallId
+          == callId
+
+      && getAfter(statisticsPath)
+          .data.year
+          == pending.shiftYear
+
+      && getAfter(statisticsPath)
+          .data.updatedAt
+          == request.time;
+}
 
 match /spaces/substitution {
   allow get: if isSpacesManager();
@@ -2023,8 +2370,8 @@ match /spaces/substitution {
 
   allow delete: if false;
       match /pendingCalls/{callId} {
-    allow get: if isSpacesManager();
-    allow list: if false;
+  allow get: if isSpacesManager();
+  allow list: if isSpacesManager();
 
     allow create: if
         isSpacesManager()
@@ -2142,21 +2489,31 @@ match /spaces/substitution {
             ).data.lastCall.previousRotationOrder
 
         && getAfter(
-          /databases/$(database)/documents/spaces/substitution/participants/$(resource.data.userId)
-        ).data.rotationOrder
-            != get(
-              /databases/$(database)/documents/spaces/substitution/participants/$(resource.data.userId)
-            ).data.rotationOrder;
+  /databases/$(database)/documents/spaces/substitution/participants/$(resource.data.userId)
+).data.rotationOrder
+    != get(
+      /databases/$(database)/documents/spaces/substitution/participants/$(resource.data.userId)
+    ).data.rotationOrder
+
+|| isSubstitutionFinalizationPendingDelete(
+  callId
+);
   }
 
-    match /statistics/test {
-    allow get: if signedIn();
-    allow list: if false;
+    match /statistics/{statisticsId} {
+  allow get: if
+      signedIn() &&
+      statisticsId != 'test';
 
-    // TEST statistics are read-only at this stage.
-    // Finalize/write rules will be added separately.
-    allow create, update, delete: if false;
-  }
+  allow list: if false;
+
+  allow create, update: if
+      isSubstitutionStatisticsFinalize(
+        statisticsId
+      );
+
+  allow delete: if false;
+}
 
   match /participants/{userId} {
     allow get, list: if signedIn();
