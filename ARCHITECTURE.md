@@ -2,88 +2,80 @@
 
 Основной технический документ проекта Epistola.
 
-При расхождении информации используется следующий приоритет:
+При конфликте информации:
 
 ```text
-исходный код
+исходный код текущей ветки
 → PROJECT_CONTEXT.md
 → ARCHITECTURE.md
 → README.md
 ```
 
-`PROJECT_CONTEXT.md` — handoff текущего состояния.
+`PROJECT_CONTEXT.md` хранит текущий handoff и контрольную точку.
 
-`ARCHITECTURE.md` — устойчивые архитектурные решения, contracts, data flow и security boundaries.
+`ARCHITECTURE.md` фиксирует устойчивые архитектурные решения.
 
-`README.md` — обзор проекта для быстрого знакомства.
+`README.md` предназначен для быстрого обзора проекта.
 
 ## 1. Статус документа
 
 | Параметр | Значение |
 |---|---|
-| Версия документа | `4.4` |
-| Текущий release | `v0.7.4` |
-| Release merge commit | `d91270c` |
-| Feature commit | `526504c` |
-| Post-merge architecture cleanup | `730bab0` |
-| Последний завершённый этап | `Avatar Interaction/Card + Notification Controls Foundation` |
-| Основная ветка | `main` |
-| Последнее обновление | август 2026 |
+| Версия документа | `5.0` |
+| Current development target | `v0.8.0` |
+| Stage | `Spaces / Substitution Foundation` |
+| Feature branch | `feat/v0.8.0-spaces-substitution-foundation` |
+| Functional checkpoint | `63c405e` |
+| Stable baseline before v0.8.0 | `v0.7.4` |
+| Main platform | Android |
+| Pilot target | 40–50 users |
+| Last update | август 2026 |
 
-`v0.7.4` добавляет две связанные, но архитектурно разделённые возможности:
+`v0.8.0` расширяет Epistola за пределы messenger-only UX и создаёт основу внутренних приложений Spaces.
+
+Главное архитектурное изменение:
 
 ```text
-Chat Identity Card Foundation
-Per-chat Notification Controls
+Chats
+и
+Spaces
+являются соседними application areas
 ```
 
-Дополнительно release содержит Android notification sound/vibration hardening.
-
-Финальный кодовый HEAD перед документацией:
-
-```text
-Финальный code HEAD перед release tag:
-
-```text
-7f12f40 perf(chat): lazy-load identity card content
-```
-
-Архитектурный cleanup выполнен после release merge, потому что `ChatNotificationSettings` использует Firestore `Timestamp` для persistence mapping и поэтому не должен находиться в pure domain.
+Spaces не должны моделироваться как chat type.
 
 ## 2. Назначение проекта
 
-Epistola — корпоративный мессенджер на Flutter и Firebase.
+Epistola — корпоративный Flutter/Firebase messenger и foundation будущей внутренней платформы.
 
-Краткосрочные цели:
-
-- стабильное Android-приложение;
-- пилотная группа 40–50 пользователей;
-- контролируемые Firebase costs;
-- небольшие проверяемые этапы;
-- безопасные private/group chats;
-- заменяемый UI;
-- расширяемый media foundation;
-- предсказуемая навигация;
-- realtime feedback без избыточных backend operations.
-
-Долгосрочные цели:
-
-- коммуникационная платформа на 600–700 сотрудников;
-- задачи;
-- объявления;
-- документы;
-- рабочие смены;
-- внутренние приложения;
-- корпоративные сервисы;
-- возможный собственный backend.
-
-Spaces:
+Краткосрочная цель:
 
 ```text
-Spaces → внутренние приложения Epistola
+стабильный Android pilot на 40–50 пользователей
 ```
 
-Spaces не моделируются как обычный chat type.
+Долгосрочная цель:
+
+```text
+communication + internal services platform
+для сотен сотрудников
+```
+
+Направления:
+
+```text
+private/group chats
+media
+notifications
+roles/moderation
+tasks
+announcements
+documents
+work shifts
+transport
+safety information
+internal applications
+```
 
 ## 3. Infrastructure
 
@@ -94,1553 +86,1056 @@ Firestore region: eur3
 Realtime Database region: europe-west1
 Cloud Functions region: europe-west1
 Android package: com.epistola.app
-Storage bucket: gs://epistola-434b7.firebasestorage.app
 ```
 
-Realtime Database URL:
+Firebase services:
 
 ```text
-https://epistola-434b7-default-rtdb.europe-west1.firebasedatabase.app
-```
-
-Используются:
-
-```text
-Firebase Authentication
-Cloud Firestore
+Authentication
+Firestore
 Realtime Database
+Storage
+Messaging
+Functions
 Security Rules
-Cloud Storage
-Cloud Messaging
-Cloud Functions
 ```
 
-Infrastructure configuration не должна находиться в UI или pure domain layer.
+Infrastructure configuration не должна находиться в pure domain или виджетах.
 
-## 4. Архитектурные слои
+## 4. Основные архитектурные слои
+
+Canonical layering:
 
 ```text
 Flutter UI
     ↓
-Presentation / Controllers
+Presentation / Screen orchestration
     ↓
 Application Services
     ↓
-Domain Models and Contracts
+Domain Models / Contracts
     ↓
 Infrastructure Gateways / Adapters
     ↓
 Firebase
 ```
 
-Основные правила:
-
-- верхний слой зависит от нижнего contract;
-- нижний слой не зависит от UI;
-- pure domain не зависит от Flutter и Firebase;
-- Firebase-aware persistence models могут находиться в `lib/models`;
-- navigation adapter может зависеть от Flutter, но не переносит Firebase business logic в widgets;
-- временное UI-state не должно создавать лишние backend reads;
-- optimistic presentation не заменяет server-side security;
-- ephemeral presence не хранится в Firestore;
-- security-sensitive access projection создаётся только trusted server code;
-- permissions не выводятся из внешнего вида UI;
-- notification payload считается недоверенным.
-
 ### 4.1 Flutter UI
 
-Отвечает за:
+UI отвечает за:
 
-- rendering;
-- gestures;
-- progress;
-- retry;
-- локальное состояние;
-- modal sheets;
-- overlay state;
-- navigation.
+```text
+rendering
+gestures
+loading/error presentation
+dialogs
+bottom sheets
+overlay
+local preferences
+navigation
+```
 
 UI не должен:
 
-- обращаться к Storage напрямую;
-- выдавать upload grants;
-- формировать canonical media paths;
-- выполнять remote rollback;
-- содержать compression policy;
-- выполнять security-sensitive Firestore transaction без application service;
-- доверять `chatId` из push без resolver;
-- создавать RTDB access projection;
-- изменять notification settings другого UID.
-
-### 4.2 Presentation
-
-Преобразует backend/application state в UI.
-
-Ключевые presentation flows:
-
 ```text
-message.createdAt
-→ ChatDateFormatter
-→ ChatDateSeparator / ChatScrollDateIndicator
+выполнять Firestore transaction напрямую для business flow
+считать production statistics самостоятельно
+определять security permissions по видимости кнопки
+создавать Firebase schema из presentation-specific объектов
 ```
 
+### 4.2 Presentation / Screen orchestration
+
+Screen может:
+
 ```text
-peer privateReadState
-→ PrivateReadCursorMapper
-→ PrivateReadCursorResolver
-→ PrivateReadReceiptIndicator
+собрать services
+подписаться на participant stream
+держать screen cache
+запустить application operation
+обновить UI после результата
 ```
 
+Но business invariants должны оставаться ниже.
+
+Пример v0.8.0:
+
 ```text
-message.reactions
-→ GroupMessageReactionMapper
-→ GroupMessageReactionBar
+SubstitutionSpaceScreen
+→ SubstitutionCallService
+→ Firestore gateway / transaction
 ```
 
+и:
+
 ```text
-peer RTDB timestamp
-→ freshness validation
-→ ChatAppBar subtitle
+SubstitutionSpaceScreen
+→ SubstitutionCallReconciliationService
+→ FinalizationGateway
 ```
 
+### 4.3 Application services
+
+Application layer отвечает за orchestration:
+
 ```text
-chat document
-→ ChatNotificationSettings.fromChatData
-→ effective notification mode
-→ identity-card action state
+validation
+ordering
+transaction sequence
+recovery
+retry-safe flow
+statistics loading
+participant mutations
+work name mutations
 ```
 
-```text
-chat/user avatar metadata
-→ ChatIdentityOverlay mounts identity content on first open
-→ ChatIdentityBackground
-→ full image / legacy URL / initials fallback
-```
-
-### 4.3 Application Services
-
-Оркестрируют validation, ordering, transactions, debounce, upload, atomic write, rollback, cleanup и errors.
-
-Примеры:
+Relevant v0.8.0 services:
 
 ```text
-ExistingImageMessageSendService
-FirstPrivateImageMessageSendService
-PrivateReadReceiptService
-PrivateReadReceiptDebouncer
-GroupMessageReactionService
-PrivateTypingService
-PrivateTypingCoordinator
-ChatNotificationSettingsService
-PushDeepLinkCoordinator
-PushDeepLinkResolver
-ChatMessagesService
+SubstitutionParticipantsService
+SubstitutionCallService
+SubstitutionCallReconciliationService
+SubstitutionParticipantActionsService
+SubstitutionWorkDisplayNameService
+SubstitutionStatisticsService
 ```
 
 ### 4.4 Domain
 
-Pure domain:
+Pure domain содержит semantic state без Flutter/Firebase dependency.
+
+v0.8.0 domain:
 
 ```text
-MessageType
-MessageContent
-MessagePreview
-MessagePushRepresentation
-ImageMessageMetadata
-ImageMessageLimits
-ImageMessageSendState
-ImageMessageDeletionPolicy
-MediaAsset
-UserAvatar
-GroupAvatar
-PushDeepLinkRequest
-ChatDateFormatter
-PrivateReadCursor
-GroupMessageReaction
+SpacesAccessRole
+SubstitutionParticipant
+SubstitutionAvailability
+SubstitutionParticipantStatus
+SubstitutionShift
+SubstitutionShiftKind
+SubstitutionCallReceipt
+SubstitutionPendingCall
+SubstitutionStatistics
 ```
 
-`PrivateReadCursor` хранит monotonic cursor semantics и не зависит от Flutter/Firebase.
-
-`GroupMessageReaction.resolveTap` задаёт взаимоисключающее состояние:
+Domain не хранит:
 
 ```text
-none
-like
-dislike
+Colors
+Widgets
+BuildContext
+Firebase DocumentReference
+Firestore Transaction
 ```
 
-### 4.5 Firebase-aware application models
+### 4.5 Infrastructure
 
-`ChatNotificationSettings` находится в:
+Firebase-aware layer реализует чтение/запись:
 
 ```text
-lib/models/chat_notification_settings.dart
+participant persistence
+pending calls
+statistics document
+call finalization transaction
+Spaces role storage
 ```
 
-Причина:
+Relevant gateways:
 
 ```text
-toFirestore()
-fromChatData()
-Firestore Timestamp
+SubstitutionPendingCallFirestoreGateway
+SubstitutionCallFinalizationFirestoreGateway
+SubstitutionStatisticsFirestoreGateway
 ```
 
-Это persistence-aware model, а не pure domain object.
+## 5. Spaces architecture
 
-Перенос из `lib/domain/models` выполнен отдельным cleanup commit:
+Spaces — container внутренних приложений.
+
+Current entry point:
 
 ```text
-730bab0 refactor(chat): move notification settings out of domain
+lib/screens/spaces_page.dart
 ```
 
-### 4.6 Infrastructure
-
-Реализует contracts через Firebase:
+Current tiles:
 
 ```text
-FirebaseImageMessageStorageAdapter
-FirebaseMediaStorageProvider
-Firestore gateways
-Cloud Functions callable gateway
-PushDeepLinkResolver.firebase()
-PrivateReadReceiptService.firebase()
-GroupMessageReactionService.firebase()
-PrivateTypingService.firebase()
-ChatNotificationSettingsService.firebase()
+"Список"
+Судозаходы
+Календарь смен
+Автобусы
+ОТ и ТБ
 ```
 
-## 5. Структура проекта
+Только `"Список"` имеет production foundation.
+
+Остальные modules пока placeholders.
+
+Architecture rule:
 
 ```text
-lib/
-├── domain/
-│   └── models/
-├── helpers/
-├── models/
-│   └── chat_notification_settings.dart
-├── screens/
-├── services/
-│   ├── avatar/
-│   ├── chat/
-│   ├── media/
-│   └── push/
-├── theme/
-├── widgets/
-│   └── chat/
-├── firebase_options.dart
-└── main.dart
-
-functions/
-└── src/
-    └── index.ts
-
-test/
-├── domain/
-├── helpers/
-├── models/
-├── rules/
-│   ├── database/
-│   ├── firestore/
-│   └── storage/
-├── services/
-└── widgets/
+новый Space
+→ собственный domain/application/infrastructure flow
+→ не превращать его в chat subtype только ради reuse существующего UI
 ```
 
-Ключевые файлы v0.7.4:
+## 6. Spaces access roles
+
+Domain:
 
 ```text
-lib/models/chat_notification_settings.dart
-lib/services/chat/chat_notification_settings_service.dart
-lib/services/notification_service.dart
-
-lib/widgets/chat/chat_identity_action_button.dart
-lib/widgets/chat/chat_identity_background.dart
-lib/widgets/chat/chat_identity_card_content.dart
-lib/widgets/chat/chat_identity_overlay.dart
-lib/widgets/chat/chat_notification_settings_sheet.dart
-
-lib/widgets/chat/chat_app_bar.dart
-lib/widgets/chat_app_bar_title.dart
-lib/screens/chat_screen.dart
-lib/screens/group_info_screen.dart
-
-android/app/src/main/AndroidManifest.xml
-android/app/src/main/res/raw/seagull_notification.mp3
-android/app/src/main/res/raw/epistola_keep.xml
-
-functions/src/index.ts
-firestore.rules
-
-test/rules/firestore/chat_notification_settings_rules.test.mjs
-test/services/chat/chat_notification_settings_service_test.dart
+SpacesAccessRole
 ```
 
-## 6. Пользовательская идентичность
+Values:
 
 ```text
-FirebaseAuth.currentUser.uid
-==
-users/{uid}
+member
+brigadier
+owner
 ```
 
-Firebase UID является главным application identifier.
-
-Один UID используется как ключ:
+Capabilities:
 
 ```text
-chat membership
-privateReadState
-message reactions
-privateTyping
-privateChatAccess
-notificationSettingsByUser
+member:
+  use allowed module features
+
+brigadier:
+  canManageSubstitution
+
+owner:
+  canManageSubstitution
+  canManageSpacesRoles
 ```
 
-## 7. Chat architecture
+Owner — highest priority role.
 
-`ChatService` исторически является facade.
+Security authorization не должна основываться только на Flutter role state.
 
-Внутренние обязанности разделены:
+Flutter state определяет UX, Firestore Rules защищают backend.
+
+## 7. Substitution participant architecture
+
+Canonical participant:
 
 ```text
-ChatBaseService
-ChatMessagesService
-ChatPrivateService
-ChatGroupsService
-ChatMembersService
-ChatPermissionsService
-ChatSearchService
-ChatPeerResolver
-ChatPeerUserCache
+userId
+rotationOrder
+availability
+status
 ```
 
-Private chat использует deterministic canonical ID.
-
-Выбор пользователя и выход назад не создают chat.
-
-Chat создаётся только после успешного первого сообщения.
-
-Group chat содержит:
+Availability:
 
 ```text
-title
-members
-roles
-permissions
-metadata
-optional avatar
-notificationSettingsByUser
+green
+yellow
+red
 ```
 
-## 8. Message model и история
-
-Поддерживаемые типы:
+Status:
 
 ```text
-text
-image
+active
+vacation
+sick
 ```
 
-Pagination invariants:
-
-- page size 20;
-- merge по document ID;
-- chronological order;
-- сохранение scroll position;
-- realtime не удаляет старые страницы;
-- один page request одновременно;
-- near-bottom-only autoscroll.
-
-Logical deletion:
+Queue membership:
 
 ```text
-visible
-hiddenForCurrentUser
-deletedForEveryone
+status == active
 ```
 
-Delete for everyone доступен только sender.
+Vacation/sick participants остаются participant records, но выводятся в отдельные tabs.
 
-Firestore message document физически не удаляется.
+Это лучше, чем удалять пользователя из domain и создавать заново при каждом отпуске/больничном.
 
-### 8.1 Local history cache
+## 8. User data boundary
 
-`MessagesList` объединяет realtime snapshot и ранее загруженные страницы по message ID.
+Participant document не должен дублировать весь `users/{uid}` profile.
 
-Для немедленного UI-скрытия успешно удалённого старого сообщения используется локальное presentation state.
+UID остаётся canonical identity.
 
-Это optimization, а не security boundary.
+Participant stream даёт substitution state.
 
-## 9. Chat Identity Card Foundation — v0.7.4
-
-### 9.1 Scope
-
-Identity-card foundation подключён к шапке открытого:
+User cache по UID даёт:
 
 ```text
-private chat
-group chat
+name
+workDisplayName
+email
+avatar metadata
 ```
 
-Он пока не является глобальной avatar-card системой для всех списков приложения.
+Это сокращает повторные reads.
 
-### 9.2 Entry point
+Relevant component:
 
-`ChatAppBarTitle` получает optional `onTap`.
+```text
+SubstitutionUserCache
+```
 
-При наличии callback:
+## 9. Work display name
 
-- весь title area становится `InkWell`;
-- `Semantics.button == true`;
-- accessibility label: `Открыть информацию о чате`.
+Рабочее имя — отдельная рабочая presentation identity.
+
+Fallback:
+
+```text
+workDisplayName
+→ regular name
+→ email
+→ uid
+```
+
+Manager может изменять рабочее имя.
+
+Пустое рабочее имя означает возврат к обычному profile name.
+
+## 10. Queue architecture
+
+Canonical order хранится в Firestore:
+
+```text
+rotationOrder
+```
+
+Кнопка call не должна локально переставлять List и считать это authoritative result.
 
 Flow:
 
 ```text
-ChatAppBarTitle
-→ onIdentityTap
-→ ChatScreen._openIdentityOverlay()
+manager selects active participant
+→ selects shift
+→ application call service
+→ transaction updates queue/revision
+→ creates pendingCall
+→ realtime participant stream updates UI
 ```
 
-### 9.3 Overlay mechanics
+Таким образом два manager-клиента не должны иметь два независимых canonical порядка.
 
-`ChatIdentityOverlay`:
+## 11. Shift domain
 
-```text
-heightFactor: 0.64
-animation: 340 ms
-curve: easeOutCubic
-bottom radius: 28
-scrim alpha: 0.16
-```
-
-Structure:
-
-```text
-Stack
-├── chat Scaffold
-└── ChatIdentityOverlay
-    ├── dim scrim
-    └── animated top panel
-```
-
-Panel закрывается:
-
-```text
-tap outside
-back arrow
-system Back
-```
-
-`PopScope` сначала закрывает identity overlay и только следующий Back запускает leave-chat lifecycle.
-
-Overlay является локальным presentation state и не создаёт новый chat route.
-
-### 9.4 Preserving chat state
-
-Overlay располагается поверх существующего `Scaffold`.
-
-Поэтому при открытии/закрытии:
-
-- message list не заменяется отдельным screen;
-- draft controller остаётся тем же;
-- текущий chat document listener остаётся тем же;
-- scroll state не должен сбрасываться из-за отдельной navigation route.
+`SubstitutionShift` содержит:
 
-### 9.5 Identity source
-
-`ChatScreen` уже имеет один top-level:
-
-```text
-StreamBuilder<DocumentSnapshot>
-chats/{chatId}
-```
-
-Из этого snapshot выводятся:
-
-- chat type;
-- group name;
-- member count;
-- roles;
-- group avatar;
-- notification settings.
-
-Для private identity используются данные `peerUser`, уже переданные/разрешённые для экрана.
-
-Foundation не добавляет второй Firestore listener только ради карточки.
-
-### 9.6 Avatar background
-
-`ChatIdentityBackground` использует path-first strategy:
-
 ```text
-storagePath + version
-→ AvatarImageLoader
-→ Image.memory
+year
+month
+day
+kind
 ```
 
-Для legacy data:
+Kinds:
 
 ```text
-imageUrl
-→ CachedNetworkImage
+day
+night
 ```
 
-При отсутствии/ошибке изображения:
+Business times:
 
 ```text
-stableKey
-→ stable palette
-→ initials
-→ gradient fallback
+day   08:00–20:00
+night 20:00–08:00 next day
 ```
 
-Full avatar отображается с:
+Statistics attribution:
 
 ```text
-BoxFit.cover
+statisticsYear  = shift.year
+statisticsMonth = shift.month
 ```
-
-Поверх фона применяется вертикальный gradient для читаемости текста.
 
-### 9.7 Private card data
+Ночная смена полностью относится к календарной дате старта.
 
-Private identity:
+Это invariant domain layer.
 
-```text
-title = peer name / chat fallback
-details:
-  about
-  phone
-```
+## 12. Two-phase call model
 
-Пустые details не отображаются.
+Call разделён на две фазы.
 
-### 9.8 Group card data
+### Phase A — queue mutation + pending
 
-Group identity:
-
 ```text
-title = group name
-details:
-  localized member count
+call participant
+→ queue changes immediately
+→ revision/callId advances
+→ pendingCalls/{callId} created
+→ UI shows Undo
 ```
-
-### 9.9 Actions
-
-Общие:
 
-```text
-Уведомления
-```
+### Phase B — finalization
 
-Group-only:
+После Undo window:
 
 ```text
-Участники
+pending call
+→ yearly statistics
+→ pending deleted
 ```
 
-Admin/owner group-only:
+Преимущество:
 
 ```text
-Управление
+Undo может отменить call до начисления статистики
 ```
-
-Owner priority сохраняется.
-
-### 9.10 Group navigation
 
-`Участники`:
+и:
 
 ```text
-GroupInfoScreen(
-  chatId,
-  membersOnly: true
-)
+закрытие приложения не теряет незавершённую статистику
 ```
 
-`membersOnly` screen не дублирует management controls и показывает только `GroupMembersSection`.
+## 13. Undo architecture
 
-`Управление` открывает обычный `GroupInfoScreen`.
+Undo window:
 
-### 9.11 Out-of-scope avatar contexts
-
-Отдельная будущая подфаза должна унифицировать:
-
 ```text
-chat list
-chat search
-contacts
-user search / new message
-create group
-add members
-group member list
-group member screen
-profile and other avatar contexts
+6 seconds
 ```
 
-## 10. Per-chat Notification Settings — v0.7.4
+Timer существует в UI только для удобства пользователя.
 
-### 10.1 Data model
+Авторитетность времени и прав доступа остаётся в backend/Rules/application flow.
 
-В chat document:
-
-```text
-notificationSettingsByUser: {
-  uid: {
-    mode: "sound"
-  }
-}
-```
+UI timer не должен быть единственным механизмом защиты.
 
-или:
+Undo operation использует receipt/revision, чтобы не откатывать уже изменившуюся очередь.
 
-```text
-notificationSettingsByUser: {
-  uid: {
-    mode: "disabled"
-  }
-}
-```
+## 14. Pending call storage
 
-или temporary silent:
+Path:
 
 ```text
-notificationSettingsByUser: {
-  uid: {
-    mode: "silent",
-    expiresAt: timestamp
-  }
-}
+spaces/substitution/pendingCalls/{callId}
 ```
 
-или permanent silent:
+Properties:
 
 ```text
-notificationSettingsByUser: {
-  uid: {
-    mode: "silent",
-    permanent: true
-  }
-}
+canonical callId
+participant/user identity
+caller identity
+shift
+timing required for finalization eligibility
 ```
-
-### 10.2 Effective mode
 
-Client и server используют безопасный fallback:
+PendingCall — durable work item.
 
-```text
-missing settings
-malformed settings
-unknown mode
-expired silent
-→ sound
-```
+Он не является статистикой и не должен отображаться как подтверждённый вызов до finalization.
 
-`disabled` всегда остаётся `disabled`.
+## 15. Exactly-once finalization transaction
 
-`silent` effective только если:
+Core file:
 
 ```text
-permanent == true
-OR
-expiresAt > now
+lib/services/spaces/substitution/substitution_call_finalization_firestore_gateway.dart
 ```
-
-### 10.3 Application model
-
-`ChatNotificationSettings`:
-
-- enum `sound | silent | disabled`;
-- `sound()`;
-- `disabled()`;
-- `silentForever()`;
-- `silentUntil(DateTime)`;
-- `effectiveModeAt(now)`;
-- `toFirestore()`;
-- `fromChatData()`.
 
-### 10.4 Service
+Transaction sequence:
 
-`ChatNotificationSettingsService`:
-
 ```text
-enableSound
-disableNotifications
-silenceForever
-silenceFor
+read pending
+→ validate
+→ read year statistics
+→ validate
+→ accumulate
+→ write year statistics
+→ delete pending
 ```
 
-Application maximum temporary silence:
+Exactly-once invariant:
 
 ```text
-24 hours
+one pending document
+can produce
+at most one statistics increment
 ```
-
-Identifiers:
 
-- must be non-empty;
-- must not contain `/`.
+Reason:
 
-Unauthenticated write returns:
-
 ```text
-skippedUnauthenticated
+после успешного transaction pending удалён
 ```
 
-Firebase implementation обновляет только:
+Повторная попытка:
 
 ```text
-notificationSettingsByUser.{currentUid}
+pending missing
+→ false/no-op
 ```
-
-### 10.5 UI
 
-`ChatNotificationSettingsSheet`:
+Concurrency:
 
-```text
-Со звуком
-Без звука
-Отключить уведомления
-Звук уведомлений
-```
+Firestore transaction retry/conflict handling используется как часть correctness model.
 
-Silent submenu:
+Нельзя заменять эту transaction последовательностью отдельных writes.
 
-```text
-На 1 час
-На 24 часа
-Навсегда
-```
+## 16. Recovery architecture
 
-`Звук уведомлений` пока закрывает sheet и показывает:
+Проблема:
 
 ```text
-Пока в разработке
+app может закрыться после call,
+но до UI Timer finalize
 ```
 
-UI не является source of truth для permissions.
+Решение:
 
-### 10.6 Firestore security
-
-`isOwnNotificationSettingsUpdate()` требует:
-
-- signed-in user;
-- current membership;
-- change только `notificationSettingsByUser`;
-- изменение внутри map только текущего UID;
-- допустимый mode;
-- точную schema каждого mode.
-
-Даже admin/owner не может использовать широкий group-admin update path для изменения:
-
 ```text
-notificationSettingsByUser
+manager enters module
+→ load pending calls one time
+→ expired only
+→ sequential finalize
 ```
-
-другого пользователя.
-
-Rules tests проверяют:
-
-- sound;
-- disabled;
-- 1-hour silent;
-- 24-hour silent;
-- permanent silent;
-- foreign private member denial;
-- group admin changing another member denial;
-- unknown mode denial;
-- malformed permanent silent denial;
-- expired silent denial;
-- overlong temporary silent denial;
-- notification settings + unrelated chat field denial.
-
-### 10.7 Cost boundary
-
-Notification settings читаются из уже загруженного chat document.
 
-В `ChatScreen` не создаётся дополнительный listener только ради notification settings.
+Relevant:
 
-Write выполняется только при явном выборе пользователем.
-
-## 11. Push delivery architecture — v0.7.4
-
-### 11.1 Trigger
-
-Cloud Function:
-
 ```text
-sendMessageNotification
+SubstitutionCallReconciliationService
+SubstitutionPendingCallFirestoreGateway
 ```
 
-Trigger:
+Почему one-shot, а не listener:
 
 ```text
-chats/{chatId}/messages/{messageId}
+pending recovery не нужен постоянно
+и listener создавал бы лишние reads
 ```
 
-### 11.2 Recipient resolution
+Failure policy:
 
 ```text
-read chat
-→ validate memberIds
-→ exclude sender
-→ resolve mode for each recipient
+recovery failure
+→ не блокировать screen
+→ pending остаётся
+→ later manager can retry
 ```
 
-### 11.3 Disabled optimization
-
-Для:
-
-```text
-mode == disabled
-```
+## 17. Statistics architecture
 
-recipient исключается **до** чтения:
+Production path:
 
 ```text
-users/{uid}/devices
+spaces/substitution/statistics/year_YYYY
 ```
 
-Это одновременно semantic и cost optimization.
+Один документ на год.
 
-Если все recipients disabled:
+Пример:
 
 ```text
-return before device reads
+year_2026
 ```
 
-### 11.4 Device tokens
+Schema:
 
-Только sound/silent recipients получают device query.
-
-Token document:
-
 ```text
-token
-mode
-reference
+year
+monthCallCounts
+monthShifts
+yearCallCounts
+lastFinalizedCallId
+updatedAt
 ```
 
-Invalid tokens удаляются после FCM response.
+### 17.1 monthCallCounts
 
-### 11.5 Batching
+Logical structure:
 
-FCM limit:
-
 ```text
-500 tokens per multicast batch
+month
+→ uid
+→ count
 ```
 
-Tokens сначала разделяются по mode:
+Пример:
 
 ```text
-sound
-silent
+monthCallCounts["8"]["uid-123"] = 4
 ```
-
-После этого каждая группа chunked по 500.
 
-### 11.6 Payload
+### 17.2 monthShifts
 
-Общие поля:
+Logical structure:
 
 ```text
-notification.title
-notification.body
-data.chatId
-data.notificationMode
-android.priority = high
+month
+→ uid
+→ ordered shift kind list
 ```
 
-Sound delivery:
+Пример:
 
 ```text
-channelId = epistola_messages_seagull_v3
-sound = seagull_notification
-vibrateTimingsMillis = [0, 250, 100, 250]
+monthShifts["8"]["uid-123"]
+=
+["night", "day", "day", "night"]
 ```
 
-Silent delivery:
+Это позволяет UI построить ordered visual history без дополнительных documents.
 
-```text
-channelId = epistola_messages_silent
-no explicit sound
-no explicit vibration pattern
-```
+### 17.3 yearCallCounts
 
-### 11.7 Preview
-
 ```text
-text → normalized text preview
-image → Фотография
+uid
+→ total count for year
 ```
 
-Logical deletion update не создаёт новый message document и поэтому не должен повторно запускать create-trigger.
+### 17.4 lastFinalizedCallId
 
-## 12. Android notification channels
+Technical diagnostic/integrity field.
 
-### 12.1 Sound channel
+Не предназначено для отображения пользователю.
 
-```text
-ID:
-epistola_messages_seagull_v3
+### 17.5 updatedAt
 
-Name:
-Сообщения Epistola — Чайка
-```
+Server timestamp текущего агрегата.
 
-Settings:
+## 18. Statistics consistency invariants
 
-```text
-Importance.high
-playSound = true
-RawResourceAndroidNotificationSound("seagull_notification")
-enableVibration = true
-vibrationPattern = [0, 250, 100, 250]
-```
+Mapper должен отвергать внутренне противоречивый документ.
 
-### 12.2 Silent channel
+Для каждого month/uid:
 
 ```text
-ID:
-epistola_messages_silent
-
-Name:
-Тихие сообщения Epistola
+monthCallCounts
+==
+monthShifts.length
 ```
 
-Settings:
+Для каждого uid:
 
 ```text
-Importance.high
-playSound = false
-enableVibration = false
+yearCallCounts
+==
+sum(all monthCallCounts)
 ```
-
-### 12.3 Channel immutability
 
-Android notification channel configuration является системно сохраняемым состоянием.
+Accumulator является единственным application utility, который строит новое aggregate state из:
 
-Изменение sound/vibration policy существующего channel ID не считается надёжным способом миграции.
-
-Поэтому при разработке custom sound был создан новый sound channel ID:
-
 ```text
-epistola_messages_seagull_v3
+current statistics
++
+confirmed pending call
 ```
-
-### 12.4 Manifest fallback
-
-`AndroidManifest.xml`:
 
-```text
-com.google.firebase.messaging.default_notification_channel_id
-→ epistola_messages_seagull_v3
-```
+UI никогда не корректирует годовые totals самостоятельно.
 
-Это fallback для FCM notification, если payload не задаёт иной channel.
+## 19. Statistics read model
 
-### 12.5 Raw resource
+Для отображения текущей статистики нужен один read:
 
 ```text
-android/app/src/main/res/raw/seagull_notification.mp3
+statistics/year_<currentYear>
 ```
 
-Resource name без extension в Android API:
+Не использовать:
 
 ```text
-seagull_notification
+one query per participant
 ```
 
-### 12.6 Resource shrink protection
+Screen cache:
 
 ```text
-android/app/src/main/res/raw/epistola_keep.xml
+loaded flag
+loading flag
+error
+year
+statistics model
 ```
 
-содержит:
+`showStatistics == false`:
 
 ```text
-@raw/seagull_notification
-@mipmap/ic_launcher
+statistics document не нужен для UI
+→ не делать лишний read
 ```
-
-Это предотвращает удаление runtime-referenced resources release shrinker-ом.
-
-## 13. Foreground and active-chat notification behavior
 
-### 13.1 FCM foreground
+После successful finalize:
 
 ```text
-FirebaseMessaging.onMessage
-→ NotificationService.showForegroundMessage
+reload once
 ```
 
-Если payload содержит текущий active chat:
+После no-op finalize:
 
 ```text
-activeChatTracker.isCurrent(chatId)
-→ return
+не reload
 ```
 
-Local push не показывается.
-
-### 13.2 Foreground another chat
-
-Sound:
-
-```text
-flutter_local_notifications
-→ sound channel
-→ seagull sound
-→ vibration enabled
-→ explicit short Vibration.vibrate()
-```
+## 20. Statistics presentation
 
-Silent:
+Widget:
 
 ```text
-flutter_local_notifications
-→ silent channel
-→ no sound
-→ no vibration
+SubstitutionStatisticsSummary
 ```
 
-### 13.3 Open target chat in-chat vibration
+Domain data:
 
-`ChatScreen` имеет listener последнего сообщения.
-
-Для нового incoming message:
-
 ```text
-effective notification mode == sound
-→ NotificationService.vibrate()
+count
+ordered day/night shifts
 ```
 
-Для:
+Presentation:
 
 ```text
-silent
-disabled
+month title
+monthly count
+visual segments
+year total
 ```
-
-direct vibration пропускается.
-
-Это специально отделено от local notification, потому что local push текущего active chat подавляется.
 
-## 14. Active Chat Notification Suppression — v0.7.3
+Slot scaling:
 
-Singleton:
-
 ```text
-activeChatTracker
+<=5  → 5
+<=9  → 9
+else → 12
 ```
 
-Lifecycle:
+Color mapping принадлежит widget layer.
 
-```text
-ChatScreen.initState
-→ enter(chatId)
+Нельзя записывать `amber`, `blue` или Flutter `Color` в Firestore/domain.
 
-ChatScreen.dispose
-→ leave(registration)
-```
+## 21. UI preferences
 
-Registration identity корректно обрабатывает повторные/вложенные route registrations.
+Queue badge display mode и statistics visibility — локальные пользовательские предпочтения.
 
-## 15. Private Read Receipt Foundation
+Они не влияют на backend statistics accumulation.
 
-Data:
+Критичный invariant:
 
 ```text
-privateReadState: {
-  uid: {
-    messageId
-    messageCreatedAt
-    readAt
-  }
-}
+showStatistics == false
+не означает
+disable statistics counting
 ```
-
-`lastRead` обновляется совместно для unread list compatibility.
 
-Cursor requirements:
+Counting идёт независимо от того, скрыт UI или показан.
 
-- valid message ID;
-- UTC timestamp;
-- no backward movement;
-- existing message validation;
-- createdAt match;
-- own UID only.
+## 22. Participant management permissions
 
-Sender UI:
+Manager actions:
 
 ```text
-peer cursor not covering message → ✓
-peer cursor covering message → ✓✓
+add participants
+edit work name
+call participant
+vacation
+sick
+return active
+remove
 ```
 
-Только private chats.
+Self-only member action:
 
-## 16. Group Message Reactions
-
-Data:
-
 ```text
-reactions: {
-  uid: "like" | "dislike"
-}
+change own availability
 ```
 
-Transition:
+Availability ownership rule:
 
 ```text
-current == tapped → remove
-current != tapped → replace with tapped
+participant.userId == currentUid
 ```
-
-Rules:
-
-- group only;
-- active member;
-- own UID only;
-- message not deleted for everyone;
-- no unrelated message mutation.
 
-Reaction update не меняет chat preview и не создаёт push.
+Бригадир не меняет availability другого пользователя из participant card.
 
-## 17. Private Typing Indicator
+## 23. Settings UI boundary
 
-Typing state является ephemeral presence data и хранится в Realtime Database.
+`SubstitutionSettingsSheet` отображает:
 
-Paths:
-
 ```text
-privateChatAccess/{chatId}/{uid} = true
-privateTyping/{chatId}/{uid} = timestamp
+queue display preference
+statistics visibility
+manager-only add participants
 ```
 
-Server-owned access projection создаёт:
+Sheet не делает Firestore writes напрямую.
 
-```text
-ensurePrivateTypingAccess
-```
+Callbacks уходят в screen/application services.
 
-Coordinator timing:
+## 24. Firestore security
 
-```text
-initial debounce: 450 ms
-heartbeat: 3 s
-inactivity stop: 4 s
-peer freshness: 6 s
-```
+`firestore.rules` является authoritative security boundary.
 
-Header presentation:
+Substitution Rules защищают:
 
 ```text
-typing → "<peer> пишет…"
-fallback without effective peer name → "Пишет…"
-otherwise → "личный чат"
+module access
+role-aware management
+participant writes
+call flow
+pending call lifecycle
+statistics finalization
+statistics reads
+manager recovery/list
 ```
 
-Group typing flow не запускается.
+Overlapping Firestore Rules работают как OR.
 
-## 18. Chat Date Separator Foundation
+Поэтому специальные deny-like блоки нельзя проектировать так, будто более общий allow их отменит.
 
-```text
-same calendar day → Сегодня
-previous calendar day → Вчера
-same year → 3 августа
-different year → 28 декабря 2025
-```
-
-Floating indicator вычисляется по реальным RenderBox positions.
-
-## 19. Image Message Foundation
+При cleanup TEST statistics учитывался именно этот принцип.
 
-Pair:
+## 25. Obsolete TEST statistics removal
 
-```text
-thumbnail
-full
-```
+Temporary TEST statistics model/gateway/service/rules tests удалены.
 
-Canonical paths:
+Architecture rule:
 
 ```text
-chat_media/{chatId}/messages/{messageId}/v{version}/thumb.jpg
-chat_media/{chatId}/messages/{messageId}/v{version}/full.jpg
+production code must use
+SubstitutionStatistics*
 ```
 
-Limits:
+Не возвращать:
 
 ```text
-thumbnail: max 128 KB, max side 480 px
-full: target 512 KB, absolute max 1 MB, max side 1920 px
+SubstitutionTestStatistics*
 ```
-
-First private image защищён trusted upload grant.
-
-Chat, message и preview записываются атомарно.
 
-Partial upload cleanup — best-effort.
+Новый чат должен считать их retired.
 
-## 20. Avatar architecture
+## 26. Firestore cost model
 
-Paths:
+Pilot:
 
 ```text
-user_avatars/{uid}/v{version}/thumb.jpg
-user_avatars/{uid}/v{version}/full.jpg
-
-group_avatars/{chatId}/v{version}/thumb.jpg
-group_avatars/{chatId}/v{version}/full.jpg
+40–50 users
 ```
 
-Replacement:
+Optimization decisions v0.8.0:
 
 ```text
-prepare new version
-→ upload
-→ atomic metadata update
-→ best-effort old version cleanup
+participant stream один на module
+user cache by UID
+statistics one document per year
+statistics one read for current year
+pending recovery one-shot
+no pending listener
+no per-participant statistics reads
+reload statistics only after actual finalization
 ```
 
-Cache key:
+При дальнейшем росте необходимо профилировать размер yearly statistics document.
 
-```text
-path@version
-```
+Текущая схема достаточна для небольшого пилота и ограниченного количества вызовов.
 
-Identity-card использует существующий full-avatar pipeline, а не отдельную media architecture.
+## 27. Testing architecture
 
-## 21. Push deep-link architecture
+Coverage текущего foundation включает:
 
 ```text
-RemoteMessage.data / local payload
-→ PushDeepLinkRequest
-→ PushDeepLinkCoordinator
-→ PushDeepLinkResolver
-→ PushDeepLinkDestination
-→ PushDeepLinkNavigation
-→ ChatScreen
+domain model tests
+mapper tests
+accumulator tests
+gateway tests
+reconciliation tests
+dependencies tests
+widget statistics summary tests
+Firestore Rules tests
 ```
-
-Notification payload не является authorization proof.
 
-Membership/security проверяется downstream.
+Новые test files:
 
-## 22. Android Toolchain Foundation
-
-```text
-Flutter: 3.44.1
-Dart: 3.12.1
-Java: 21.0.10
-Gradle: 9.1.0
-AGP: 9.0.1
-Kotlin: 2.3.20
-Google Services Plugin: 4.3.15
-compileSdk: 36
-targetSdk: 36
-minSdk: 24
-JVM target: 17
-```
-
 ```text
-android.newDsl=false
-android.builtInKotlin=false
-kotlin.incremental=false
+test/domain/models/substitution_statistics_test.dart
+test/services/spaces/substitution/substitution_call_finalization_firestore_gateway_test.dart
+test/services/spaces/substitution/substitution_call_reconciliation_service_test.dart
+test/services/spaces/substitution/substitution_pending_call_firestore_gateway_test.dart
+test/services/spaces/substitution/substitution_statistics_accumulator_test.dart
+test/services/spaces/substitution/substitution_statistics_firestore_gateway_test.dart
+test/services/spaces/substitution/substitution_statistics_mapper_test.dart
+test/widgets/spaces/substitution/substitution_statistics_summary_test.dart
+test/rules/firestore/substitution_finalize_rules.test.mjs
 ```
-
-Built-in Kotlin warning относится к plugin internals и пока не блокирует release APK.
 
-## 23. Testing strategy
+## 28. Verification checkpoint
 
-### 23.1 Flutter final v0.7.4 gate
+Flutter:
 
 ```text
 flutter.bat analyze
 → No issues found
 
 flutter.bat test
-→ 543 passed
-
-flutter.bat build apk --release
-→ 55.8 MB
+→ 751 passed
 ```
 
-Diagnostic JPEG output может включать:
+Targeted widget statistics:
 
 ```text
-Corrupt JPEG data: 2 extraneous bytes before marker 0xd9
-Shell: JPEG datastream contains no image
+5/5 passed
 ```
 
-Это ожидаемый output негативных image tests, а не падение suite.
-
-### 23.2 Firestore Rules final v0.7.4 gate
+Firestore Rules:
 
 ```text
-tests: 65
-suites: 6
-pass: 65
-fail: 0
+targeted substitution/finalization
+→ 53/53
+
+full Firestore suite
+→ 133/133
 ```
 
-Notification settings добавили отдельный suite из 12 security scenarios.
-
-### 23.3 Unchanged Rules baseline
-
-RTDB и Storage rules в v0.7.4 не изменялись и в финальном gate отдельно не перезапускались.
-
-Последний подтверждённый baseline v0.7.3:
+Release APK:
 
 ```text
-Realtime Database Rules → 15 passed
-Storage Rules → 42 passed
+build\app\outputs\flutter-apk\app-release.apk
+56.8 MB
 ```
 
-Не суммировать эти значения с текущими Firestore 65 как будто это один свежий full-suite run.
-
-### 23.4 Functions
+Rules:
 
 ```text
-npm.cmd --prefix functions run lint
-→ no lint errors
-
-npm.cmd --prefix functions run build
-→ TypeScript build passed
+deployed successfully to epistola-434b7
 ```
 
-Существующее TypeScript/ESLint version compatibility warning остаётся non-blocking.
+## 29. Manual verification checkpoint
 
-### 23.5 Manual Android v0.7.4
-
-Identity-card:
-
-- private avatar/photo;
-- private initials fallback;
-- group avatar/photo;
-- group initials fallback;
-- tap header opens overlay;
-- tap lower chat closes;
-- back closes overlay before leaving chat;
-- participants navigation;
-- management navigation for admin/owner;
-- draft/chat state preserved.
-
-Notification modes:
-
-- sound;
-- silent 1 hour;
-- silent 24 hours;
-- silent forever;
-- disabled;
-- state survives navigation/reopen.
-
-Sound mode:
+Confirmed scenarios:
 
 ```text
-chat list / app foreground on another route
-→ push + seagull + vibration
-
-Android home screen
-→ push + seagull + vibration
-
-locked screen
-→ push + seagull + vibration
-
-active target chat
-→ no push
-→ no seagull
-→ direct short vibration
+normal finalize
+Undo before 6 sec
+app close before finalize + recovery
+remove/reinvite preserves UID statistics
+same-screen statistics refresh
+Aug/Sep boundary attribution
+availability UI
+statistics segment rendering
+manager/member action split
 ```
 
-Silent:
+## 30. Stable messaging architecture retained from earlier releases
+
+v0.8.0 does not replace existing messenger architecture.
+
+Still valid:
 
 ```text
-non-active target
-→ push only
-
-active target
-→ no local push
-→ no sound
-→ no vibration
+private/group chats
+cursor pagination
+logical message deletion
+image messages
+push deep links
+date separators
+private read receipts
+group 👍/👎 reactions
+private typing via RTDB
+avatar foundation
+chat identity cards
+per-chat notification controls
+custom notification sound
 ```
 
-Disabled:
+Spaces additions must not break these foundations.
+
+## 31. Project structure relevant to Spaces
 
 ```text
-no push
-unread counter still changes
-message delivery remains intact
+lib/
+├── domain/
+│   └── models/
+│       ├── spaces_access_role.dart
+│       ├── substitution_participant.dart
+│       ├── substitution_shift.dart
+│       ├── substitution_pending_call.dart
+│       └── substitution_statistics.dart
+│
+├── screens/
+│   ├── spaces_page.dart
+│   ├── substitution_space_screen.dart
+│   └── substitution_add_participants_screen.dart
+│
+├── services/
+│   └── spaces/
+│       └── substitution/
+│           ├── substitution_call_service.dart
+│           ├── substitution_call_reconciliation_service.dart
+│           ├── substitution_call_finalization_firestore_gateway.dart
+│           ├── substitution_pending_call_firestore_gateway.dart
+│           ├── substitution_statistics_accumulator.dart
+│           ├── substitution_statistics_firestore_gateway.dart
+│           ├── substitution_statistics_mapper.dart
+│           ├── substitution_statistics_service.dart
+│           └── substitution_dependencies.dart
+│
+└── widgets/
+    └── spaces/
+        └── substitution/
+            ├── substitution_availability_selector.dart
+            ├── substitution_participant_overlay.dart
+            ├── substitution_queue_badge.dart
+            ├── substitution_settings_sheet.dart
+            └── substitution_statistics_summary.dart
 ```
 
-## 24. Cost model
+## 32. Architectural rules for next stages
 
-### Identity-card
-
-- no dedicated Firestore listener;
-- reuses `ChatScreen` chat snapshot;
-- full avatar may require Storage-backed avatar image load;
-- overlay state is local.
-
-### Notification settings
-
-- one Firestore write on explicit mode change;
-- no heartbeat/background write;
-- expired temporary silent requires no cleanup write to become effectively sound.
-
-### Push
-
-- chat document read already required by function;
-- disabled recipients excluded before device-token reads;
-- sound/silent batching shares one function invocation;
-- invalid token cleanup retained.
-
-### Read receipts
-
-- debounce merges writes;
-- no write for each rendered message.
-
-### Reactions
-
-- one Firestore transaction per toggle;
-- no push.
-
-### Typing
-
-- RTDB instead of Firestore;
-- debounce;
-- 3 s heartbeat while active;
-- one exact peer listener.
-
-## 25. Security boundaries
-
-Сохранены и расширены:
+When expanding Spaces:
 
 ```text
-auth
-membership
-role permissions
-owner priority
-sender-only delete for everyone
-private clear isolation
-canonical image paths
-upload grants
-push payload validation
-private read cursor ownership
-group reaction UID ownership
-server-owned typing access projection
-own typing node only
-own notification-settings UID only
-admin cannot edit another member notification settings
+1. keep each Space modular
+2. reuse shared identity/cache services where appropriate
+3. do not couple Spaces to ChatScreen
+4. keep Firebase writes in service/gateway layer
+5. preserve strict Rules coverage
+6. avoid unbounded listeners
+7. store semantics, not visual styles
+8. preserve UID as identity
+9. keep owner highest role
+10. manually verify role boundaries
 ```
 
-UI appearance, identity-card buttons, local active-chat tracking и optimistic state не являются server-side authorization.
+When extending Substitution:
 
-## 26. Generated files policy
+```text
+do not bypass pending/finalization model
+do not increment statistics from UI
+do not add parallel TEST statistics model
+do not change shift month attribution casually
+do not allow brigadier to edit another participant's availability
+```
 
-После последней серии Flutter-команд один раз восстанавливаются:
+## 33. Release-state rule
+
+Functional checkpoint:
+
+```text
+63c405e
+```
+
+is pushed to feature branch.
+
+Documentation is prepared as a separate finalization step.
+
+Do not claim:
+
+```text
+main merged
+v0.8.0 tag created
+release closed
+```
+
+until Git confirms it.
+
+Documentation-only changes do not require unnecessary Flutter rebuild.
+
+After doc replacement:
 
 ```powershell
-git restore `
-  linux/flutter/generated_plugins.cmake `
-  macos/Flutter/GeneratedPluginRegistrant.swift `
-  windows/flutter/generated_plugin_registrant.cc `
-  windows/flutter/generated_plugins.cmake
+git.exe diff --check
+git.exe status --short
 ```
 
-Generated plugin files не должны попадать в feature/release commit, если их изменение не является осознанной частью задачи.
-
-## 27. Known limitations
-
-- Group image sending не завершён отдельным foundation.
-- Image caption отсутствует.
-- File messages отсутствуют.
-- Voice messages отсутствуют.
-- Identity-card подключена только к header открытого chat.
-- Search/contact/group-member avatar contexts ещё не унифицированы.
-- Notification sound selector пока placeholder.
-- In-app global notification-volume UI отсутствует.
-- Android notification volume остаётся системной настройкой.
-- Production retention cleanup отсутствует.
-- App Check не завершён.
-- Production release signing требует отдельной настройки.
-- Built-in Kotlin plugin warning остаётся.
-- TypeScript/ESLint compatibility warning остаётся non-blocking.
-
-## 28. Next architecture stages
-
-Primary messaging roadmap:
-
-```text
-Attachment Composer Foundation
-→ Image Caption
-→ File Message Foundation
-→ Voice Message Foundation
-```
-
-Attachment composer должен создать общий draft contract:
-
-```text
-selected attachment
-+ optional caption
-+ validation
-+ send orchestration
-```
-
-Avatar expansion:
-
-```text
-Chat Identity Card Foundation
-→ remaining clickable avatar contexts
-→ unified user/group identity actions
-```
-
-Branding backlog:
-
-```text
-current send icon
-→ custom Epistola seagull vector icon
-```
-
-Notification UX backlog:
-
-```text
-sound selector
-system/channel settings entry point
-possible global sound preset / Android-specific control design
-```
-
-Production hardening:
-
-```text
-Retention Cleanup
-App Check
-Release Signing
-Observability
-Firebase Cost Monitoring
-```
-
-## 29. Release gate v0.7.4
-
-Перед публикацией:
-
-```text
-feature committed and pushed
-→ release merged locally into main
-→ architecture cleanup committed
-→ documentation replaced
-→ diff checked
-→ docs commit
-→ tag v0.7.4
-→ push main
-→ push tag
-→ verify remote refs
-```
-
-Функциональные проверки уже пройдены до документационной замены.
-
-После docs-only changes повторный полный Flutter suite не требуется, если application code не меняется.
+Then commit/push only with explicit user approval.
