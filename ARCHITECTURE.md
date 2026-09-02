@@ -2,7 +2,7 @@
 
 Основной технический документ проекта Epistola.
 
-При конфликте информации:
+При конфликте информации использовать следующий приоритет:
 
 ```text
 исходный код текущей ветки
@@ -11,64 +11,75 @@
 → README.md
 ```
 
-`PROJECT_CONTEXT.md` хранит текущий handoff и контрольную точку.
+`PROJECT_CONTEXT.md` хранит текущую рабочую контрольную точку и handoff.
 
 `ARCHITECTURE.md` фиксирует устойчивые архитектурные решения.
 
-`README.md` предназначен для быстрого обзора проекта.
+`README.md` предназначен для краткого обзора проекта.
 
-## 1. Статус документа
+---
+
+# 1. Статус документа
 
 | Параметр | Значение |
 |---|---|
-| Версия документа | `5.0` |
+| Версия документа | `5.1` |
 | Current development target | `v0.8.0` |
 | Stage | `Spaces / Substitution Foundation` |
 | Feature branch | `feat/v0.8.0-spaces-substitution-foundation` |
-| Functional checkpoint | `63c405e` |
+| Last committed checkpoint | `bf24968` |
 | Stable baseline before v0.8.0 | `v0.7.4` |
 | Main platform | Android |
 | Pilot target | 40–50 users |
-| Last update | август 2026 |
+| Last update | сентябрь 2026 |
 
-`v0.8.0` расширяет Epistola за пределы messenger-only UX и создаёт основу внутренних приложений Spaces.
+`v0.8.0` расширяет Epistola из messenger-first приложения в платформу внутренних приложений.
 
-Главное архитектурное изменение:
+Главное архитектурное направление:
 
 ```text
-Chats
-и
-Spaces
-являются соседними application areas
+Epistola
+→ Spaces launcher
+→ internal applications
 ```
 
-Spaces не должны моделироваться как chat type.
+Одним из внутренних приложений является:
 
-## 2. Назначение проекта
+```text
+Чаты
+```
 
-Epistola — корпоративный Flutter/Firebase messenger и foundation будущей внутренней платформы.
+При этом существующая Messenger/chat architecture не переписывается.
+
+---
+
+# 2. Назначение проекта
+
+Epistola — корпоративная Flutter/Firebase платформа для коммуникации и внутренних сервисов компании.
 
 Краткосрочная цель:
 
 ```text
-стабильный Android pilot на 40–50 пользователей
+стабильный Android pilot
+40–50 пользователей
 ```
 
 Долгосрочная цель:
 
 ```text
-communication + internal services platform
-для сотен сотрудников
+communication
++
+internal services platform
 ```
 
-Направления:
+Основные направления:
 
 ```text
-private/group chats
+private chats
+group chats
 media
 notifications
-roles/moderation
-tasks
+roles / moderation
 announcements
 documents
 work shifts
@@ -77,15 +88,28 @@ safety information
 internal applications
 ```
 
-## 3. Infrastructure
+---
+
+# 3. Infrastructure
 
 ```text
-Repository: MikhailBerezkin/epistola
-Firebase project: epistola-434b7
-Firestore region: eur3
-Realtime Database region: europe-west1
-Cloud Functions region: europe-west1
-Android package: com.epistola.app
+Repository:
+MikhailBerezkin/epistola
+
+Firebase project:
+epistola-434b7
+
+Firestore region:
+eur3
+
+Realtime Database region:
+europe-west1
+
+Cloud Functions region:
+europe-west1
+
+Android package:
+com.epistola.app
 ```
 
 Firebase services:
@@ -100,93 +124,99 @@ Functions
 Security Rules
 ```
 
-Infrastructure configuration не должна находиться в pure domain или виджетах.
+Infrastructure configuration и Firebase-specific implementation не должны находиться в pure domain или presentation widgets.
 
-## 4. Основные архитектурные слои
+---
 
-Canonical layering:
+# 4. Canonical architecture layers
+
+Основная граница проекта:
 
 ```text
 Flutter UI
     ↓
 Presentation / Screen orchestration
     ↓
-Application Services
+Controllers / Application Services
     ↓
 Domain Models / Contracts
     ↓
-Infrastructure Gateways / Adapters
+Firebase Gateways / Adapters
     ↓
 Firebase
 ```
 
-### 4.1 Flutter UI
+## 4.1 Flutter UI
 
 UI отвечает за:
 
 ```text
 rendering
 gestures
-loading/error presentation
+navigation
+loading presentation
+error presentation
 dialogs
 bottom sheets
-overlay
-local preferences
-navigation
+overlays
+local visual preferences
 ```
 
 UI не должен:
 
 ```text
-выполнять Firestore transaction напрямую для business flow
-считать production statistics самостоятельно
-определять security permissions по видимости кнопки
-создавать Firebase schema из presentation-specific объектов
+выполнять Firestore transactions для business flow
+самостоятельно считать production statistics
+полагаться на скрытую кнопку как security boundary
+создавать Firebase schema из visual state
+реализовывать rollback correctness
 ```
 
-### 4.2 Presentation / Screen orchestration
+## 4.2 Presentation / screen orchestration
 
 Screen может:
 
 ```text
-собрать services
-подписаться на participant stream
-держать screen cache
-запустить application operation
-обновить UI после результата
+создать/получить services
+подписаться на streams
+хранить screen cache
+запускать application operation
+показывать результат пользователю
+координировать navigation
 ```
 
-Но business invariants должны оставаться ниже.
+Business invariants остаются ниже presentation layer.
 
-Пример v0.8.0:
+Пример:
 
 ```text
 SubstitutionSpaceScreen
 → SubstitutionCallService
-→ Firestore gateway / transaction
+→ Firestore transaction gateway
 ```
 
-и:
+Recovery:
 
 ```text
 SubstitutionSpaceScreen
 → SubstitutionCallReconciliationService
-→ FinalizationGateway
+→ SubstitutionCallFinalizationFirestoreGateway
 ```
 
-### 4.3 Application services
+## 4.3 Application services
 
-Application layer отвечает за orchestration:
+Application layer отвечает за:
 
 ```text
 validation
+orchestration
 ordering
-transaction sequence
+transaction flow
 recovery
-retry-safe flow
+retry-safe operations
 statistics loading
 participant mutations
-work name mutations
+work-name mutations
 ```
 
 Relevant v0.8.0 services:
@@ -200,11 +230,22 @@ SubstitutionWorkDisplayNameService
 SubstitutionStatisticsService
 ```
 
-### 4.4 Domain
+## 4.4 Domain
 
-Pure domain содержит semantic state без Flutter/Firebase dependency.
+Pure domain содержит semantic state.
 
-v0.8.0 domain:
+Domain не должен зависеть от:
+
+```text
+Flutter widgets
+BuildContext
+Colors
+Firestore Transaction
+Firebase DocumentReference
+presentation-specific classes
+```
+
+Relevant v0.8.0 domain:
 
 ```text
 SpacesAccessRole
@@ -218,26 +259,17 @@ SubstitutionPendingCall
 SubstitutionStatistics
 ```
 
-Domain не хранит:
+## 4.5 Infrastructure
 
-```text
-Colors
-Widgets
-BuildContext
-Firebase DocumentReference
-Firestore Transaction
-```
-
-### 4.5 Infrastructure
-
-Firebase-aware layer реализует чтение/запись:
+Firebase-aware layer отвечает за:
 
 ```text
 participant persistence
+Spaces roles
 pending calls
-statistics document
-call finalization transaction
-Spaces role storage
+statistics persistence
+transactional call flow
+exactly-once finalization
 ```
 
 Relevant gateways:
@@ -248,19 +280,223 @@ SubstitutionCallFinalizationFirestoreGateway
 SubstitutionStatisticsFirestoreGateway
 ```
 
-## 5. Spaces architecture
+---
 
-Spaces — container внутренних приложений.
+# 5. Spaces platform architecture
 
-Current entry point:
+Spaces — главный launcher внутренних приложений Epistola.
+
+Основной экран:
 
 ```text
 lib/screens/spaces_page.dart
 ```
 
-Current tiles:
+После текущего navigation change root application flow:
 
 ```text
+App launch
+→ HomeScreen
+→ SpacesPage
+```
+
+Spaces является default root destination.
+
+Это изменение отличает текущую архитектуру от первоначального v0.8.0 foundation, где Chats и Spaces были отдельными соседними bottom-navigation areas.
+
+Текущая модель:
+
+```text
+Epistola
+├── Контакты
+├── Пространства
+│   ├── Чаты
+│   ├── "Список"
+│   ├── Судозаходы
+│   ├── Календарь смен
+│   ├── Автобусы
+│   └── ОТ и ТБ
+└── Профиль
+```
+
+Bottom navigation:
+
+```text
+Контакты
+Пространства
+Профиль
+```
+
+Default:
+
+```text
+Пространства
+```
+
+---
+
+# 6. Root navigation architecture
+
+Root screen:
+
+```text
+lib/screens/home_screen.dart
+```
+
+Canonical indexes:
+
+```text
+0 → Контакты
+1 → Пространства
+2 → Профиль
+```
+
+Default state:
+
+```text
+selectedIndex = Spaces
+```
+
+То есть после нормального входа:
+
+```text
+HomeScreen
+→ Пространства
+```
+
+## 6.1 Root Back behavior
+
+Root navigation contract:
+
+```text
+Контакты
+→ Back
+→ Пространства
+```
+
+```text
+Профиль
+→ Back
+→ Пространства
+```
+
+```text
+Пространства
+→ Back
+→ system app exit
+```
+
+Child routes используют обычный Navigator stack.
+
+Пример:
+
+```text
+Пространства
+→ Чаты
+→ ChatScreen
+→ Back
+→ Чаты
+→ Back
+→ Пространства
+```
+
+Это уже вручную проверенный UX contract.
+
+---
+
+# 7. Chats as a Space
+
+Новая presentation wrapper:
+
+```text
+lib/screens/chats_space_screen.dart
+```
+
+Flow:
+
+```text
+SpacesPage
+→ Чаты
+→ ChatsSpaceScreen
+→ ChatsPage
+```
+
+`ChatsSpaceScreen` предоставляет существующему messenger:
+
+```text
+AppBar
+search action
+FloatingActionButton
+ChatsPage
+```
+
+Search:
+
+```text
+ChatSearchScreen
+```
+
+Create/start message:
+
+```text
+NewMessageScreen
+```
+
+## 7.1 Messenger internals remain intact
+
+Navigation migration не является rewrite Messenger.
+
+Не переименовывать массово:
+
+```text
+Chat*
+Chats*
+message*
+privateChat*
+groupChat*
+```
+
+Существующие business/domain/Firebase concepts остаются chat concepts.
+
+Architecture rule:
+
+```text
+Spaces launcher
+может открывать Messenger
+
+но Messenger не становится
+Substitution Space implementation
+```
+
+## 7.2 Reuse boundary
+
+Разрешено:
+
+```text
+Spaces tile
+→ presentation wrapper
+→ existing ChatsPage
+```
+
+Не требуется:
+
+```text
+копировать ChatsPage
+переписывать ChatService
+создавать новый chat backend
+менять message schema
+```
+
+Таким образом migration минимальна и сохраняет проверенные messenger foundations.
+
+---
+
+# 8. Current Spaces modules
+
+Текущие плитки:
+
+```text
+Чаты
 "Список"
 Судозаходы
 Календарь смен
@@ -268,19 +504,234 @@ Current tiles:
 ОТ и ТБ
 ```
 
-Только `"Список"` имеет production foundation.
+Production-ready areas текущего этапа:
 
-Остальные modules пока placeholders.
+```text
+Чаты
+"Список"
+```
 
-Architecture rule:
+Чаты используют ранее существующий production Messenger.
+
+`"Список"` является новым v0.8.0 production foundation.
+
+Остальные:
+
+```text
+Судозаходы
+Календарь смен
+Автобусы
+ОТ и ТБ
+```
+
+пока placeholders.
+
+Architecture rule для будущего Space:
 
 ```text
 новый Space
-→ собственный domain/application/infrastructure flow
-→ не превращать его в chat subtype только ради reuse существующего UI
+→ собственный presentation
+→ собственный application/domain flow при необходимости
+→ собственные gateways при backend state
 ```
 
-## 6. Spaces access roles
+Не превращать новые Spaces в chat subtype только ради reuse.
+
+---
+
+# 9. Future Spaces customization
+
+В будущем Spaces launcher должен позволять развитие в сторону:
+
+```text
+user-configurable tile order
+visibility
+role-based available modules
+```
+
+Текущая архитектура не должна создавать жёсткую зависимость:
+
+```text
+tile position == business identity
+```
+
+Business module должен идентифицироваться semantic identifier, а не номером позиции в Grid.
+
+Эта функция пока не реализована.
+
+---
+
+# 10. SpacesBar future architecture
+
+`SpacesBar` — запланированный отдельный foundation.
+
+Текущий статус:
+
+```text
+DESIGN DIRECTION
+NOT IMPLEMENTED
+```
+
+SpacesBar предназначен для persistent high-level information на Spaces launcher.
+
+Conceptual placement:
+
+```text
+Spaces screen
+→ information/status bar
+→ app tiles
+```
+
+## 10.1 Message kinds
+
+Предполагаемые semantic kinds:
+
+```text
+announcement
+substitutionCall
+future system kinds
+```
+
+Kind и priority являются разными dimensions.
+
+Пример:
+
+```text
+kind = announcement
+priority = 1
+```
+
+или:
+
+```text
+kind = announcement
+priority = 3
+```
+
+Substitution call:
+
+```text
+kind = substitutionCall
+```
+
+может иметь отдельный maximum-priority presentation.
+
+Не кодировать semantics только цветом.
+
+## 10.2 Presentation
+
+Предполагаемо:
+
+```text
+announcement
+→ style based on priority
+
+substitutionCall
+→ purple/high-priority style
+```
+
+Color остаётся presentation concern.
+
+Firestore/domain не хранит Flutter `Color`.
+
+## 10.3 Multiple active messages
+
+При нескольких active items планируется:
+
+```text
+carousel / banner rotation
+manual swipe / navigation
+position indicator
+```
+
+Ориентировочная auto-rotation:
+
+```text
+30–60 seconds
+```
+
+High-priority event должен иметь возможность немедленно выйти на первый план.
+
+Точное поведение утверждается отдельно перед реализацией.
+
+## 10.4 Read/display state
+
+Не создавать backend write на каждый визуальный показ без необходимости.
+
+Предпочтение для presentation-only state:
+
+```text
+seen
+dismissed
+carousel position
+```
+
+→ local storage.
+
+Server остаётся authoritative для:
+
+```text
+active
+expired
+cancelled
+publisher
+priority
+kind
+```
+
+## 10.5 Publisher permissions
+
+Publishing/editing/cancelling предполагается для:
+
+```text
+brigadier
+owner
+```
+
+Но окончательная capability model должна быть отдельно утверждена.
+
+UI permissions недостаточно.
+
+Firestore Rules должны защищать операции на backend.
+
+## 10.6 Potential schema
+
+Conceptual only:
+
+```text
+id
+kind
+text
+priority
+createdByUserId
+createdAt
+expiresAt
+cancelledAt
+```
+
+Не считать schema production contract до отдельного implementation stage.
+
+## 10.7 Unified event principle
+
+Будущий substitution call желательно моделировать как:
+
+```text
+one business event
+```
+
+который может проецироваться в:
+
+```text
+push
+SpacesBar
+system notifications area
+```
+
+Не создавать три независимых business events для одного вызова.
+
+---
+
+# 11. Spaces access roles
 
 Domain:
 
@@ -299,24 +750,38 @@ owner
 Capabilities:
 
 ```text
-member:
-  use allowed module features
-
-brigadier:
-  canManageSubstitution
-
-owner:
-  canManageSubstitution
-  canManageSpacesRoles
+member
+→ ordinary module usage
 ```
 
-Owner — highest priority role.
+```text
+brigadier
+→ canManageSubstitution
+```
 
-Security authorization не должна основываться только на Flutter role state.
+```text
+owner
+→ canManageSubstitution
+→ canManageSpacesRoles
+```
 
-Flutter state определяет UX, Firestore Rules защищают backend.
+Owner является highest-priority role.
 
-## 7. Substitution participant architecture
+Security authorization не должна зависеть только от Flutter role state.
+
+Architecture:
+
+```text
+Flutter role
+→ UX/capability presentation
+
+Firestore Rules
+→ authoritative backend authorization
+```
+
+---
+
+# 12. Substitution participant architecture
 
 Canonical participant:
 
@@ -349,19 +814,97 @@ Queue membership:
 status == active
 ```
 
-Vacation/sick participants остаются participant records, но выводятся в отдельные tabs.
+Vacation/sick users остаются participant records.
 
-Это лучше, чем удалять пользователя из domain и создавать заново при каждом отпуске/больничном.
+Они не удаляются из domain при каждом изменении статуса.
 
-## 8. User data boundary
+---
 
-Participant document не должен дублировать весь `users/{uid}` profile.
+# 13. Participant state ownership
 
-UID остаётся canonical identity.
+Критичное разделение:
 
-Participant stream даёт substitution state.
+```text
+availability
+и
+status
+```
 
-User cache по UID даёт:
+имеют разную authority semantics.
+
+## 13.1 Availability
+
+Availability описывает готовность пользователя.
+
+Member может менять:
+
+```text
+только собственную availability
+```
+
+Constraint:
+
+```text
+participant.userId == currentUid
+```
+
+Manager не должен менять чужую availability из participant card.
+
+Причина:
+
+```text
+"светофор"
+является заявлением самого пользователя
+```
+
+## 13.2 Status
+
+Status:
+
+```text
+active
+vacation
+sick
+```
+
+является managed substitution state.
+
+Member не может самостоятельно менять status прямым client write.
+
+Status изменяется manager-level business operations.
+
+Таким образом:
+
+```text
+member self write
+→ availability only
+```
+
+а не:
+
+```text
+availability + status
+```
+
+---
+
+# 14. User data boundary
+
+Participant document не должен дублировать весь:
+
+```text
+users/{uid}
+```
+
+Canonical identity:
+
+```text
+UID
+```
+
+Participant state хранит substitution-specific fields.
+
+User cache по UID предоставляет reusable identity data:
 
 ```text
 name
@@ -370,57 +913,82 @@ email
 avatar metadata
 ```
 
-Это сокращает повторные reads.
-
-Relevant component:
+Relevant:
 
 ```text
 SubstitutionUserCache
 ```
 
-## 9. Work display name
+Это уменьшает повторные Firestore reads.
 
-Рабочее имя — отдельная рабочая presentation identity.
+---
+
+# 15. Work display name
+
+Work display name является рабочой presentation identity.
 
 Fallback:
 
 ```text
 workDisplayName
-→ regular name
+→ regular profile name
 → email
 → uid
 ```
 
-Manager может изменять рабочее имя.
+Manager может изменять work display name.
 
-Пустое рабочее имя означает возврат к обычному profile name.
+Пустое значение означает fallback к обычному profile identity.
 
-## 10. Queue architecture
+Relevant:
 
-Canonical order хранится в Firestore:
+```text
+lib/services/spaces/substitution/substitution_work_display_name_service.dart
+```
+
+---
+
+# 16. Queue architecture
+
+Canonical queue order хранится через:
 
 ```text
 rotationOrder
 ```
 
-Кнопка call не должна локально переставлять List и считать это authoritative result.
+UI не является authoritative queue.
 
-Flow:
+Call flow:
 
 ```text
-manager selects active participant
+manager selects participant
 → selects shift
 → application call service
-→ transaction updates queue/revision
-→ creates pendingCall
+→ Firestore transaction
+→ canonical queue mutation
+→ pendingCall created
 → realtime participant stream updates UI
 ```
 
-Таким образом два manager-клиента не должны иметь два независимых canonical порядка.
+Это важно для нескольких manager clients.
 
-## 11. Shift domain
+Нельзя иметь:
 
-`SubstitutionShift` содержит:
+```text
+client A canonical order
+и
+client B canonical order
+```
+
+только на основе local List mutation.
+
+---
+
+# 17. Shift domain
+
+`SubstitutionShift` содержит semantic date и shift kind.
+
+Core fields:
 
 ```text
 year
@@ -439,36 +1007,56 @@ night
 Business times:
 
 ```text
-day   08:00–20:00
-night 20:00–08:00 next day
+day
+08:00–20:00
+```
+
+```text
+night
+20:00–08:00 next day
 ```
 
 Statistics attribution:
 
 ```text
-statisticsYear  = shift.year
+statisticsYear = shift.year
 statisticsMonth = shift.month
 ```
 
-Ночная смена полностью относится к календарной дате старта.
+Ночная смена целиком относится к дате начала.
 
-Это invariant domain layer.
+Пример:
 
-## 12. Two-phase call model
+```text
+31 August night
+→ August statistics
+```
+
+Даже если окончание смены:
+
+```text
+1 September 08:00
+```
+
+Этот invariant находится в domain semantics.
+
+---
+
+# 18. Two-phase substitution call
 
 Call разделён на две фазы.
 
-### Phase A — queue mutation + pending
+## 18.1 Phase A — queue mutation + pending
 
 ```text
 call participant
-→ queue changes immediately
+→ queue changes
 → revision/callId advances
 → pendingCalls/{callId} created
-→ UI shows Undo
+→ UI starts Undo opportunity
 ```
 
-### Phase B — finalization
+## 18.2 Phase B — finalization
 
 После Undo window:
 
@@ -478,19 +1066,21 @@ pending call
 → pending deleted
 ```
 
-Преимущество:
+Преимущества:
 
 ```text
-Undo может отменить call до начисления статистики
+Undo не требует вычитать уже начисленную статистику
 ```
 
 и:
 
 ```text
-закрытие приложения не теряет незавершённую статистику
+app close не теряет незавершённую операцию
 ```
 
-## 13. Undo architecture
+---
+
+# 19. Undo architecture
 
 Undo window:
 
@@ -498,15 +1088,23 @@ Undo window:
 6 seconds
 ```
 
-Timer существует в UI только для удобства пользователя.
+UI timer существует для user interaction.
 
-Авторитетность времени и прав доступа остаётся в backend/Rules/application flow.
+Он не является authoritative security/time mechanism.
 
-UI timer не должен быть единственным механизмом защиты.
+Undo operation использует receipt/revision/business conditions.
 
-Undo operation использует receipt/revision, чтобы не откатывать уже изменившуюся очередь.
+Нельзя безусловно откатить очередь только потому, что локальный UI ещё показывает кнопку.
 
-## 14. Pending call storage
+Если canonical state уже изменился:
+
+```text
+Undo rejected
+```
+
+---
+
+# 20. Pending call architecture
 
 Path:
 
@@ -514,37 +1112,45 @@ Path:
 spaces/substitution/pendingCalls/{callId}
 ```
 
-Properties:
+PendingCall является durable work item.
+
+Содержит данные для finalization:
 
 ```text
 canonical callId
-participant/user identity
+participant identity
 caller identity
 shift
-timing required for finalization eligibility
+timing/finalization data
 ```
 
-PendingCall — durable work item.
+PendingCall:
 
-Он не является статистикой и не должен отображаться как подтверждённый вызов до finalization.
+```text
+не является statistics
+```
 
-## 15. Exactly-once finalization transaction
+и до successful finalization не считается подтверждённой statistics increment.
 
-Core file:
+---
+
+# 21. Exactly-once finalization
+
+Core:
 
 ```text
 lib/services/spaces/substitution/substitution_call_finalization_firestore_gateway.dart
 ```
 
-Transaction sequence:
+Transaction:
 
 ```text
 read pending
-→ validate
-→ read year statistics
-→ validate
+→ validate pending
+→ read yearly statistics
+→ validate statistics
 → accumulate
-→ write year statistics
+→ write statistics
 → delete pending
 ```
 
@@ -552,45 +1158,45 @@ Exactly-once invariant:
 
 ```text
 one pending document
-can produce
-at most one statistics increment
+→ at most one statistics increment
 ```
 
-Reason:
-
-```text
-после успешного transaction pending удалён
-```
-
-Повторная попытка:
+После successful transaction:
 
 ```text
 pending missing
-→ false/no-op
 ```
 
-Concurrency:
+Repeated finalize:
 
-Firestore transaction retry/conflict handling используется как часть correctness model.
+```text
+missing pending
+→ false / no-op
+```
 
-Нельзя заменять эту transaction последовательностью отдельных writes.
+Firestore transaction conflict/retry является частью correctness model.
 
-## 16. Recovery architecture
+Нельзя заменять transaction несколькими независимыми writes.
+
+---
+
+# 22. Recovery architecture
 
 Проблема:
 
 ```text
-app может закрыться после call,
-но до UI Timer finalize
+application closes
+after call
+before UI timer finalization
 ```
 
 Решение:
 
 ```text
-manager enters module
-→ load pending calls one time
-→ expired only
-→ sequential finalize
+manager enters "Список"
+→ one-shot pending load
+→ expired selection
+→ sequential finalization
 ```
 
 Relevant:
@@ -600,23 +1206,39 @@ SubstitutionCallReconciliationService
 SubstitutionPendingCallFirestoreGateway
 ```
 
-Почему one-shot, а не listener:
+Recovery intentionally не использует permanent listener.
+
+Причина:
 
 ```text
-pending recovery не нужен постоянно
-и listener создавал бы лишние reads
+pending recovery требуется редко
+permanent listener создавал бы лишние reads
 ```
 
 Failure policy:
 
 ```text
 recovery failure
-→ не блокировать screen
-→ pending остаётся
-→ later manager can retry
+→ screen remains usable
+→ pending remains
+→ future manager open retries
 ```
 
-## 17. Statistics architecture
+Если хотя бы один call реально finalized:
+
+```text
+statistics reload
+```
+
+Если все operations no-op:
+
+```text
+no unnecessary statistics reload
+```
+
+---
+
+# 23. Statistics architecture
 
 Production path:
 
@@ -624,13 +1246,13 @@ Production path:
 spaces/substitution/statistics/year_YYYY
 ```
 
-Один документ на год.
-
-Пример:
+Example:
 
 ```text
-year_2026
+spaces/substitution/statistics/year_2026
 ```
+
+Один document на год.
 
 Schema:
 
@@ -643,9 +1265,9 @@ lastFinalizedCallId
 updatedAt
 ```
 
-### 17.1 monthCallCounts
+## 23.1 monthCallCounts
 
-Logical structure:
+Structure:
 
 ```text
 month
@@ -653,23 +1275,23 @@ month
 → count
 ```
 
-Пример:
+Example:
 
 ```text
 monthCallCounts["8"]["uid-123"] = 4
 ```
 
-### 17.2 monthShifts
+## 23.2 monthShifts
 
-Logical structure:
+Structure:
 
 ```text
 month
 → uid
-→ ordered shift kind list
+→ ordered shift list
 ```
 
-Пример:
+Example:
 
 ```text
 monthShifts["8"]["uid-123"]
@@ -677,30 +1299,34 @@ monthShifts["8"]["uid-123"]
 ["night", "day", "day", "night"]
 ```
 
-Это позволяет UI построить ordered visual history без дополнительных documents.
+Ordered values позволяют строить visual history без отдельных documents на каждый call.
 
-### 17.3 yearCallCounts
+## 23.3 yearCallCounts
+
+Structure:
 
 ```text
 uid
-→ total count for year
+→ yearly count
 ```
 
-### 17.4 lastFinalizedCallId
+## 23.4 lastFinalizedCallId
 
 Technical diagnostic/integrity field.
 
-Не предназначено для отображения пользователю.
+Не предназначено для обычного UI.
 
-### 17.5 updatedAt
+## 23.5 updatedAt
 
-Server timestamp текущего агрегата.
+Server timestamp последней модификации aggregate.
 
-## 18. Statistics consistency invariants
+---
 
-Mapper должен отвергать внутренне противоречивый документ.
+# 24. Statistics consistency invariants
 
-Для каждого month/uid:
+Statistics mapper обязан reject внутренне противоречивые documents.
+
+Per month/uid:
 
 ```text
 monthCallCounts
@@ -708,7 +1334,7 @@ monthCallCounts
 monthShifts.length
 ```
 
-Для каждого uid:
+Per uid/year:
 
 ```text
 yearCallCounts
@@ -716,19 +1342,23 @@ yearCallCounts
 sum(all monthCallCounts)
 ```
 
-Accumulator является единственным application utility, который строит новое aggregate state из:
+Accumulator является application utility для:
 
 ```text
 current statistics
 +
 confirmed pending call
+→
+new statistics state
 ```
 
-UI никогда не корректирует годовые totals самостоятельно.
+UI не корректирует totals самостоятельно.
 
-## 19. Statistics read model
+---
 
-Для отображения текущей статистики нужен один read:
+# 25. Statistics read model
+
+Current-year UI использует один read:
 
 ```text
 statistics/year_<currentYear>
@@ -737,39 +1367,46 @@ statistics/year_<currentYear>
 Не использовать:
 
 ```text
-one query per participant
+one statistics query per participant
 ```
 
-Screen cache:
+Screen cache может хранить:
 
 ```text
-loaded flag
-loading flag
+loaded
+loading
 error
 year
 statistics model
 ```
 
-`showStatistics == false`:
+Если:
 
 ```text
-statistics document не нужен для UI
-→ не делать лишний read
+showStatistics == false
 ```
 
-После successful finalize:
+current-year statistics document не нужен presentation:
+
+```text
+не выполнять лишний read
+```
+
+После actual successful finalization:
 
 ```text
 reload once
 ```
 
-После no-op finalize:
+После false/no-op finalization:
 
 ```text
-не reload
+no reload
 ```
 
-## 20. Statistics presentation
+---
+
+# 26. Statistics presentation
 
 Widget:
 
@@ -777,7 +1414,7 @@ Widget:
 SubstitutionStatisticsSummary
 ```
 
-Domain data:
+Domain supplies:
 
 ```text
 count
@@ -789,123 +1426,264 @@ Presentation:
 ```text
 month title
 monthly count
-visual segments
+segments
 year total
 ```
 
 Slot scaling:
 
 ```text
-<=5  → 5
-<=9  → 9
-else → 12
+<= 5 → 5
+<= 9 → 9
+> 9  → 12
 ```
 
 Color mapping принадлежит widget layer.
 
-Нельзя записывать `amber`, `blue` или Flutter `Color` в Firestore/domain.
+Не хранить:
 
-## 21. UI preferences
+```text
+amber
+blue
+Flutter Color
+```
 
-Queue badge display mode и statistics visibility — локальные пользовательские предпочтения.
+в Firestore/domain.
 
-Они не влияют на backend statistics accumulation.
+---
+
+# 27. UI preferences
+
+Queue badge display и statistics visibility являются локальными preferences.
+
+Например:
+
+```text
+queue display:
+- avatar
+- number
+```
+
+```text
+showStatistics:
+true / false
+```
 
 Критичный invariant:
 
 ```text
 showStatistics == false
-не означает
-disable statistics counting
 ```
 
-Counting идёт независимо от того, скрыт UI или показан.
+не означает:
 
-## 22. Participant management permissions
+```text
+stop statistics accumulation
+```
+
+Backend counting продолжается независимо от presentation preference.
+
+---
+
+# 28. Participant management permissions
+
+Manager-level roles:
+
+```text
+brigadier
+owner
+```
 
 Manager actions:
 
 ```text
-add participants
+add participant
 edit work name
 call participant
-vacation
-sick
+move to vacation
+move to sick
 return active
-remove
+remove participant
 ```
 
-Self-only member action:
+Member action:
 
 ```text
 change own availability
 ```
 
-Availability ownership rule:
+Member НЕ должен:
 
 ```text
-participant.userId == currentUid
+change own status
+change own rotationOrder
+change another participant
 ```
 
-Бригадир не меняет availability другого пользователя из participant card.
+Manager НЕ должен через participant card:
 
-## 23. Settings UI boundary
+```text
+change another user's availability
+```
 
-`SubstitutionSettingsSheet` отображает:
+Owner сохраняет максимальный role priority.
+
+---
+
+# 29. Settings UI boundary
+
+Widget:
+
+```text
+SubstitutionSettingsSheet
+```
+
+Presentation options:
 
 ```text
 queue display preference
 statistics visibility
-manager-only add participants
+manager add-participants action
 ```
 
-Sheet не делает Firestore writes напрямую.
+Sheet не должен выполнять Firestore business writes напрямую.
 
-Callbacks уходят в screen/application services.
+Callbacks:
 
-## 24. Firestore security
+```text
+widget
+→ screen orchestration
+→ application service
+```
 
-`firestore.rules` является authoritative security boundary.
+---
+
+# 30. Firestore Security Rules
+
+`firestore.rules` является authoritative backend security boundary.
 
 Substitution Rules защищают:
 
 ```text
 module access
 role-aware management
-participant writes
-call flow
-pending call lifecycle
+participant state
+queue call flow
+pending lifecycle
 statistics finalization
 statistics reads
 manager recovery/list
 ```
 
-Overlapping Firestore Rules работают как OR.
+Flutter UI не является security mechanism.
 
-Поэтому специальные deny-like блоки нельзя проектировать так, будто более общий allow их отменит.
+## 30.1 Rule overlap
 
-При cleanup TEST statistics учитывался именно этот принцип.
-
-## 25. Obsolete TEST statistics removal
-
-Temporary TEST statistics model/gateway/service/rules tests удалены.
+Firestore `allow` expressions могут перекрываться.
 
 Architecture rule:
 
 ```text
-production code must use
+нельзя рассматривать один deny-like condition
+как отменяющий другой allow
+```
+
+При изменениях всегда проверять полный path/rule interaction.
+
+## 30.2 Member self-update rule
+
+Canonical current intent:
+
+```text
+member
+→ own availability only
+```
+
+Required invariants:
+
+```text
+request.auth.uid == participant userId
+rotationOrder unchanged
+status unchanged
+changed keys only availability
+```
+
+Таким образом прямой client write не должен позволить member самостоятельно изменить:
+
+```text
+active
+vacation
+sick
+```
+
+## 30.3 Manager status operations
+
+Managed status changes должны использовать manager-authorized flow.
+
+UI absence/presence controls UX.
+
+Firestore Rules independently validate authorization.
+
+## 30.4 Deploy distinction
+
+Предыдущий Substitution Rules foundation был deployed в:
+
+```text
+epistola-434b7
+```
+
+После него локально выполнено дополнительное tightening:
+
+```text
+member self state update
+availability only
+status immutable
+```
+
+На текущей контрольной точке это изменение:
+
+```text
+LOCAL
+TESTED
+NOT DEPLOYED
+```
+
+Нельзя считать production Rules синхронизированными с local `firestore.rules`, пока отдельный deploy не подтверждён.
+
+---
+
+# 31. Obsolete TEST statistics removal
+
+Temporary TEST statistics architecture retired.
+
+Production code использует:
+
+```text
 SubstitutionStatistics*
 ```
 
-Не возвращать:
+Не восстанавливать:
 
 ```text
 SubstitutionTestStatistics*
 ```
 
-Новый чат должен считать их retired.
+Это касается:
 
-## 26. Firestore cost model
+```text
+domain model
+mapper
+service
+Firestore gateway
+Rules tests
+Flutter tests
+```
+
+Production statistics foundation является единственным актуальным path.
+
+---
+
+# 32. Firestore cost model
 
 Pilot:
 
@@ -913,134 +1691,288 @@ Pilot:
 40–50 users
 ```
 
-Optimization decisions v0.8.0:
+Текущие optimization decisions:
 
 ```text
-participant stream один на module
-user cache by UID
-statistics one document per year
-statistics one read for current year
-pending recovery one-shot
-no pending listener
+one participant stream per module
+UID-based reusable user cache
+one yearly statistics document
+one current-year statistics read
+one-shot pending recovery
+no pending permanent listener
 no per-participant statistics reads
-reload statistics only after actual finalization
+reload statistics only after real finalization
 ```
 
-При дальнейшем росте необходимо профилировать размер yearly statistics document.
-
-Текущая схема достаточна для небольшого пилота и ограниченного количества вызовов.
-
-## 27. Testing architecture
-
-Coverage текущего foundation включает:
+Future scaling:
 
 ```text
-domain model tests
+monitor yearly statistics document size
+monitor listener count
+monitor reads/writes
+```
+
+Не оптимизировать заранее ценой ненужной complexity, но не вводить per-widget Firestore reads.
+
+---
+
+# 33. Messaging architecture retained
+
+Spaces-first navigation не заменяет существующий Messenger.
+
+Still valid foundations:
+
+```text
+private chats
+group chats
+message pagination
+logical deletion
+image messages
+push deep links
+date separators
+private read receipts
+group 👍 / 👎 reactions
+private typing via RTDB
+avatars
+identity cards
+per-chat notification controls
+custom push sound
+active-chat notification suppression
+```
+
+Spaces additions не должны ломать эти foundations.
+
+---
+
+# 34. Navigation compatibility with Messenger
+
+Existing Messenger route structure сохраняется.
+
+Typical flow:
+
+```text
+ChatsSpaceScreen
+→ ChatsPage
+→ ChatScreen
+```
+
+Возврат:
+
+```text
+ChatScreen
+→ ChatsPage
+→ ChatsSpaceScreen pop
+→ SpacesPage
+```
+
+Existing chat deep-link logic не следует переписывать только из-за того, что Chats теперь открываются из Spaces.
+
+Если future push/deep-link требует навигационного изменения, оно должно проектироваться отдельно и сохранять direct chat opening.
+
+---
+
+# 35. UI replaceability
+
+Visual layer должен оставаться заменяемым.
+
+Future changes могут включать:
+
+```text
+themes
+typography
+backgrounds
+bubble shapes
+animations
+tile design
+SpacesBar design
+avatars
+spacing
+```
+
+Такие изменения не должны требовать rewriting:
+
+```text
+Firestore schemas
+transactions
+security
+statistics
+business domain
+```
+
+Domain хранит semantics.
+
+Presentation выбирает visual representation.
+
+---
+
+# 36. Testing architecture
+
+Coverage Substitution foundation включает:
+
+```text
+domain tests
 mapper tests
 accumulator tests
 gateway tests
 reconciliation tests
-dependencies tests
-widget statistics summary tests
+dependency tests
+widget tests
 Firestore Rules tests
 ```
 
-Новые test files:
+Relevant tests:
 
 ```text
 test/domain/models/substitution_statistics_test.dart
-test/services/spaces/substitution/substitution_call_finalization_firestore_gateway_test.dart
-test/services/spaces/substitution/substitution_call_reconciliation_service_test.dart
-test/services/spaces/substitution/substitution_pending_call_firestore_gateway_test.dart
-test/services/spaces/substitution/substitution_statistics_accumulator_test.dart
-test/services/spaces/substitution/substitution_statistics_firestore_gateway_test.dart
-test/services/spaces/substitution/substitution_statistics_mapper_test.dart
-test/widgets/spaces/substitution/substitution_statistics_summary_test.dart
-test/rules/firestore/substitution_finalize_rules.test.mjs
+
+test/services/spaces/substitution/
+substitution_call_finalization_firestore_gateway_test.dart
+substitution_call_reconciliation_service_test.dart
+substitution_pending_call_firestore_gateway_test.dart
+substitution_statistics_accumulator_test.dart
+substitution_statistics_firestore_gateway_test.dart
+substitution_statistics_mapper_test.dart
+
+test/widgets/spaces/substitution/
+substitution_statistics_summary_test.dart
+
+test/rules/firestore/
+substitution_space_rules.test.mjs
+substitution_finalize_rules.test.mjs
 ```
 
-## 28. Verification checkpoint
+Rule behavior should be verified with Firestore emulator.
+
+---
+
+# 37. Current verification checkpoint
+
+After navigation + member-security tightening:
 
 Flutter:
 
 ```text
 flutter.bat analyze
 → No issues found
+```
 
+Full Flutter tests:
+
+```text
 flutter.bat test
 → 751 passed
 ```
 
-Targeted widget statistics:
+Known test diagnostic noise may include:
 
 ```text
-5/5 passed
+Corrupt JPEG data
+JPEG datastream contains no image
 ```
+
+If suite ends:
+
+```text
+All tests passed!
+```
+
+это не считается failure.
 
 Firestore Rules:
 
 ```text
-targeted substitution/finalization
-→ 53/53
-
-full Firestore suite
-→ 133/133
+tests 133
+suites 9
+pass 133
+fail 0
 ```
 
 Release APK:
 
 ```text
-build\app\outputs\flutter-apk\app-release.apk
-56.8 MB
+flutter.bat build apk --release
+→ SUCCESS
+→ 56.8 MB
 ```
 
-Rules:
+`git diff --check`:
 
 ```text
-deployed successfully to epistola-434b7
+clean
 ```
 
-## 29. Manual verification checkpoint
+LF→CRLF warnings не являются diff error.
 
-Confirmed scenarios:
+---
+
+# 38. Manual verification checkpoint
+
+Confirmed Substitution scenarios:
 
 ```text
 normal finalize
-Undo before 6 sec
-app close before finalize + recovery
+Undo before 6 seconds
+statistics unchanged after Undo
+app close before finalization
+recovery after manager re-entry
+exactly-once update
 remove/reinvite preserves UID statistics
 same-screen statistics refresh
-Aug/Sep boundary attribution
+August/September attribution
 availability UI
-statistics segment rendering
 manager/member action split
+statistics rendering
 ```
 
-## 30. Stable messaging architecture retained from earlier releases
-
-v0.8.0 does not replace existing messenger architecture.
-
-Still valid:
+Confirmed navigation scenarios:
 
 ```text
-private/group chats
-cursor pagination
-logical message deletion
-image messages
-push deep links
-date separators
-private read receipts
-group 👍/👎 reactions
-private typing via RTDB
-avatar foundation
-chat identity cards
-per-chat notification controls
-custom notification sound
+app launch
+→ Spaces
 ```
 
-Spaces additions must not break these foundations.
+```text
+bottom navigation
+→ Контакты | Пространства | Профиль
+```
 
-## 31. Project structure relevant to Spaces
+```text
+Spaces
+→ Чаты
+→ chat
+→ Back
+→ chat list
+→ Back
+→ Spaces
+```
+
+```text
+Contacts
+→ Back
+→ Spaces
+```
+
+```text
+Profile
+→ Back
+→ Spaces
+```
+
+```text
+Spaces root
+→ Back
+→ app exit
+```
+
+Manual result:
+
+```text
+работает
+```
+
+---
+
+# 39. Relevant project structure
 
 ```text
 lib/
@@ -1053,7 +1985,10 @@ lib/
 │       └── substitution_statistics.dart
 │
 ├── screens/
+│   ├── home_screen.dart
 │   ├── spaces_page.dart
+│   ├── chats_space_screen.dart
+│   ├── chats_page.dart
 │   ├── substitution_space_screen.dart
 │   └── substitution_add_participants_screen.dart
 │
@@ -1080,44 +2015,247 @@ lib/
             └── substitution_statistics_summary.dart
 ```
 
-## 32. Architectural rules for next stages
-
-When expanding Spaces:
+Rules:
 
 ```text
-1. keep each Space modular
-2. reuse shared identity/cache services where appropriate
-3. do not couple Spaces to ChatScreen
-4. keep Firebase writes in service/gateway layer
-5. preserve strict Rules coverage
+firestore.rules
+```
+
+Rules tests:
+
+```text
+test/rules/firestore/
+```
+
+---
+
+# 40. Architectural rules for new Spaces
+
+When adding another Space:
+
+```text
+1. keep the module isolated
+2. use clear domain semantics
+3. reuse shared identity/cache where appropriate
+4. keep Firebase operations below presentation
+5. add Rules coverage for backend writes
 6. avoid unbounded listeners
-7. store semantics, not visual styles
+7. store semantics, not Flutter visual styles
 8. preserve UID as identity
-9. keep owner highest role
-10. manually verify role boundaries
+9. preserve owner as highest role
+10. manually test role boundaries
 ```
 
-When extending Substitution:
+Не делать:
 
 ```text
-do not bypass pending/finalization model
-do not increment statistics from UI
-do not add parallel TEST statistics model
-do not change shift month attribution casually
-do not allow brigadier to edit another participant's availability
+новый Space
+→ ChatScreen subtype
 ```
 
-## 33. Release-state rule
+если это не является настоящим chat feature.
 
-Functional checkpoint:
+---
+
+# 41. Architectural rules for Substitution
+
+Do not:
 
 ```text
-63c405e
+bypass pending/finalization model
+increment statistics from UI
+restore TEST statistics model
+change shift month attribution casually
+allow member to change own status
+allow manager to edit another user's availability
+replace transactions with unrelated writes
 ```
 
-is pushed to feature branch.
+Preserve:
 
-Documentation is prepared as a separate finalization step.
+```text
+exactly-once finalization
+UID identity
+role-aware Rules
+one-shot recovery
+small read model
+```
+
+---
+
+# 42. Architectural rules for SpacesBar
+
+Before implementation separately decide:
+
+```text
+Firestore collection/path
+message kind enum
+priority semantics
+publisher capabilities
+expiration model
+cancel/edit policy
+maximum simultaneous active messages
+carousel ordering
+local seen/dismissed storage
+substitution event integration
+system notification integration
+```
+
+Do not implement speculative schema piecemeal before these decisions.
+
+Core desired principle:
+
+```text
+business event
+≠
+presentation channel
+```
+
+One event may feed several channels.
+
+---
+
+# 43. Development environment notes
+
+Primary development environment:
+
+```text
+Windows + PowerShell
+```
+
+Java for Firebase emulator/rules work:
+
+```text
+Java 21.0.10
+```
+
+JDK:
+
+```text
+C:\Program Files\Android\Android Studio\jbr
+```
+
+Current PowerShell-session setup:
+
+```powershell
+$env:JAVA_HOME = "C:\Program Files\Android\Android Studio\jbr"
+$env:Path = "$env:JAVA_HOME\bin;$env:Path"
+```
+
+Project command forms:
+
+```text
+flutter.bat
+dart.bat
+firebase.cmd
+npm.cmd
+npx.cmd
+git
+```
+
+Repository-relative paths should be preferred in development instructions:
+
+```text
+lib/...
+test/...
+```
+
+rather than repeating the full Windows project path.
+
+---
+
+# 44. Generated files policy
+
+Flutter commands may modify platform-generated plugin files:
+
+```text
+linux/flutter/generated_plugins.cmake
+macos/Flutter/GeneratedPluginRegistrant.swift
+windows/flutter/generated_plugin_registrant.cc
+windows/flutter/generated_plugins.cmake
+```
+
+If changes are generated noise only:
+
+```text
+run complete Flutter command series
+→ restore generated files once at the end
+```
+
+Do not repeatedly restore them between every Flutter command.
+
+---
+
+# 45. Verification protocol
+
+Functional change checkpoint:
+
+```text
+manual scenario
+→ dart format
+→ flutter analyze
+→ targeted/full tests as appropriate
+→ Firestore emulator tests when Rules changed
+→ release APK
+→ restore generated noise
+→ git diff --check
+→ git status --short
+```
+
+Docs-only edits do not require unnecessary Flutter rebuild.
+
+---
+
+# 46. State-changing operations
+
+The following are explicit state-changing actions:
+
+```text
+commit
+push
+merge
+tag
+branch creation
+deploy
+```
+
+Perform them only after explicit user approval.
+
+Do not commit a changed user scenario before manual verification.
+
+Do not deploy Rules simply because emulator tests passed.
+
+---
+
+# 47. Current Git/release state
+
+Current feature branch:
+
+```text
+feat/v0.8.0-spaces-substitution-foundation
+```
+
+Last confirmed HEAD before current local changes:
+
+```text
+bf24968
+```
+
+Commit:
+
+```text
+bf24968 docs: update v0.8.0 substitution foundation
+```
+
+Current navigation/security work was performed after that checkpoint.
+
+Therefore until a new commit actually exists:
+
+```text
+HEAD remains bf24968
+```
+
+Do not claim current local navigation/security work is pushed.
 
 Do not claim:
 
@@ -1127,15 +2265,167 @@ v0.8.0 tag created
 release closed
 ```
 
-until Git confirms it.
+until Git confirms these actions.
 
-Documentation-only changes do not require unnecessary Flutter rebuild.
+---
 
-After doc replacement:
+# 48. Current Rules release state
 
-```powershell
-git.exe diff --check
-git.exe status --short
+Two states must be distinguished.
+
+Previously deployed Substitution Rules foundation:
+
+```text
+DEPLOYED
 ```
 
-Then commit/push only with explicit user approval.
+New tightening:
+
+```text
+member
+→ own availability only
+→ own status immutable
+```
+
+is currently:
+
+```text
+LOCAL
+TESTED
+NOT DEPLOYED
+```
+
+This distinction must remain explicit in handoff documentation.
+
+---
+
+# 49. Documentation hierarchy
+
+Use:
+
+```text
+PROJECT_CONTEXT.md
+```
+
+for:
+
+```text
+current exact branch/HEAD
+working-tree state
+latest checks
+current handoff
+next immediate steps
+```
+
+Use:
+
+```text
+ARCHITECTURE.md
+```
+
+for:
+
+```text
+stable boundaries
+design rules
+data flow
+security semantics
+navigation architecture
+future architecture directions
+```
+
+Use:
+
+```text
+README.md
+```
+
+for:
+
+```text
+quick project overview
+major implemented features
+basic current status
+```
+
+Do not overload README with every implementation detail.
+
+---
+
+# 50. Next architectural direction
+
+After current navigation/security checkpoint is safely fixed, likely next major design area:
+
+```text
+SpacesBar / Announcements Foundation
+```
+
+Before writing production code, separately design:
+
+```text
+event model
+collection structure
+expiration
+permissions
+priority
+carousel
+local read/display state
+push integration
+substitution integration
+```
+
+Current navigation/security change should remain independent from that future work.
+
+---
+
+# 51. Final architectural principles
+
+Preserve these rules throughout Epistola development:
+
+```text
+source is authoritative
+```
+
+```text
+UI is replaceable
+```
+
+```text
+business rules live below widgets
+```
+
+```text
+Firestore Rules are authoritative security
+```
+
+```text
+transactions protect canonical concurrent state
+```
+
+```text
+UID is canonical user identity
+```
+
+```text
+owner is highest-priority role
+```
+
+```text
+member controls own availability, not own managed status
+```
+
+```text
+Spaces is the main launcher
+```
+
+```text
+Chats is available through Spaces without Messenger rewrite
+```
+
+```text
+avoid unnecessary Firestore reads/writes
+```
+
+```text
+commit/push/deploy only after explicit approval
+```
