@@ -1526,14 +1526,11 @@ function isOwnSubstitutionParticipantStateUpdate(userId) {
       && request.resource.data.rotationOrder
           == resource.data.rotationOrder
 
-      && changedKeys().hasAny([
-        'availability',
-        'status'
-      ])
+      && request.resource.data.status
+          == resource.data.status
 
       && changedKeys().hasOnly([
-        'availability',
-        'status'
+        'availability'
       ]);
 }
 

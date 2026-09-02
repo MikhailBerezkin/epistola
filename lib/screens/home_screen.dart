@@ -5,10 +5,7 @@ import 'package:flutter/services.dart';
 import '../services/avatar/avatar_image_dependencies.dart';
 import '../services/avatar/avatar_replacement_controller.dart';
 import '../widgets/avatar_lost_data_recovery_host.dart';
-import 'chats_page.dart';
-import 'chat_search_screen.dart';
 import 'contacts_screen.dart';
-import 'new_message_screen.dart';
 import 'profile_page.dart';
 import 'spaces_page.dart';
 import 'welcome_screen.dart';
@@ -21,8 +18,10 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  static const int _spacesIndex = 1;
+
   late final AvatarReplacementController _avatarController;
-  int selectedIndex = 0;
+  int selectedIndex = _spacesIndex;
 
   @override
   void initState() {
@@ -52,33 +51,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget getCurrentPage() {
     if (selectedIndex == 0) {
-      return const ChatsPage();
-    }
-
-    if (selectedIndex == 1) {
-      return const SpacesPage();
-    }
-
-    if (selectedIndex == 2) {
       return const ContactsScreen();
     }
 
-    return ProfilePage(avatarController: _avatarController);
-  }
-
-  void onAddPressed() {
-    HapticFeedback.lightImpact();
-
-    if (selectedIndex == 0) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => const NewMessageScreen()),
-      );
-    } else if (selectedIndex == 1) {
-      debugPrint('Создать пространство');
-    } else {
-      debugPrint('Редактировать профиль');
+    if (selectedIndex == _spacesIndex) {
+      return const SpacesPage();
     }
+
+    return ProfilePage(avatarController: _avatarController);
   }
 
   @override
@@ -94,9 +74,9 @@ class _HomeScreenState extends State<HomeScreen> {
         onPopInvokedWithResult: (didPop, result) {
           if (didPop) return;
 
-          if (selectedIndex != 0) {
+          if (selectedIndex != _spacesIndex) {
             setState(() {
-              selectedIndex = 0;
+              selectedIndex = _spacesIndex;
             });
             return;
           }
@@ -107,32 +87,8 @@ class _HomeScreenState extends State<HomeScreen> {
           appBar: AppBar(
             automaticallyImplyLeading: false,
             title: const Text('Epistola'),
-            actions: selectedIndex == 0
-                ? [
-                    IconButton(
-                      onPressed: () {
-                        HapticFeedback.selectionClick();
-
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const ChatSearchScreen(),
-                          ),
-                        );
-                      },
-                      icon: const Icon(Icons.search),
-                      tooltip: 'Поиск',
-                    ),
-                  ]
-                : [],
           ),
           body: getCurrentPage(),
-          floatingActionButton: selectedIndex == 0
-              ? FloatingActionButton(
-                  onPressed: onAddPressed,
-                  child: const Icon(Icons.add),
-                )
-              : null,
           bottomNavigationBar: NavigationBar(
             selectedIndex: selectedIndex,
             onDestinationSelected: (index) {
@@ -141,19 +97,14 @@ class _HomeScreenState extends State<HomeScreen> {
             },
             destinations: const [
               NavigationDestination(
-                icon: Icon(Icons.chat_bubble_outline),
-                selectedIcon: Icon(Icons.chat_bubble),
-                label: 'Чаты',
+                icon: Icon(Icons.menu_book_outlined),
+                selectedIcon: Icon(Icons.menu_book),
+                label: 'Контакты',
               ),
               NavigationDestination(
                 icon: Icon(Icons.hub_outlined),
                 selectedIcon: Icon(Icons.hub),
                 label: 'Пространства',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.menu_book_outlined),
-                selectedIcon: Icon(Icons.menu_book),
-                label: 'Контакты',
               ),
               NavigationDestination(
                 icon: Icon(Icons.person_outline),
@@ -162,8 +113,8 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ],
           ),
-        ), // Scaffold
-      ), // PopScope
+        ),
+      ),
     );
   }
 }

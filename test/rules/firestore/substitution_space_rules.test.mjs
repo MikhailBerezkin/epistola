@@ -310,12 +310,12 @@ describe('Substitution space rules', () => {
     },
   );
 
-  test(
-    'allows member to move self to vacation',
+    test(
+    'rejects member moving self to vacation',
     async () => {
       const db = authenticatedFirestore(member);
 
-      await assertSucceeds(
+      await assertFails(
         updateDoc(
           participantDoc(db, member.uid),
           {
@@ -327,7 +327,7 @@ describe('Substitution space rules', () => {
   );
 
   test(
-    'allows member to return self to active',
+    'rejects member returning self to active',
     async () => {
       await setParticipantStatusWithoutRules({
         userId: member.uid,
@@ -336,7 +336,7 @@ describe('Substitution space rules', () => {
 
       const db = authenticatedFirestore(member);
 
-      await assertSucceeds(
+      await assertFails(
         updateDoc(
           participantDoc(db, member.uid),
           {

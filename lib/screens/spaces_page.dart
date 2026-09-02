@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'chats_space_screen.dart';
 
 import 'substitution_space_screen.dart';
 
@@ -27,6 +28,18 @@ class SpacesPage extends StatelessWidget {
         crossAxisSpacing: 12,
         childAspectRatio: 1.15,
         children: [
+          _SpaceTile(
+            title: 'Чаты',
+            subtitle: 'Личные и групповые чаты',
+            icon: Icons.forum_outlined,
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const ChatsSpaceScreen(),
+                ),
+              );
+            },
+          ),
           _SpaceTile(
             title: '"Список"',
             icon: Icons.groups_2_outlined,
