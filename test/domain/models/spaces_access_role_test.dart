@@ -30,6 +30,12 @@ void main() {
       expect(SpacesAccessRole.owner.canManageSubstitution, isTrue);
     });
 
+    test('brigadier and owner can manage spaces bar', () {
+      expect(SpacesAccessRole.member.canManageSpacesBar, isFalse);
+      expect(SpacesAccessRole.brigadier.canManageSpacesBar, isTrue);
+      expect(SpacesAccessRole.owner.canManageSpacesBar, isTrue);
+    });
+
     test('only owner can manage spaces roles', () {
       expect(SpacesAccessRole.member.canManageSpacesRoles, isFalse);
       expect(SpacesAccessRole.brigadier.canManageSpacesRoles, isFalse);
