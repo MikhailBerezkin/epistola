@@ -64,6 +64,8 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    final isSpacesSelected = selectedIndex == _spacesIndex;
+    final colorScheme = Theme.of(context).colorScheme;
 
     return AvatarLostDataRecoveryHost(
       uid: uid,
@@ -86,7 +88,36 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Scaffold(
           appBar: AppBar(
             automaticallyImplyLeading: false,
-            title: const Text('Epistola'),
+            toolbarHeight: isSpacesSelected ? 64 : null,
+            title: isSpacesSelected
+                ? Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Epistola',
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                      Text(
+                        'Пространства',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  )
+                : const Text('Epistola'),
+            actions: isSpacesSelected
+                ? [
+                    IconButton(
+                      tooltip: 'Настроить пространства',
+                      onPressed: () {
+                        _showSpacesSettingsPlaceholder(context);
+                      },
+                      icon: const Icon(Icons.more_vert),
+                    ),
+                  ]
+                : null,
           ),
           body: getCurrentPage(),
           bottomNavigationBar: NavigationBar(
@@ -115,6 +146,34 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  Future<void> _showSpacesSettingsPlaceholder(BuildContext context) {
+    return showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Настройка пространств',
+                  style: Theme.of(sheetContext).textTheme.titleLarge,
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'Выбор отображаемых плиток добавим следующим этапом.',
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }
