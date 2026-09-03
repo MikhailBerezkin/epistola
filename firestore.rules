@@ -2342,6 +2342,139 @@ function isSubstitutionFinalizationPendingDelete(
           .data.updatedAt
           == request.time;
 }
+    function isValidSpacesBarLifetime(lifetime) {
+      return lifetime == 'oneHour'
+          || lifetime == 'twelveHours'
+          || lifetime == 'twentyFourHours'
+          || lifetime == 'untilCancelled';
+    }
+
+    function isValidSpacesBarMessage(message) {
+      return message is map
+          && message.keys().hasAll([
+            'text',
+            'lifetime',
+            'createdByUserId',
+            'createdAt'
+          ])
+          && message.keys().hasOnly([
+            'text',
+            'lifetime',
+            'createdByUserId',
+            'createdAt'
+          ])
+          && message.text is string
+          && message.text.size() >= 1
+          && message.text.size() <= 250
+          && message.lifetime is string
+          && isValidSpacesBarLifetime(message.lifetime)
+          && message.createdByUserId is string
+          && message.createdByUserId.size() > 0
+          && !message.createdByUserId.matches('.*[/].*')
+          && message.createdAt is timestamp;
+    }
+
+    function hasValidSpacesBarMessages(messages) {
+      let messageCount = messages.size();
+      let values = messages.values();
+
+      return messageCount == 0
+          || (
+            messageCount == 1
+            && isValidSpacesBarMessage(values[0])
+          )
+          || (
+            messageCount == 2
+            && isValidSpacesBarMessage(values[0])
+            && isValidSpacesBarMessage(values[1])
+          )
+          || (
+            messageCount == 3
+            && isValidSpacesBarMessage(values[0])
+            && isValidSpacesBarMessage(values[1])
+            && isValidSpacesBarMessage(values[2])
+          );
+    }
+
+    function hasValidSpacesBarBoard() {
+      let data = request.resource.data;
+
+      return data.keys().hasAll([
+            'schemaVersion',
+            'revision',
+            'messages',
+            'updatedAt'
+          ])
+          && data.keys().hasOnly([
+            'schemaVersion',
+            'revision',
+            'messages',
+            'updatedAt'
+          ])
+          && data.schemaVersion is int
+          && data.schemaVersion == 1
+          && data.revision is int
+          && data.revision >= 0
+          && data.messages is map
+          && data.messages.size() <= 3
+          && hasValidSpacesBarMessages(data.messages)
+          && data.updatedAt is timestamp
+          && data.updatedAt == request.time;
+    }
+
+    function hasValidSpacesBarCreate() {
+      let data = request.resource.data;
+      let messageId = string(data.revision);
+
+      return hasValidSpacesBarBoard()
+          && data.revision == 1
+          && data.messages.size() == 1
+          && data.messages.keys().hasAll([messageId])
+          && data.messages.keys().hasOnly([messageId])
+          && data.messages[messageId].createdByUserId == request.auth.uid
+          && data.messages[messageId].createdAt == request.time;
+    }
+
+    function hasValidSpacesBarUpdate() {
+      let oldMessages = resource.data.messages;
+      let newMessages = request.resource.data.messages;
+      let messageDiff = newMessages.diff(oldMessages);
+      let newMessageId = string(request.resource.data.revision);
+
+      return resource.data.schemaVersion is int
+          && resource.data.schemaVersion == 1
+          && resource.data.revision is int
+          && oldMessages is map
+          && hasValidSpacesBarBoard()
+          && request.resource.data.revision == resource.data.revision + 1
+          && messageDiff.changedKeys().size() == 0
+          && (
+            (
+              messageDiff.addedKeys().hasAll([newMessageId])
+              && messageDiff.addedKeys().hasOnly([newMessageId])
+              && newMessages[newMessageId].createdByUserId == request.auth.uid
+              && newMessages[newMessageId].createdAt == request.time
+            )
+            || (
+              messageDiff.addedKeys().size() == 0
+              && messageDiff.removedKeys().size() > 0
+            )
+          );
+    }
+
+    match /spaces/spacesBar {
+      allow get: if signedIn();
+      allow list: if false;
+
+      allow create: if isSpacesManager()
+          && hasValidSpacesBarCreate();
+
+      allow update: if isSpacesManager()
+          && hasValidSpacesBarUpdate();
+
+      allow delete: if false;
+    }
+
 
 match /spaces/substitution {
   allow get: if isSpacesManager();
