@@ -2,125 +2,99 @@
 
 Корпоративная Flutter/Firebase платформа для коммуникации и внутренних приложений компании.
 
-Epistola начиналась как корпоративный messenger, но развивается в единое Android-приложение с чатами, рабочими сервисами и внутренними пространствами.
+Epistola развивается из messenger-first приложения в единый Android workspace:
 
-Проект развивается небольшими проверяемыми этапами и на текущей стадии рассчитан на пилотную группу около 40–50 пользователей.
+```text
+communication
++
+internal Spaces
++
+work services
+```
+
+Pilot target:
+
+```text
+40–50 users
+```
 
 ---
 
-## Статус проекта
+## Current development status
 
 | Параметр | Значение |
 |---|---|
-| Current development target | `v0.8.0` |
-| Stage | `Spaces / Substitution Foundation` |
-| Feature branch | `feat/v0.8.0-spaces-substitution-foundation` |
-| Last confirmed HEAD before current local changes | `bf24968` |
+| Target | `v0.8.0` |
+| Stage | `Spaces / Substitution / SpacesBar Foundation` |
+| Branch | `feat/v0.8.0-spaces-substitution-foundation` |
+| Last functional checkpoint | `769544f` |
+| Commit | `feat(spaces): add spaces bar presentation and management` |
+| SpacesBar Rules checkpoint | `60966a6` |
 | Stable baseline before v0.8.0 | `v0.7.4` |
-| Repository | `MikhailBerezkin/epistola` |
 | Firebase project | `epistola-434b7` |
-| Firestore region | `eur3` |
-| RTDB / Functions region | `europe-west1` |
 | Android package | `com.epistola.app` |
-| Main platform | Android |
-| Pilot | 40–50 users |
+| Platform | Android |
 
-Текущие navigation/security изменения после `bf24968` локально проверены, но ещё не считать committed/pushed/deployed, пока соответствующие Git/Firebase команды не выполнены отдельно.
+At the current functional checkpoint:
+
+```text
+HEAD = origin feature branch = 769544f
+working tree was clean after push
+```
+
+`v0.8.0` is still a feature-branch target and has not yet been declared merged/released.
 
 ---
 
-# Что такое Epistola
+# Architecture
 
-Epistola объединяет:
-
-```text
-private chats
-group chats
-media
-push notifications
-contacts
-profiles
-roles / moderation
-internal Spaces
-work shifts
-announcements
-transport
-safety information
-future internal applications
-```
-
-Основной архитектурный принцип:
+Core layering:
 
 ```text
 Flutter UI
-→ presentation / controllers
+→ presentation / screen orchestration
 → application services
 → domain
-→ Firebase gateways
+→ Firebase gateways / adapters
 ```
 
-Business logic, Firestore transactions и Security Rules не должны находиться в visual widgets.
+Business transaction invariants stay below UI.
+
+UI role visibility is not the security boundary.
+
+Presentation-specific colors/layout are not persisted as domain data.
 
 ---
 
-# Главная навигация
+# Root navigation
 
-Новая текущая модель Epistola:
-
-```text
-App launch
-→ Пространства
-```
-
-Bottom navigation:
+Current root:
 
 ```text
 Контакты | Пространства | Профиль
 ```
 
-`Пространства` являются центральным и стартовым разделом.
-
-Старая отдельная нижняя вкладка:
+Default:
 
 ```text
-Чаты
+Пространства
 ```
 
-удалена из root navigation.
-
-Messenger не удалён.
-
-Теперь он открывается как отдельное внутреннее приложение:
+Chats are an internal Space:
 
 ```text
 Пространства
 → Чаты
+→ existing Messenger
 ```
 
-Основные navigation files:
-
-```text
-lib/screens/home_screen.dart
-lib/screens/spaces_page.dart
-lib/screens/chats_space_screen.dart
-lib/screens/chats_page.dart
-```
-
-`ChatsSpaceScreen` является тонкой presentation wrapper над существующим Messenger UI.
-
-Messenger internals при этом не переписывались и массово не переименовывались.
+Messenger internals remain chat/Messenger architecture.
 
 ---
 
-# Пространства
+# Current Spaces Hub
 
-Entry point:
-
-```text
-lib/screens/spaces_page.dart
-```
-
-Текущие плитки:
+Tiles:
 
 ```text
 Чаты
@@ -131,125 +105,114 @@ lib/screens/spaces_page.dart
 ОТ и ТБ
 ```
 
-Рабочие areas:
+Header when Spaces is selected:
 
 ```text
-Чаты
-"Список"
+Epistola
+Пространства
 ```
 
-Остальные модули пока placeholders.
+`⋮` is reserved for future Spaces tile configuration.
 
-`"Список"` намеренно отображается с кавычками.
+Current six-tile layout remains unchanged.
 
 ---
 
-# Чаты
+# SpacesBar
 
-В Epistola уже реализованы основные Messenger foundations.
+SpacesBar is implemented above the tile grid.
 
-## Private chats
-
-```text
-text messages
-image messages
-pagination
-logical delete
-push deep links
-read receipts ✓ / ✓✓
-typing indicator
-active-chat notification suppression
-chat identity card
-per-chat notification settings
-```
-
-## Group chats
+Current height:
 
 ```text
-group creation
-members
-owner/admin permissions
-ownership transfer
-group avatars
-push deep links
-👍 / 👎 reactions
-identity card
-members-only view
-per-chat notification settings
+141 px
 ```
 
-## Message history
+Current message font:
 
 ```text
-pagination по 20
-older-page loading
-scroll position preservation
-realtime merge
-date separators
-floating date indicator
-image-aware scroll behavior
+18 px
 ```
 
-## Notifications
+Empty state:
 
 ```text
-FCM
-active-chat suppression
-sound / silent / disabled
-custom Epistola seagull sound
-Android notification channels
-vibration
-image notification preview
+Нет новых закреплённых сообщений
 ```
+
+Maximum active messages:
+
+```text
+3
+```
+
+Lifetimes:
+
+```text
+1 hour
+12 hours
+24 hours
+until cancelled
+```
+
+Visual accents:
+
+```text
+1h → green
+12h → blue
+24h → orange
+until cancelled → red
+```
+
+The card uses a clear colored border with a light inward glow.
+
+Pin icon and visible lifetime label were intentionally removed from the message card.
 
 ---
 
-# "Список" / Substitution Foundation
+## SpacesBar carousel
 
-Основной экран:
-
-```text
-lib/screens/substitution_space_screen.dart
-```
-
-Tabs:
+For one visible message:
 
 ```text
-Список
-Отпуск
-Больничный
+no chevrons
+no dots
 ```
 
-Participant state:
+For two or three:
 
 ```text
-userId
-rotationOrder
-availability
-status
+left/right chevrons
+dots
+horizontal swipe
+automatic rotation
 ```
 
-Availability:
+Current auto-rotation:
 
 ```text
-green  → Всегда готов!
-yellow → Только в день
-red    → Занят
+15 seconds
 ```
 
-Status:
+Manual swipe/chevron navigation resets the interval.
+
+Current implementation uses separate `PageView` cards.
+
+Planned later:
 
 ```text
-active
-vacation
-sick
+one stationary SpacesBar frame
+content changes inside the frame
+cyclic/infinite swipe without hard end boundary
 ```
+
+Dots can remain logical current-message indicators.
 
 ---
 
-# Spaces roles
+## SpacesBar roles
 
-Роли:
+Roles:
 
 ```text
 member
@@ -257,696 +220,276 @@ brigadier
 owner
 ```
 
-Capabilities:
+Manager pencil:
 
 ```text
-member
-→ обычное использование
+brigadier → yes
+owner → yes
+member → no
 ```
 
-```text
-brigadier
-→ управление "Списком"
-```
-
-```text
-owner
-→ управление "Списком"
-→ управление Spaces roles
-```
-
-Owner всегда остаётся highest-priority role.
+Owner remains highest priority.
 
 ---
 
-# Availability и Status
+## SpacesBar editor
 
-Критичное разделение:
-
-```text
-availability
-≠
-status
-```
-
-Обычный пользователь может менять:
+Manager editor supports:
 
 ```text
-только собственную availability
+active count N/3
+active message list
+delete for all
+multiline text
+250 chars
+lifetime selection
+publish
 ```
 
-Обычный пользователь не может самостоятельно менять:
-
-```text
-active
-vacation
-sick
-```
-
-Status управляется manager-level flow.
-
-Бригадир/owner также не выставляет другому пользователю его availability из participant card.
-
-То есть `"светофор"` остаётся выбором самого пользователя.
+At `3/3` the publish form is hidden until one message is deleted.
 
 ---
 
-# Queue
+## Local hide vs global delete
 
-Canonical очередь хранится в:
-
-```text
-rotationOrder
-```
-
-UI не является authoritative queue.
-
-Call flow:
+Long press:
 
 ```text
-manager selects participant
-→ selects shift
-→ application service
-→ Firestore transaction
-→ canonical queue update
+Убрать сообщение
 ```
+
+This is local-only and stored in `SharedPreferences`.
+
+Properties:
+
+```text
+per user
+per device
+survives app restart
+no Firestore write
+```
+
+Therefore the same account can hide a message on the phone while still seeing it in the emulator.
+
+Manager editor trash:
+
+```text
+delete for all
+```
+
+This updates the authoritative Firestore board.
 
 ---
 
-# Shift selection
+## SpacesBar backend
 
-При вызове доступны:
+Firestore document:
 
 ```text
-Сегодня в ночь
-Завтра в день
-Отмена
+spaces/spacesBar
 ```
 
-Domain shifts:
+Schema version:
 
 ```text
-day   → 08:00–20:00
-night → 20:00–08:00 next day
+1
 ```
 
-Statistics month определяется датой начала смены.
-
-Пример:
+Board stores:
 
 ```text
-31 Aug night
-→ August
-
-1 Sep day
-→ September
-```
-
----
-
-# Undo + Pending Call
-
-После вызова:
-
-```text
-participant moved in queue
-→ pendingCall created
-→ 6-second Undo window
-```
-
-Production path:
-
-```text
-spaces/substitution/pendingCalls/{callId}
-```
-
-Если Undo успешен:
-
-```text
-queue rollback
-pending removed
-statistics unchanged
-```
-
-После окончания окна:
-
-```text
-pending
-→ finalization transaction
-→ statistics
-→ pending delete
-```
-
----
-
-# Exactly-once finalization
-
-Core:
-
-```text
-lib/services/spaces/substitution/substitution_call_finalization_firestore_gateway.dart
-```
-
-Transaction:
-
-```text
-read pending
-→ read yearly statistics
-→ apply increment
-→ write statistics
-→ delete pending
-```
-
-Повторный finalize после successful transaction:
-
-```text
-pending missing
-→ false / no-op
-```
-
-Таким образом один pending call может увеличить statistics максимум один раз.
-
----
-
-# Recovery
-
-Если приложение закрыли до finalization:
-
-```text
-manager opens "Список"
-→ one-shot pending recovery
-→ expired pending calls finalized
-```
-
-Recovery не использует постоянный listener.
-
-Это уменьшает Firestore reads для пилота.
-
----
-
-# Production statistics
-
-Path:
-
-```text
-spaces/substitution/statistics/year_YYYY
-```
-
-Example:
-
-```text
-spaces/substitution/statistics/year_2026
-```
-
-Schema:
-
-```text
-year
-monthCallCounts
-monthShifts
-yearCallCounts
-lastFinalizedCallId
+revision
+messages
 updatedAt
 ```
 
-Read model:
+Message stores:
 
 ```text
-one current-year document
+text
+lifetime
+createdByUserId
+createdAt
 ```
 
-Нет one-read-per-participant.
+Maximum:
 
-Statistics привязана к UID.
+```text
+3 active messages
+```
 
-Remove/reinvite участника не удаляет его историческую статистику.
+Reads are one board-document read, not per-message queries.
+
+Writes use Firestore transactions.
 
 ---
 
-# Statistics UI
+## SpacesBar Security Rules
 
-Participant card может показывать:
-
-```text
-Статистика
-Август            4
-[shift segments]
-За год            7
-```
-
-Segments:
+Current rules:
 
 ```text
-day   → yellow/amber
-night → dark blue
+signed-in users can get exact board document
+list is denied
+brigadier/owner can create/update
+whole board delete is denied
+strict schema/revision/message validation
 ```
 
-Domain хранит:
-
-```text
-day
-night
-```
-
-а не Flutter colors.
-
-Widget:
-
-```text
-lib/widgets/spaces/substitution/substitution_statistics_summary.dart
-```
+Rules are deployed to production.
 
 ---
 
-# Settings
+# Future Spaces tile behavior
 
-Bottom sheet:
-
-```text
-Настройки списка
-```
-
-Local preferences:
+Agreed product direction:
 
 ```text
-queue badge:
-- Аватар
-- Номер
+<= 6 active tiles
+→ regular layout with subtitles
 
-statistics:
-- show
-- hide
+7–8 active tiles
+→ compact shorter layout
+→ subtitles hidden
+
+odd count
+→ last tile spans full width
+
+> 8 active tiles
+→ vertical scroll
+→ optional subtle continuation indicator
 ```
 
-Manager дополнительно видит:
+SpacesBar height stays fixed.
 
-```text
-Добавить участников
-```
-
-`show/hide statistics` влияет только на presentation.
-
-Statistics accumulation продолжается независимо.
+`⋮` will later control visible Spaces and may also support ordering.
 
 ---
 
-# Firestore Security Rules
+# "Список" / Substitution
 
-Authoritative security boundary:
+`"Список"` is the main production work module being developed in v0.8.0.
 
-```text
-firestore.rules
-```
-
-Substitution Rules защищают:
+Foundation already includes:
 
 ```text
 participants
-role-aware management
-call flow
-pendingCalls
-statistics
+rotation queue
+availability
+vacation/sick status
+participant management
+work display name
+call participant flow
+Undo
+pending call persistence
+exactly-once finalization
 recovery
-```
-
-Текущий security invariant:
-
-```text
-member
-→ can change own availability only
-```
-
-Member не может client-side write изменить собственный:
-
-```text
-status
-rotationOrder
+monthly/yearly statistics
+Firestore Rules
 ```
 
 ---
 
-## Rules deploy state
+# Existing Messenger foundations
 
-Предыдущий Substitution Rules foundation был deployed в:
-
-```text
-epistola-434b7
-```
-
-После этого сделана дополнительная локальная security correction:
+Private chats:
 
 ```text
-member self update
-→ availability only
-→ status immutable
+text
+images
+pagination
+logical delete
+push deep links
+read receipts
+typing
+active-chat notification suppression
+avatar/user card
+notification controls
 ```
 
-Эта новая correction сейчас:
+Group chats:
 
 ```text
-LOCAL
-TESTED
-NOT DEPLOYED
+roles
+owner protection
+avatars
+push deep links
+reactions
+identity/member cards
+notification controls
 ```
 
-Не считать production Rules обновлёнными до отдельного Firebase deploy.
+Notifications:
+
+```text
+FCM
+custom sound
+vibration
+image preview
+channels
+active-chat suppression
+```
 
 ---
 
-# Verification checkpoint
+# Current verification
 
-Flutter:
+Latest full checkpoint:
 
 ```text
 flutter.bat analyze
 → No issues found
-```
 
-```text
 flutter.bat test
-→ 751 passed
-```
+→ 835 passed
 
-Firestore:
-
-```text
-full Firestore Rules suite
-→ 133 passed
-→ 0 failed
-```
-
-Release APK:
-
-```text
 flutter.bat build apk --release
 → SUCCESS
-→ build\app\outputs\flutter-apk\app-release.apk
-→ 56.8 MB
+→ 57.4 MB
+
+git.exe diff --check
+→ clean
 ```
 
-`git diff --check`:
+Firestore Rules:
 
 ```text
-clean
+SpacesBar targeted: 22/22
+full Rules: 155/155
 ```
 
-LF→CRLF messages являются line-ending warnings, а не diff errors.
+Manual testing completed on emulator and physical Android phone.
 
 ---
 
-# Manual verification
+# Next work
 
-Substitution scenarios:
-
-```text
-normal participant call
-Undo
-statistics unchanged after Undo
-app close before finalization
-manager recovery
-exactly-once finalization
-remove/reinvite preserving statistics
-same-screen statistics refresh
-August/September boundary
-availability ownership
-manager/member permission split
-statistics rendering
-```
-
-Navigation scenarios:
+Immediate next SpacesBar block:
 
 ```text
-app launch
-→ Пространства
+push integration
+exact SpacesBar message targeting from push
 ```
+
+Deferred presentation-only work:
 
 ```text
-Пространства
-→ Чаты
-→ chat
-→ Back
-→ chat list
-→ Back
-→ Пространства
+stationary SpacesBar frame with internal transition
+infinite cyclic swipe
+glow tuning
 ```
+
+Deferred Spaces Hub work:
 
 ```text
-Контакты
-→ Back
-→ Пространства
+⋮ tile configuration
+regular/compact layout switching
+>8 tile scroll hint
 ```
 
-```text
-Профиль
-→ Back
-→ Пространства
-```
-
-```text
-Пространства
-→ Back
-→ application exit
-```
-
-Manual result:
-
-```text
-работает
-```
-
----
-
-# Future SpacesBar
-
-Следующее крупное архитектурное направление может быть:
-
-```text
-SpacesBar / Announcements Foundation
-```
-
-Concept:
-
-```text
-persistent information/status bar
-на экране Пространства
-```
-
-Potential message kinds:
-
-```text
-announcement
-substitutionCall
-future system events
-```
-
-`kind` и `priority` должны оставаться разными semantic fields.
-
-Несколько active messages потенциально отображаются через carousel.
-
-Substitution call должен иметь возможность немедленно выйти на первый план.
-
-Предпочтительный принцип:
-
-```text
-one business event
-→ push
-→ SpacesBar
-→ system notification area
-```
-
-а не несколько независимых копий одного события.
-
-Перед implementation отдельно требуется решить:
-
-```text
-Firestore schema
-permissions
-expiration
-priority
-active-message limits
-carousel
-dismiss/read behavior
-system notification integration
-```
-
----
-
-# Cost model
-
-Проект рассчитан на пилот:
-
-```text
-40–50 пользователей
-```
-
-Основные ограничения:
-
-```text
-не делать лишние Firestore reads
-не делать лишние writes
-не создавать per-widget listeners
-кэшировать user data по UID
-использовать one-shot operations там, где listener не нужен
-```
-
----
-
-# Development environment
-
-Основная среда:
-
-```text
-Windows
-PowerShell
-VS Code
-Android
-```
-
-Java:
-
-```text
-Java 21.0.10
-```
-
-JDK:
-
-```text
-C:\Program Files\Android\Android Studio\jbr
-```
-
-Для новой PowerShell-сессии:
-
-```powershell
-$env:JAVA_HOME = "C:\Program Files\Android\Android Studio\jbr"
-$env:Path = "$env:JAVA_HOME\bin;$env:Path"
-```
-
-Основные команды:
-
-```text
-flutter.bat
-dart.bat
-firebase.cmd
-npm.cmd
-npx.cmd
-git
-```
-
-В инструкциях использовать repo-relative paths:
-
-```text
-lib/...
-test/...
-```
-
----
-
-# Project documents
-
-При конфликте:
-
-```text
-source code
-→ PROJECT_CONTEXT.md
-→ ARCHITECTURE.md
-→ README.md
-```
-
-Назначение:
+For full operational handoff read:
 
 ```text
 PROJECT_CONTEXT.md
-→ текущая рабочая контрольная точка и handoff
-
 ARCHITECTURE.md
-→ устойчивые технические решения
-
-README.md
-→ быстрый обзор проекта
 ```
-
----
-
-# Git state
-
-Current feature branch:
-
-```text
-feat/v0.8.0-spaces-substitution-foundation
-```
-
-Last confirmed HEAD before current local navigation/security changes:
-
-```text
-bf24968
-```
-
-Current local work пока нельзя считать:
-
-```text
-committed
-pushed
-deployed
-merged
-released
-```
-
-пока соответствующая операция явно не выполнена.
-
-Не считать выполненными без Git confirmation:
-
-```text
-merge into main
-tag v0.8.0
-release closure
-```
-
----
-
-# Development protocol
-
-Работа ведётся:
-
-```text
-маленькими проверяемыми шагами
-```
-
-Для небольших изменений:
-
-```text
-точная замена нескольких строк
-```
-
-Для крупных изменений:
-
-```text
-полный файл
-```
-
-Перед functional commit:
-
-```text
-manual test
-→ format
-→ analyze
-→ tests
-→ release build
-→ restore generated plugin noise
-→ git diff --check
-→ git status --short
-```
-
-Docs-only изменения не требуют повторной Flutter-сборки.
-
-State-changing действия:
-
-```text
-commit
-push
-merge
-tag
-deploy
-branch creation
-```
-
-выполняются только после явного подтверждения пользователя.
