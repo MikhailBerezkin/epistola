@@ -13,6 +13,7 @@ class SpacesBarPanel extends StatefulWidget {
     this.onHideMessage,
     this.canManage = false,
     this.onEdit,
+    this.targetMessageId,
     this.autoRotationInterval = const Duration(seconds: 15),
   });
 
@@ -25,6 +26,7 @@ class SpacesBarPanel extends StatefulWidget {
   final bool canManage;
   final VoidCallback? onEdit;
 
+  final String? targetMessageId;
   final Duration autoRotationInterval;
 
   @override
@@ -32,7 +34,7 @@ class SpacesBarPanel extends StatefulWidget {
 }
 
 class _SpacesBarPanelState extends State<SpacesBarPanel> {
-  final PageController _pageController = PageController();
+  late final PageController _pageController;
 
   Timer? _rotationTimer;
   int _currentIndex = 0;
@@ -46,6 +48,14 @@ class _SpacesBarPanelState extends State<SpacesBarPanel> {
   @override
   void initState() {
     super.initState();
+
+    _currentIndex = _findTargetIndex(
+      messages: widget.messages,
+      targetMessageId: widget.targetMessageId,
+    );
+
+    _pageController = PageController(initialPage: _currentIndex);
+
     _scheduleRotation();
   }
 
@@ -54,34 +64,67 @@ class _SpacesBarPanelState extends State<SpacesBarPanel> {
     super.didUpdateWidget(oldWidget);
 
     if (_sameMessageIds(oldWidget.messages, widget.messages) &&
-        oldWidget.autoRotationInterval == widget.autoRotationInterval) {
+        oldWidget.autoRotationInterval == widget.autoRotationInterval &&
+        oldWidget.targetMessageId == widget.targetMessageId) {
       return;
     }
 
     final previousMessageId =
-        oldWidget.messages.isNotEmpty &&
-            _currentIndex < oldWidget.messages.length
+        _currentIndex >= 0 && _currentIndex < oldWidget.messages.length
         ? oldWidget.messages[_currentIndex].id
         : null;
 
     var nextIndex = 0;
 
-    if (previousMessageId != null) {
-      final preservedIndex = widget.messages.indexWhere(
-        (message) => message.id == previousMessageId,
+    final targetMessageId = widget.targetMessageId;
+
+    final targetIndex = targetMessageId == null
+        ? -1
+        : widget.messages.indexWhere(
+            (message) => message.id == targetMessageId,
+          );
+
+    final targetWasAvailable =
+        targetMessageId != null &&
+        oldWidget.messages.any((message) => message.id == targetMessageId);
+
+    final targetChanged = oldWidget.targetMessageId != widget.targetMessageId;
+
+    final shouldApplyTarget =
+        targetIndex >= 0 && (targetChanged || !targetWasAvailable);
+
+    if (shouldApplyTarget) {
+      nextIndex = targetIndex;
+    } else if (targetIndex >= 0 && previousMessageId == targetMessageId) {
+      nextIndex = targetIndex;
+    } else {
+      final oldMessageIds = oldWidget.messages
+          .map((message) => message.id)
+          .toSet();
+
+      final addedMessageIndex = widget.messages.indexWhere(
+        (message) => !oldMessageIds.contains(message.id),
       );
 
-      if (preservedIndex >= 0) {
-        nextIndex = preservedIndex;
-      } else if (widget.messages.isNotEmpty) {
-        nextIndex = _currentIndex.clamp(0, widget.messages.length - 1);
+      if (addedMessageIndex >= 0) {
+        nextIndex = addedMessageIndex;
+      } else if (previousMessageId != null) {
+        final preservedIndex = widget.messages.indexWhere(
+          (message) => message.id == previousMessageId,
+        );
+
+        if (preservedIndex >= 0) {
+          nextIndex = preservedIndex;
+        }
       }
     }
 
-    _currentIndex = nextIndex;
+    _currentIndex = widget.messages.isEmpty
+        ? 0
+        : nextIndex.clamp(0, widget.messages.length - 1);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_pageController.hasClients || widget.messages.isEmpty) {
+      if (!mounted || !_pageController.hasClients) {
         return;
       }
 
@@ -89,6 +132,21 @@ class _SpacesBarPanelState extends State<SpacesBarPanel> {
     });
 
     _scheduleRotation();
+  }
+
+  int _findTargetIndex({
+    required List<SpacesBarMessage> messages,
+    required String? targetMessageId,
+  }) {
+    if (messages.isEmpty || targetMessageId == null) {
+      return 0;
+    }
+
+    final targetIndex = messages.indexWhere(
+      (message) => message.id == targetMessageId,
+    );
+
+    return targetIndex >= 0 ? targetIndex : 0;
   }
 
   @override

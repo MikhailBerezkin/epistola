@@ -5,6 +5,8 @@ import 'spaces_bar_visible_messages_resolver.dart';
 
 typedef SpacesBarBoardLoader = Future<SpacesBarBoard> Function();
 
+typedef SpacesBarBoardWatcher = Stream<SpacesBarBoard> Function();
+
 typedef SpacesBarHiddenMessageIdsLoader =
     Future<Set<String>> Function({required String userId});
 
@@ -32,6 +34,7 @@ final class SpacesBarPresentationState {
 final class SpacesBarPresentationService {
   factory SpacesBarPresentationService({
     required SpacesBarBoardLoader boardLoader,
+    SpacesBarBoardWatcher? boardWatcher,
     required SpacesBarHiddenMessageIdsLoader hiddenMessageIdsLoader,
     required SpacesBarMessageHider messageHider,
     SpacesBarVisibleMessagesResolver resolver =
@@ -40,6 +43,7 @@ final class SpacesBarPresentationService {
   }) {
     return SpacesBarPresentationService._(
       boardLoader,
+      boardWatcher,
       hiddenMessageIdsLoader,
       messageHider,
       resolver,
@@ -49,6 +53,7 @@ final class SpacesBarPresentationService {
 
   SpacesBarPresentationService._(
     this._boardLoader,
+    this._boardWatcher,
     this._hiddenMessageIdsLoader,
     this._messageHider,
     this._resolver,
@@ -56,6 +61,7 @@ final class SpacesBarPresentationService {
   );
 
   final SpacesBarBoardLoader _boardLoader;
+  final SpacesBarBoardWatcher? _boardWatcher;
   final SpacesBarHiddenMessageIdsLoader _hiddenMessageIdsLoader;
   final SpacesBarMessageHider _messageHider;
   final SpacesBarVisibleMessagesResolver _resolver;
@@ -70,6 +76,24 @@ final class SpacesBarPresentationService {
     );
 
     return _resolve(board: board, hiddenMessageIds: hiddenMessageIds);
+  }
+
+  Stream<SpacesBarPresentationState> watch({required String userId}) async* {
+    final normalizedUserId = _normalizeRequired(userId, argumentName: 'userId');
+
+    final boardWatcher = _boardWatcher;
+
+    if (boardWatcher == null) {
+      throw StateError('SpacesBar board watcher is not configured.');
+    }
+
+    await for (final board in boardWatcher()) {
+      final hiddenMessageIds = await _hiddenMessageIdsLoader(
+        userId: normalizedUserId,
+      );
+
+      yield _resolve(board: board, hiddenMessageIds: hiddenMessageIds);
+    }
   }
 
   Future<SpacesBarPresentationState> hideMessage({

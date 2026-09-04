@@ -101,6 +101,46 @@ void main() {
       expect(destination?.chatName, 'peer@example.com');
     });
 
+    test(
+      'resolves a SpacesBar target for an authenticated user without loading a chat',
+      () async {
+        var didLoadChat = false;
+
+        final resolver = PushDeepLinkResolver(
+          currentUserIdProvider: () => 'current-user',
+          loadChat: (_) async {
+            didLoadChat = true;
+            return {};
+          },
+          loadUser: (_) async => null,
+        );
+
+        final request = PushDeepLinkRequest.tryParseSpacesBarMessageId('42')!;
+
+        final messageId = await resolver.resolveSpacesBarMessageId(request);
+
+        expect(messageId, '42');
+        expect(didLoadChat, isFalse);
+      },
+    );
+
+    test(
+      'rejects a SpacesBar target when the user is not authenticated',
+      () async {
+        final resolver = PushDeepLinkResolver(
+          currentUserIdProvider: () => null,
+          loadChat: (_) async => {},
+          loadUser: (_) async => null,
+        );
+
+        final request = PushDeepLinkRequest.tryParseSpacesBarMessageId('42')!;
+
+        final messageId = await resolver.resolveSpacesBarMessageId(request);
+
+        expect(messageId, isNull);
+      },
+    );
+
     test('rejects a request when the user is not authenticated', () async {
       var didLoadChat = false;
 

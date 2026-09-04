@@ -77,5 +77,41 @@ void main() {
 
       expect(readCount, 1);
     });
+
+    test('watches missing and updated board snapshots', () async {
+      final gateway = SpacesBarBoardFirestoreGateway(
+        documentReader: () async => null,
+        documentWatcher: () {
+          return Stream<Map<String, dynamic>?>.fromIterable([
+            null,
+            <String, dynamic>{
+              'schemaVersion': 1,
+              'revision': 2,
+              'messages': <String, dynamic>{
+                '2': <String, dynamic>{
+                  'text': 'Новое сообщение',
+                  'lifetime': 'untilCancelled',
+                  'createdByUserId': 'owner-1',
+                  'createdAt': Timestamp.fromDate(createdAt),
+                },
+              },
+              'updatedAt': Timestamp.fromDate(createdAt),
+            },
+          ]);
+        },
+      );
+
+      final boards = await gateway.watch().take(2).toList();
+
+      expect(boards, hasLength(2));
+
+      expect(boards[0].revision, 0);
+      expect(boards[0].messages, isEmpty);
+
+      expect(boards[1].revision, 2);
+      expect(boards[1].messages, hasLength(1));
+      expect(boards[1].messages.single.id, '2');
+      expect(boards[1].messages.single.text, 'Новое сообщение');
+    });
   });
 }

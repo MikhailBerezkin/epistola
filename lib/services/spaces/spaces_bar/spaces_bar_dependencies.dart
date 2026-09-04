@@ -24,6 +24,7 @@ SpacesBarPresentationService createSpacesBarPresentationService({
 
   return SpacesBarPresentationService(
     boardLoader: resolvedBoardGateway.load,
+    boardWatcher: resolvedBoardGateway.watch,
     hiddenMessageIdsLoader:
         resolvedHiddenMessagesPreferences.loadHiddenMessageIds,
     messageHider: resolvedHiddenMessagesPreferences.hideMessage,

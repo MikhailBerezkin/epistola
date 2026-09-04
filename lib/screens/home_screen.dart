@@ -11,7 +11,14 @@ import 'spaces_page.dart';
 import 'welcome_screen.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  const HomeScreen({
+    super.key,
+    this.spacesBarTargetMessageId,
+    this.allowRoutePop = false,
+  });
+
+  final String? spacesBarTargetMessageId;
+  final bool allowRoutePop;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -55,7 +62,9 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     if (selectedIndex == _spacesIndex) {
-      return const SpacesPage();
+      return SpacesPage(
+        spacesBarTargetMessageId: widget.spacesBarTargetMessageId,
+      );
     }
 
     return ProfilePage(avatarController: _avatarController);
@@ -72,7 +81,7 @@ class _HomeScreenState extends State<HomeScreen> {
       controller: _avatarController,
       coordinator: defaultAvatarLostDataRecoveryCoordinator,
       child: PopScope(
-        canPop: false,
+        canPop: widget.allowRoutePop,
         onPopInvokedWithResult: (didPop, result) {
           if (didPop) return;
 

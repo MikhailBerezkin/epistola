@@ -25,6 +25,20 @@ class NotificationService {
         vibrationPattern: Int64List.fromList(<int>[0, 250, 100, 250]),
       );
 
+  static final AndroidNotificationChannel _spacesBarChannel =
+      AndroidNotificationChannel(
+        'epistola_spaces_bar_v1',
+        'Объявления Epistola',
+        description: 'Важные объявления из Пространств',
+        importance: Importance.high,
+        playSound: true,
+        sound: const RawResourceAndroidNotificationSound(
+          'seagull_notification',
+        ),
+        enableVibration: true,
+        vibrationPattern: Int64List.fromList(<int>[0, 250, 100, 250]),
+      );
+
   static const AndroidNotificationChannel _silentMessageChannel =
       AndroidNotificationChannel(
         'epistola_messages_silent',
@@ -65,6 +79,8 @@ class NotificationService {
     await androidPlugin?.createNotificationChannel(_messageChannel);
 
     await androidPlugin?.createNotificationChannel(_silentMessageChannel);
+
+    await androidPlugin?.createNotificationChannel(_spacesBarChannel);
   }
 
   static Future<void> startMessaging() async {
@@ -137,12 +153,13 @@ class NotificationService {
     }
 
     final request = PushDeepLinkRequest.fromRemoteData(message.data);
+    final chatId = request?.chatId;
 
-    if (request != null && activeChatTracker.isCurrent(request.chatId)) {
+    if (chatId != null && activeChatTracker.isCurrent(chatId)) {
       if (kDebugMode) {
         debugPrint(
           'Foreground notification suppressed for active chat: '
-          'chatId=${request.chatId}',
+          'chatId=$chatId',
         );
       }
 
@@ -152,7 +169,11 @@ class NotificationService {
     final isSilent =
         message.data['notificationMode'] == _silentNotificationMode;
 
-    final channel = isSilent ? _silentMessageChannel : _messageChannel;
+    final channel = request?.isSpacesBar == true
+        ? _spacesBarChannel
+        : isSilent
+        ? _silentMessageChannel
+        : _messageChannel;
 
     await _localNotifications.show(
       id: message.messageId.hashCode & 0x7fffffff,
@@ -166,16 +187,16 @@ class NotificationService {
           importance: Importance.high,
           priority: Priority.high,
           icon: '@mipmap/ic_launcher',
-          playSound: !isSilent,
-          sound: isSilent
+          playSound: request?.isSpacesBar == true || !isSilent,
+          sound: isSilent && request?.isSpacesBar != true
               ? null
               : const RawResourceAndroidNotificationSound(
                   'seagull_notification',
                 ),
-          enableVibration: !isSilent,
+          enableVibration: request?.isSpacesBar == true || !isSilent,
         ),
       ),
-      payload: request?.chatId,
+      payload: request?.toLocalPayload(),
     );
     if (!isSilent) {
       await vibrate();
@@ -187,7 +208,7 @@ class NotificationService {
 
     if (request == null) {
       if (kDebugMode) {
-        debugPrint('Remote notification has no valid chatId');
+        debugPrint('Remote notification has no valid deep link target');
       }
 
       return;
@@ -201,7 +222,7 @@ class NotificationService {
 
     if (request == null) {
       if (kDebugMode) {
-        debugPrint('Local notification has no valid chatId');
+        debugPrint('Local notification has no valid deep link target');
       }
 
       return;
@@ -217,20 +238,14 @@ class NotificationService {
 
     if (coordinator == null) {
       if (kDebugMode) {
-        debugPrint(
-          'Push deep link coordinator is unavailable: '
-          'chatId=${request.chatId}',
-        );
+        debugPrint('Push deep link coordinator is unavailable: $request');
       }
 
       return;
     }
 
     if (kDebugMode) {
-      debugPrint(
-        'Opening notification chat: '
-        'chatId=${request.chatId}',
-      );
+      debugPrint('Opening notification target: $request');
     }
 
     await coordinator.handle(request);

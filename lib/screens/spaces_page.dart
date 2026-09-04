@@ -14,7 +14,9 @@ import 'chats_space_screen.dart';
 import 'substitution_space_screen.dart';
 
 class SpacesPage extends StatefulWidget {
-  const SpacesPage({super.key});
+  const SpacesPage({super.key, this.spacesBarTargetMessageId});
+
+  final String? spacesBarTargetMessageId;
 
   @override
   State<SpacesPage> createState() => _SpacesPageState();
@@ -23,6 +25,8 @@ class SpacesPage extends StatefulWidget {
 class _SpacesPageState extends State<SpacesPage> {
   late final SpacesBarPresentationService _spacesBarService;
   late final SpacesBarManagementService _spacesBarManagementService;
+
+  StreamSubscription<SpacesBarPresentationState>? _spacesBarSubscription;
 
   SpacesBarPresentationState? _spacesBarState;
   bool _isSpacesBarLoading = true;
@@ -43,7 +47,7 @@ class _SpacesPageState extends State<SpacesPage> {
     _spacesBarManagementService = createSpacesBarManagementService();
 
     unawaited(_loadSpacesAccessRole());
-    unawaited(_loadSpacesBar());
+    unawaited(_startSpacesBarWatch());
   }
 
   Future<void> _loadSpacesAccessRole() async {
@@ -85,14 +89,17 @@ class _SpacesPageState extends State<SpacesPage> {
     }
   }
 
-  Future<void> _loadSpacesBar() async {
+  Future<void> _startSpacesBarWatch() async {
     final userId = _currentUserId;
 
-    if (userId.isEmpty) {
-      if (!mounted) {
-        return;
-      }
+    await _spacesBarSubscription?.cancel();
+    _spacesBarSubscription = null;
 
+    if (!mounted) {
+      return;
+    }
+
+    if (userId.isEmpty) {
       setState(() {
         _spacesBarState = null;
         _spacesBarError = null;
@@ -107,28 +114,37 @@ class _SpacesPageState extends State<SpacesPage> {
       _spacesBarError = null;
     });
 
-    try {
-      final state = await _spacesBarService.load(userId: userId);
+    _spacesBarSubscription = _spacesBarService
+        .watch(userId: userId)
+        .listen(
+          (state) {
+            if (!mounted) {
+              return;
+            }
 
-      if (!mounted) {
-        return;
-      }
+            setState(() {
+              _spacesBarState = state;
+              _spacesBarError = null;
+              _isSpacesBarLoading = false;
+            });
+          },
+          onError: (Object error, StackTrace stackTrace) {
+            if (!mounted) {
+              return;
+            }
 
-      setState(() {
-        _spacesBarState = state;
-        _spacesBarError = null;
-        _isSpacesBarLoading = false;
-      });
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
+            setState(() {
+              _spacesBarError = error;
+              _isSpacesBarLoading = false;
+            });
+          },
+        );
+  }
 
-      setState(() {
-        _spacesBarError = error;
-        _isSpacesBarLoading = false;
-      });
-    }
+  @override
+  void dispose() {
+    unawaited(_spacesBarSubscription?.cancel());
+    super.dispose();
   }
 
   Future<void> _hideSpacesBarMessage(String messageId) async {
@@ -215,12 +231,6 @@ class _SpacesPageState extends State<SpacesPage> {
         return;
       }
 
-      await _loadSpacesBar();
-
-      if (!mounted) {
-        return;
-      }
-
       _showSpacesBarSnackBar('Сообщение опубликовано.');
     } on SpacesBarManagementPermissionException {
       if (!mounted) {
@@ -249,13 +259,6 @@ class _SpacesPageState extends State<SpacesPage> {
       if (!mounted) {
         return;
       }
-
-      await _loadSpacesBar();
-
-      if (!mounted) {
-        return;
-      }
-
       _showSpacesBarSnackBar(
         deleted ? 'Сообщение удалено для всех.' : 'Сообщение уже отсутствует.',
       );
@@ -288,7 +291,7 @@ class _SpacesPageState extends State<SpacesPage> {
 
     return Scaffold(
       body: RefreshIndicator(
-        onRefresh: _loadSpacesBar,
+        onRefresh: _startSpacesBarWatch,
         child: CustomScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
@@ -297,10 +300,11 @@ class _SpacesPageState extends State<SpacesPage> {
               sliver: SliverToBoxAdapter(
                 child: SpacesBarPanel(
                   messages: visibleMessages,
+                  targetMessageId: widget.spacesBarTargetMessageId,
                   isLoading: _isSpacesBarLoading,
                   error: _spacesBarError,
                   onRetry: () {
-                    unawaited(_loadSpacesBar());
+                    unawaited(_startSpacesBarWatch());
                   },
                   onHideMessage: _hideSpacesBarMessage,
                   canManage:

@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../screens/chat_screen.dart';
+import '../../screens/home_screen.dart';
 import 'push_deep_link_coordinator.dart';
 import 'push_deep_link_resolver.dart';
 
@@ -12,9 +13,10 @@ class PushDeepLinkNavigation {
       resolver: _resolver,
       isNavigationReady: _isNavigationReady,
       openDestination: _openDestination,
+      openSpacesBarMessage: _openSpacesBarMessage,
       onUnavailable: (request) {
         if (kDebugMode) {
-          debugPrint('Push deep link is unavailable: chatId=${request.chatId}');
+          debugPrint('Push deep link is unavailable: $request');
         }
       },
       onError: (error, stackTrace) {
@@ -65,6 +67,23 @@ class PushDeepLinkNavigation {
           chatId: destination.chatId,
           chatName: destination.chatName,
           peerUser: destination.isPrivateChat ? destination.peerUser : null,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openSpacesBarMessage(String messageId) async {
+    final navigator = navigatorKey.currentState;
+
+    if (navigator == null) {
+      return;
+    }
+
+    await navigator.push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => HomeScreen(
+          spacesBarTargetMessageId: messageId,
+          allowRoutePop: true,
         ),
       ),
     );

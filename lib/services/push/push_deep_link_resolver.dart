@@ -83,6 +83,20 @@ class PushDeepLinkResolver {
   final PushDeepLinkChatLoader _loadChat;
   final PushDeepLinkUserLoader _loadUser;
 
+  Future<String?> resolveSpacesBarMessageId(PushDeepLinkRequest request) async {
+    if (!request.isSpacesBar) {
+      return null;
+    }
+
+    final currentUserId = _currentUserIdProvider()?.trim() ?? '';
+
+    if (currentUserId.isEmpty) {
+      return null;
+    }
+
+    return request.spacesBarMessageId;
+  }
+
   Future<PushDeepLinkDestination?> resolve(PushDeepLinkRequest request) async {
     final currentUserId = _currentUserIdProvider()?.trim() ?? '';
 
@@ -90,7 +104,13 @@ class PushDeepLinkResolver {
       return null;
     }
 
-    final chatData = await _loadChat(request.chatId);
+    final chatId = request.chatId;
+
+    if (chatId == null) {
+      return null;
+    }
+
+    final chatData = await _loadChat(chatId);
 
     if (chatData == null ||
         !_containsMember(chatData: chatData, currentUserId: currentUserId)) {
@@ -102,7 +122,7 @@ class PushDeepLinkResolver {
 
     if (chatType == 'private') {
       return _resolvePrivateChat(
-        request: request,
+        chatId: chatId,
         chatData: chatData,
         currentUserId: currentUserId,
       );
@@ -110,7 +130,7 @@ class PushDeepLinkResolver {
 
     if (chatType == 'group') {
       return PushDeepLinkDestination(
-        chatId: request.chatId,
+        chatId: chatId,
         chatName: _readChatName(chatData, fallback: 'Без названия'),
         chatType: PushDeepLinkChatType.group,
       );
@@ -120,7 +140,7 @@ class PushDeepLinkResolver {
   }
 
   Future<PushDeepLinkDestination?> _resolvePrivateChat({
-    required PushDeepLinkRequest request,
+    required String chatId,
     required Map<String, dynamic> chatData,
     required String currentUserId,
   }) async {
@@ -136,7 +156,7 @@ class PushDeepLinkResolver {
     final peerUser = await _loadUser(peerUserId);
 
     return PushDeepLinkDestination(
-      chatId: request.chatId,
+      chatId: chatId,
       chatName: _privateChatName(chatData: chatData, peerUser: peerUser),
       chatType: PushDeepLinkChatType.private,
       peerUser: peerUser,

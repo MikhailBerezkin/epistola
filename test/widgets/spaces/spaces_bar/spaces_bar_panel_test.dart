@@ -12,6 +12,88 @@ void main() {
     expect(find.text('Нет новых закреплённых сообщений'), findsOneWidget);
   });
 
+  testWidgets('keeps requested target when a newer message arrives', (
+    tester,
+  ) async {
+    const rotationInterval = Duration(hours: 1);
+
+    await tester.pumpWidget(
+      _app(
+        SpacesBarPanel(
+          targetMessageId: '9',
+          messages: <SpacesBarMessage>[_message(id: '9')],
+          autoRotationInterval: rotationInterval,
+        ),
+      ),
+    );
+
+    expect(
+      find.bySemanticsLabel('spaces-bar-current-message-9'),
+      findsOneWidget,
+    );
+
+    await tester.pumpWidget(
+      _app(
+        SpacesBarPanel(
+          targetMessageId: '9',
+          messages: <SpacesBarMessage>[
+            _message(id: '10'),
+            _message(id: '9'),
+          ],
+          autoRotationInterval: rotationInterval,
+        ),
+      ),
+    );
+
+    await tester.pump();
+
+    expect(
+      find.bySemanticsLabel('spaces-bar-current-message-9'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('shows newly added message immediately', (tester) async {
+    const rotationInterval = Duration(hours: 1);
+
+    await tester.pumpWidget(
+      _app(
+        SpacesBarPanel(
+          messages: <SpacesBarMessage>[
+            _message(id: '2'),
+            _message(id: '1'),
+          ],
+          autoRotationInterval: rotationInterval,
+        ),
+      ),
+    );
+
+    expect(
+      find.bySemanticsLabel('spaces-bar-current-message-2'),
+      findsOneWidget,
+    );
+
+    await tester.pumpWidget(
+      _app(
+        SpacesBarPanel(
+          messages: <SpacesBarMessage>[
+            _message(id: '3'),
+            _message(id: '2'),
+            _message(id: '1'),
+          ],
+          autoRotationInterval: rotationInterval,
+        ),
+      ),
+    );
+
+    await tester.pump();
+
+    expect(
+      find.bySemanticsLabel('spaces-bar-current-message-3'),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('shows message without lifetime label', (tester) async {
     await tester.pumpWidget(
       _app(
@@ -47,6 +129,59 @@ void main() {
     expect(find.byKey(const ValueKey('spaces-bar-dot-0')), findsOneWidget);
     expect(find.byKey(const ValueKey('spaces-bar-dot-1')), findsOneWidget);
     expect(find.byKey(const ValueKey('spaces-bar-dot-2')), findsOneWidget);
+  });
+
+  testWidgets('opens requested target message', (tester) async {
+    await tester.pumpWidget(
+      _app(
+        SpacesBarPanel(
+          targetMessageId: '2',
+          messages: <SpacesBarMessage>[
+            _message(id: '1'),
+            _message(id: '2'),
+            _message(id: '3'),
+          ],
+        ),
+      ),
+    );
+
+    expect(
+      find.bySemanticsLabel('spaces-bar-current-message-2'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('opens requested target after messages are loaded', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _app(
+        const SpacesBarPanel(
+          messages: <SpacesBarMessage>[],
+          targetMessageId: '2',
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(
+      _app(
+        SpacesBarPanel(
+          targetMessageId: '2',
+          messages: <SpacesBarMessage>[
+            _message(id: '1'),
+            _message(id: '2'),
+            _message(id: '3'),
+          ],
+        ),
+      ),
+    );
+
+    await tester.pump();
+
+    expect(
+      find.bySemanticsLabel('spaces-bar-current-message-2'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('automatically rotates to next message', (tester) async {

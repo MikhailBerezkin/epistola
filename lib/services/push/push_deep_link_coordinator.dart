@@ -9,6 +9,8 @@ typedef PushDeepLinkReadinessProvider = bool Function();
 typedef PushDeepLinkDestinationOpener =
     Future<void> Function(PushDeepLinkDestination destination);
 
+typedef PushDeepLinkSpacesBarOpener = Future<void> Function(String messageId);
+
 typedef PushDeepLinkUnavailableHandler =
     void Function(PushDeepLinkRequest request);
 
@@ -20,12 +22,14 @@ class PushDeepLinkCoordinator {
     required PushDeepLinkResolver resolver,
     required PushDeepLinkReadinessProvider isNavigationReady,
     required PushDeepLinkDestinationOpener openDestination,
+    PushDeepLinkSpacesBarOpener? openSpacesBarMessage,
     PushDeepLinkUnavailableHandler? onUnavailable,
     PushDeepLinkErrorHandler? onError,
   }) : this._(
          resolver: resolver,
          isNavigationReady: isNavigationReady,
          openDestination: openDestination,
+         openSpacesBarMessage: openSpacesBarMessage,
          onUnavailable: onUnavailable,
          onError: onError,
        );
@@ -34,6 +38,7 @@ class PushDeepLinkCoordinator {
     required this._resolver,
     required this._isNavigationReady,
     required this._openDestination,
+    this._openSpacesBarMessage,
     this._onUnavailable,
     this._onError,
   });
@@ -41,27 +46,30 @@ class PushDeepLinkCoordinator {
   final PushDeepLinkResolver _resolver;
   final PushDeepLinkReadinessProvider _isNavigationReady;
   final PushDeepLinkDestinationOpener _openDestination;
+  final PushDeepLinkSpacesBarOpener? _openSpacesBarMessage;
   final PushDeepLinkUnavailableHandler? _onUnavailable;
   final PushDeepLinkErrorHandler? _onError;
 
   final Queue<PushDeepLinkRequest> _pendingRequests =
       Queue<PushDeepLinkRequest>();
 
-  final Set<String> _queuedChatIds = <String>{};
-  final Set<String> _openedChatIds = <String>{};
+  final Set<String> _queuedTargetKeys = <String>{};
+  final Set<String> _openedTargetKeys = <String>{};
 
   bool _isDraining = false;
 
   bool get hasPendingRequests => _pendingRequests.isNotEmpty;
 
   Future<void> handle(PushDeepLinkRequest request) async {
-    if (_queuedChatIds.contains(request.chatId) ||
-        _openedChatIds.contains(request.chatId)) {
+    final targetKey = request.deduplicationKey;
+
+    if (_queuedTargetKeys.contains(targetKey) ||
+        _openedTargetKeys.contains(targetKey)) {
       return;
     }
 
     _pendingRequests.addLast(request);
-    _queuedChatIds.add(request.chatId);
+    _queuedTargetKeys.add(targetKey);
 
     await flush();
   }
@@ -76,9 +84,20 @@ class PushDeepLinkCoordinator {
     try {
       while (_pendingRequests.isNotEmpty && _isNavigationReady()) {
         final request = _pendingRequests.removeFirst();
-        _queuedChatIds.remove(request.chatId);
+        final targetKey = request.deduplicationKey;
 
-        if (_openedChatIds.contains(request.chatId)) {
+        _queuedTargetKeys.remove(targetKey);
+
+        if (_openedTargetKeys.contains(targetKey)) {
+          continue;
+        }
+
+        if (request.isSpacesBar) {
+          await _resolveAndOpenSpacesBar(
+            request: request,
+            targetKey: targetKey,
+          );
+
           continue;
         }
 
@@ -96,25 +115,52 @@ class PushDeepLinkCoordinator {
           continue;
         }
 
-        _open(destination);
+        _openTracked(
+          targetKey: targetKey,
+          operation: () => _openDestination(destination!),
+        );
       }
     } finally {
       _isDraining = false;
     }
   }
 
-  void clearPending() {
-    _pendingRequests.clear();
-    _queuedChatIds.clear();
-  }
-
-  void _open(PushDeepLinkDestination destination) {
-    final chatId = destination.chatId;
-
-    _openedChatIds.add(chatId);
+  Future<void> _resolveAndOpenSpacesBar({
+    required PushDeepLinkRequest request,
+    required String targetKey,
+  }) async {
+    String? messageId;
 
     try {
-      final navigation = _openDestination(destination);
+      messageId = await _resolver.resolveSpacesBarMessageId(request);
+    } catch (error, stackTrace) {
+      _onError?.call(error, stackTrace);
+      return;
+    }
+
+    final opener = _openSpacesBarMessage;
+
+    if (messageId == null || opener == null) {
+      _onUnavailable?.call(request);
+      return;
+    }
+
+    _openTracked(targetKey: targetKey, operation: () => opener(messageId!));
+  }
+
+  void clearPending() {
+    _pendingRequests.clear();
+    _queuedTargetKeys.clear();
+  }
+
+  void _openTracked({
+    required String targetKey,
+    required Future<void> Function() operation,
+  }) {
+    _openedTargetKeys.add(targetKey);
+
+    try {
+      final navigation = operation();
 
       unawaited(
         navigation
@@ -125,11 +171,11 @@ class PushDeepLinkCoordinator {
               },
             )
             .whenComplete(() {
-              _openedChatIds.remove(chatId);
+              _openedTargetKeys.remove(targetKey);
             }),
       );
     } catch (error, stackTrace) {
-      _openedChatIds.remove(chatId);
+      _openedTargetKeys.remove(targetKey);
       _onError?.call(error, stackTrace);
     }
   }

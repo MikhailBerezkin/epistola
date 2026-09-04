@@ -4,7 +4,13 @@ import {getFirestore, Timestamp} from "firebase-admin/firestore";
 import {getMessaging} from "firebase-admin/messaging";
 import {logger} from "firebase-functions";
 import {setGlobalOptions} from "firebase-functions/v2";
-import {onDocumentCreated} from "firebase-functions/v2/firestore";
+import {
+  detectSpacesBarPublication,
+} from "./spaces_bar_notification";
+import {
+  onDocumentCreated,
+  onDocumentWritten,
+} from "firebase-functions/v2/firestore";
 import {HttpsError, onCall} from "firebase-functions/v2/https";
 
 setGlobalOptions({
@@ -581,6 +587,9 @@ const MESSAGE_NOTIFICATION_CHANNEL_ID =
 const SILENT_MESSAGE_NOTIFICATION_CHANNEL_ID =
   "epistola_messages_silent";
 
+const SPACES_BAR_NOTIFICATION_CHANNEL_ID =
+  "epistola_spaces_bar_v1";
+
 const FCM_MULTICAST_TOKEN_LIMIT = 500;
 
 const INVALID_FCM_TOKEN_CODES = new Set([
@@ -947,5 +956,176 @@ export const sendMessageNotification = onDocumentCreated(
       removedInvalidTokens:
         invalidTokenReferences.length,
     });
+  },
+);
+export const sendSpacesBarNotification = onDocumentWritten(
+  "spaces/spacesBar",
+  async (event) => {
+    const beforeData = event.data?.before.data();
+    const afterData = event.data?.after.data();
+
+    const publication = detectSpacesBarPublication(
+      beforeData,
+      afterData,
+    );
+
+    if (publication === null) {
+      return;
+    }
+
+    const firestore = getFirestore();
+
+    const devicesSnapshot = await firestore
+      .collectionGroup("devices")
+      .get();
+
+    const referencesByToken = new Map<
+      string,
+      FirebaseFirestore.DocumentReference[]
+    >();
+
+    const publisherTokens = new Set<string>();
+
+    for (const document of devicesSnapshot.docs) {
+      const userReference = document.ref.parent.parent;
+
+      if (
+        userReference === null ||
+        userReference.parent.id !== "users"
+      ) {
+        continue;
+      }
+
+      const token = document.data().token;
+
+      if (
+        typeof token !== "string" ||
+        token.length === 0
+      ) {
+        continue;
+      }
+
+      if (userReference.id === publication.createdByUserId) {
+        publisherTokens.add(token);
+        continue;
+      }
+
+      const existingReferences =
+        referencesByToken.get(token);
+
+      if (existingReferences !== undefined) {
+        existingReferences.push(document.ref);
+      } else {
+        referencesByToken.set(
+          token,
+          [document.ref],
+        );
+      }
+    }
+
+    for (const publisherToken of publisherTokens) {
+      referencesByToken.delete(publisherToken);
+    }
+
+    const tokenEntries = Array.from(
+      referencesByToken.entries(),
+    );
+
+    if (tokenEntries.length === 0) {
+      logger.info(
+        "SpacesBar push skipped: no recipient tokens",
+        {
+          messageId: publication.messageId,
+          createdByUserId: publication.createdByUserId,
+        },
+      );
+
+      return;
+    }
+
+    const invalidTokenReferences:
+      FirebaseFirestore.DocumentReference[] = [];
+
+    let successCount = 0;
+    let failureCount = 0;
+
+    for (
+      let start = 0;
+      start < tokenEntries.length;
+      start += FCM_MULTICAST_TOKEN_LIMIT
+    ) {
+      const batch = tokenEntries.slice(
+        start,
+        start + FCM_MULTICAST_TOKEN_LIMIT,
+      );
+
+      const response =
+        await getMessaging().sendEachForMulticast({
+          tokens: batch.map(
+            ([token]) => token,
+          ),
+          notification: {
+            title: "Epistola — Пространства",
+            body: buildPushPreview(publication.text),
+          },
+          data: {
+            deepLinkType: "spacesBar",
+            spacesBarMessageId: publication.messageId,
+            notificationMode: "sound",
+          },
+          android: {
+            priority: "high",
+            notification: {
+              channelId: SPACES_BAR_NOTIFICATION_CHANNEL_ID,
+              sound: "seagull_notification",
+              vibrateTimingsMillis: [0, 250, 100, 250],
+            },
+          },
+        });
+
+      successCount += response.successCount;
+      failureCount += response.failureCount;
+
+      response.responses.forEach(
+        (sendResponse, index) => {
+          const errorCode =
+            sendResponse.error?.code;
+
+          if (
+            !errorCode ||
+            !INVALID_FCM_TOKEN_CODES.has(errorCode)
+          ) {
+            return;
+          }
+
+          const [, references] = batch[index];
+
+          invalidTokenReferences.push(
+            ...references,
+          );
+        },
+      );
+    }
+
+    await Promise.all(
+      invalidTokenReferences.map(
+        (reference) => reference.delete(),
+      ),
+    );
+
+    logger.info(
+      "SpacesBar push notification processed",
+      {
+        messageId: publication.messageId,
+        createdByUserId: publication.createdByUserId,
+        registeredDeviceDocuments:
+          devicesSnapshot.size,
+        recipientTokens: tokenEntries.length,
+        successCount,
+        failureCount,
+        removedInvalidTokens:
+          invalidTokenReferences.length,
+      },
+    );
   },
 );

@@ -99,7 +99,7 @@ void main() {
           openedChatIds.add(destination.chatId);
         },
         onUnavailable: (request) {
-          unavailableChatIds.add(request.chatId);
+          unavailableChatIds.add(request.chatId!);
         },
       );
 
@@ -155,6 +155,39 @@ void main() {
       expect(loadAttempts, 2);
       expect(openedChatIds, ['group-chat-1']);
     });
+
+    test(
+      'opens a SpacesBar message without resolving a chat destination',
+      () async {
+        var didLoadChat = false;
+        final openedMessageIds = <String>[];
+
+        final resolver = PushDeepLinkResolver(
+          currentUserIdProvider: () => 'current-user',
+          loadChat: (_) async {
+            didLoadChat = true;
+            return {};
+          },
+          loadUser: (_) async => null,
+        );
+
+        final coordinator = PushDeepLinkCoordinator(
+          resolver: resolver,
+          isNavigationReady: () => true,
+          openDestination: (_) async {},
+          openSpacesBarMessage: (messageId) async {
+            openedMessageIds.add(messageId);
+          },
+        );
+
+        final request = PushDeepLinkRequest.tryParseSpacesBarMessageId('42')!;
+
+        await coordinator.handle(request);
+
+        expect(openedMessageIds, ['42']);
+        expect(didLoadChat, isFalse);
+      },
+    );
 
     test('clearPending removes queued requests', () async {
       var isReady = false;

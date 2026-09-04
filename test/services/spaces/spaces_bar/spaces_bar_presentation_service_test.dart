@@ -195,6 +195,75 @@ void main() {
 
     expect(() => state.hiddenMessageIds.add('2'), throwsUnsupportedError);
   });
+
+  test(
+    'watch resolves every board update with current local hidden ids',
+    () async {
+      var hiddenIdsLoadCount = 0;
+
+      final initialBoard = _board([
+        _message(
+          id: '1',
+          lifetime: SpacesBarMessageLifetime.untilCancelled,
+          createdAt: now,
+        ),
+      ]);
+
+      final updatedBoard = _board([
+        _message(
+          id: '1',
+          lifetime: SpacesBarMessageLifetime.untilCancelled,
+          createdAt: now,
+        ),
+        _message(
+          id: '2',
+          lifetime: SpacesBarMessageLifetime.untilCancelled,
+          createdAt: now,
+        ),
+      ]);
+
+      final service = SpacesBarPresentationService(
+        boardLoader: () async => initialBoard,
+        boardWatcher: () {
+          return Stream<SpacesBarBoard>.fromIterable([
+            initialBoard,
+            updatedBoard,
+          ]);
+        },
+        hiddenMessageIdsLoader: ({required String userId}) async {
+          hiddenIdsLoadCount += 1;
+
+          expect(userId, 'user-1');
+
+          return <String>{'2'};
+        },
+        messageHider:
+            ({required String userId, required String messageId}) async {},
+        clock: () => now,
+      );
+
+      final states = await service.watch(userId: ' user-1 ').take(2).toList();
+
+      expect(states, hasLength(2));
+      expect(hiddenIdsLoadCount, 2);
+
+      expect(states[0].activeMessages.map((message) => message.id), <String>[
+        '1',
+      ]);
+      expect(states[0].visibleMessages.map((message) => message.id), <String>[
+        '1',
+      ]);
+
+      expect(states[1].activeMessages.map((message) => message.id), <String>[
+        '1',
+        '2',
+      ]);
+      expect(states[1].visibleMessages.map((message) => message.id), <String>[
+        '1',
+      ]);
+      expect(states[1].hiddenMessageIds, <String>{'2'});
+    },
+  );
 }
 
 SpacesBarBoard _board(List<SpacesBarMessage> messages) {

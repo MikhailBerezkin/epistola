@@ -56,24 +56,24 @@ void main() {
     expect(result.map((message) => message.id), <String>['2']);
   });
 
-  test('sorts shorter lifetime before longer lifetime', () {
+  test('sorts all visible messages newest first regardless of lifetime', () {
     final now = DateTime.utc(2026, 9, 3, 12);
 
     final board = _board([
       _message(
         id: '1',
-        lifetime: SpacesBarMessageLifetime.untilCancelled,
-        createdAt: now,
+        lifetime: SpacesBarMessageLifetime.oneHour,
+        createdAt: now.subtract(const Duration(minutes: 20)),
       ),
       _message(
         id: '2',
-        lifetime: SpacesBarMessageLifetime.oneHour,
-        createdAt: now,
+        lifetime: SpacesBarMessageLifetime.untilCancelled,
+        createdAt: now.subtract(const Duration(minutes: 5)),
       ),
       _message(
         id: '3',
-        lifetime: SpacesBarMessageLifetime.twentyFourHours,
-        createdAt: now,
+        lifetime: SpacesBarMessageLifetime.twelveHours,
+        createdAt: now.subtract(const Duration(minutes: 10)),
       ),
     ]);
 
@@ -84,36 +84,6 @@ void main() {
     );
 
     expect(result.map((message) => message.id), <String>['2', '3', '1']);
-  });
-
-  test('places twelve hours between one and twenty four hours', () {
-    final now = DateTime.utc(2026, 9, 3, 12);
-
-    final board = _board([
-      _message(
-        id: '1',
-        lifetime: SpacesBarMessageLifetime.twentyFourHours,
-        createdAt: now,
-      ),
-      _message(
-        id: '2',
-        lifetime: SpacesBarMessageLifetime.twelveHours,
-        createdAt: now,
-      ),
-      _message(
-        id: '3',
-        lifetime: SpacesBarMessageLifetime.oneHour,
-        createdAt: now,
-      ),
-    ]);
-
-    final result = resolver.resolve(
-      board: board,
-      hiddenMessageIds: const <String>{},
-      now: now,
-    );
-
-    expect(result.map((message) => message.id), <String>['3', '2', '1']);
   });
 
   test('sorts newer messages first inside same lifetime', () {

@@ -20,14 +20,6 @@ final class SpacesBarVisibleMessagesResolver {
   }
 
   int _compareMessages(SpacesBarMessage first, SpacesBarMessage second) {
-    final lifetimeComparison = _lifetimeOrder(
-      first.lifetime,
-    ).compareTo(_lifetimeOrder(second.lifetime));
-
-    if (lifetimeComparison != 0) {
-      return lifetimeComparison;
-    }
-
     final createdAtComparison = second.createdAt.compareTo(first.createdAt);
 
     if (createdAtComparison != 0) {
@@ -35,15 +27,6 @@ final class SpacesBarVisibleMessagesResolver {
     }
 
     return _compareMessageIdsDescending(first.id, second.id);
-  }
-
-  int _lifetimeOrder(SpacesBarMessageLifetime lifetime) {
-    return switch (lifetime) {
-      SpacesBarMessageLifetime.oneHour => 0,
-      SpacesBarMessageLifetime.twelveHours => 1,
-      SpacesBarMessageLifetime.twentyFourHours => 2,
-      SpacesBarMessageLifetime.untilCancelled => 3,
-    };
   }
 
   int _compareMessageIdsDescending(String firstId, String secondId) {
