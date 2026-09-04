@@ -27,19 +27,19 @@ Pilot target:
 | Target | `v0.8.0` |
 | Stage | `Spaces / Substitution / SpacesBar Foundation` |
 | Branch | `feat/v0.8.0-spaces-substitution-foundation` |
-| Last functional checkpoint | `769544f` |
-| Commit | `feat(spaces): add spaces bar presentation and management` |
+| Last functional checkpoint | `123cda1` |
+| Commit | `feat(spaces): add realtime spaces bar notifications` |
 | SpacesBar Rules checkpoint | `60966a6` |
 | Stable baseline before v0.8.0 | `v0.7.4` |
 | Firebase project | `epistola-434b7` |
 | Android package | `com.epistola.app` |
 | Platform | Android |
 
-At the current functional checkpoint:
+After the functional push:
 
 ```text
-HEAD = origin feature branch = 769544f
-working tree was clean after push
+HEAD = origin feature branch = 123cda1
+working tree = clean
 ```
 
 `v0.8.0` is still a feature-branch target and has not yet been declared merged/released.
@@ -90,6 +90,8 @@ Chats are an internal Space:
 
 Messenger internals remain chat/Messenger architecture.
 
+SpacesBar push opens a temporary Spaces route with an exact message target; normal root Back behavior remains separate.
+
 ---
 
 # Current Spaces Hub
@@ -134,12 +136,6 @@ Current message font:
 18 px
 ```
 
-Empty state:
-
-```text
-Нет новых закреплённых сообщений
-```
-
 Maximum active messages:
 
 ```text
@@ -164,9 +160,43 @@ Visual accents:
 until cancelled → red
 ```
 
-The card uses a clear colored border with a light inward glow.
+Lifetime controls expiry/accent, not current presentation priority.
 
-Pin icon and visible lifetime label were intentionally removed from the message card.
+Current message order:
+
+```text
+newest createdAt first
+→ id/revision descending tie-breaker
+```
+
+---
+
+## SpacesBar realtime
+
+The main Spaces screen listens to the single authoritative board document:
+
+```text
+spaces/spacesBar
+```
+
+Flow:
+
+```text
+Firestore snapshot
+→ active messages
+→ current local hidden ids
+→ newest-first resolver
+→ SpacesBarPanel
+```
+
+Manual two-device verification:
+
+```text
+publish/delete on manager device
+→ already-open member phone updates automatically
+```
+
+No per-message Firestore queries are used.
 
 ---
 
@@ -196,7 +226,7 @@ Current auto-rotation:
 
 Manual swipe/chevron navigation resets the interval.
 
-Current implementation uses separate `PageView` cards.
+Current implementation uses separate finite `PageView` cards.
 
 Planned later:
 
@@ -205,8 +235,6 @@ one stationary SpacesBar frame
 content changes inside the frame
 cyclic/infinite swipe without hard end boundary
 ```
-
-Dots can remain logical current-message indicators.
 
 ---
 
@@ -269,15 +297,7 @@ survives app restart
 no Firestore write
 ```
 
-Therefore the same account can hide a message on the phone while still seeing it in the emulator.
-
-Manager editor trash:
-
-```text
-delete for all
-```
-
-This updates the authoritative Firestore board.
+Manager editor trash performs authoritative delete-for-all.
 
 ---
 
@@ -312,31 +332,111 @@ createdByUserId
 createdAt
 ```
 
-Maximum:
-
-```text
-3 active messages
-```
-
-Reads are one board-document read, not per-message queries.
-
 Writes use Firestore transactions.
+
+Rules are deployed to production.
 
 ---
 
-## SpacesBar Security Rules
+# SpacesBar push notifications
 
-Current rules:
+Functional checkpoint `123cda1` adds full SpacesBar push integration.
+
+Remote deep link:
 
 ```text
-signed-in users can get exact board document
-list is denied
-brigadier/owner can create/update
-whole board delete is denied
-strict schema/revision/message validation
+deepLinkType = spacesBar
+spacesBarMessageId = <id>
 ```
 
-Rules are deployed to production.
+Existing chat deep links remain backward-compatible.
+
+Android notification channel:
+
+```text
+epistola_spaces_bar_v1
+```
+
+Behavior:
+
+```text
+high priority
+seagull_notification sound
+vibration
+announcement preview
+```
+
+Cloud Function:
+
+```text
+sendSpacesBarNotification
+europe-west1
+Node.js 22
+2nd Gen
+```
+
+Trigger:
+
+```text
+onDocumentWritten("spaces/spacesBar")
+```
+
+Only one newly published valid message generates a push.
+
+No push for:
+
+```text
+delete-only
+existing-message update
+malformed/multi-add write
+```
+
+Publisher tokens are excluded by `createdByUserId`.
+
+Invalid FCM token records are cleaned after multicast failures.
+
+---
+
+## Exact push target
+
+If several SpacesBar notifications are pending:
+
+```text
+push №9
+push №10
+tap push №9
+→ message №9 must open
+```
+
+A newer realtime snapshot must not override the explicit push target while the user remains on that target.
+
+This scenario has a regression widget test and passed manual physical-device verification.
+
+---
+
+## Manual push verification
+
+Verified on physical Android device for a `member`:
+
+```text
+push received
+seagull sound
+vibration
+works with screen off
+tap opens Spaces
+correct target announcement shown
+```
+
+The earlier missing vibration on Poco F6 was traced to device settings, not Epistola.
+
+Backward-compatibility note:
+
+```text
+older Epistola installs can still receive the new FCM push
+because their registered device token remains in backend
+```
+
+If rollout later requires it, recipient filtering can be extended with client version/capability metadata.
 
 ---
 
@@ -388,6 +488,8 @@ monthly/yearly statistics
 Firestore Rules
 ```
 
+Owner remains highest-priority.
+
 ---
 
 # Existing Messenger foundations
@@ -434,41 +536,55 @@ active-chat suppression
 
 # Current verification
 
-Latest full checkpoint:
+Latest functional checkpoint:
 
 ```text
+123cda1 feat(spaces): add realtime spaces bar notifications
+```
+
+Checks:
+
+```text
+flutter.bat test
+→ 849 passed
+
 flutter.bat analyze
 → No issues found
 
-flutter.bat test
-→ 835 passed
-
-flutter.bat build apk --release
-→ SUCCESS
-→ 57.4 MB
-
-git.exe diff --check
+git diff check
 → clean
+
+release APK
+→ SUCCESS
+→ latest recorded size 57.5 MB
+
+SpacesBar notification helper
+→ 7/7
+
+Functions lint
+→ no errors
+
+SpacesBar Rules
+→ 22/22 targeted
+
+full Firestore Rules
+→ 155/155
 ```
 
-Firestore Rules:
-
-```text
-SpacesBar targeted: 22/22
-full Rules: 155/155
-```
-
-Manual testing completed on emulator and physical Android phone.
+Manual testing completed on emulator and physical Android devices.
 
 ---
 
 # Next work
 
-Immediate next SpacesBar block:
+The previous immediate SpacesBar block is complete:
 
 ```text
+realtime sync
+newest-first order
 push integration
-exact SpacesBar message targeting from push
+exact message targeting
+production function deploy
 ```
 
 Deferred presentation-only work:
@@ -493,3 +609,5 @@ For full operational handoff read:
 PROJECT_CONTEXT.md
 ARCHITECTURE.md
 ```
+
+Before new work, confirm current branch/HEAD/status and inspect current source first.

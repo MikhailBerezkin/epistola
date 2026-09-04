@@ -26,7 +26,8 @@
 | Current development target | `v0.8.0` |
 | Stage | `Spaces / Substitution / SpacesBar Foundation` |
 | Feature branch | `feat/v0.8.0-spaces-substitution-foundation` |
-| Last functional checkpoint | `769544f` |
+| Last functional checkpoint | `123cda1` |
+| Functional commit | `feat(spaces): add realtime spaces bar notifications` |
 | SpacesBar Rules checkpoint | `60966a6` |
 | Stable baseline before v0.8.0 | `v0.7.4` |
 | Main platform | Android |
@@ -40,7 +41,7 @@ Epistola
 → internal applications
 ```
 
-Messenger является одним из внутренних приложений, но его existing chat architecture сохраняется.
+Messenger является одним из внутренних приложений, но existing chat architecture сохраняется.
 
 ---
 
@@ -79,7 +80,7 @@ Screen может:
 
 ```text
 создавать services
-загружать data
+подписываться на streams
 хранить screen state
 координировать local hide
 запускать application operations
@@ -90,9 +91,10 @@ Screen может:
 
 Application layer отвечает за permission checks, validation и orchestration.
 
-SpacesBar example:
+SpacesBar examples:
 
 ```text
+SpacesBarPresentationService
 SpacesBarManagementService
 ```
 
@@ -106,6 +108,7 @@ SpacesBarMessage
 SpacesBarMessageLifetime
 SpacesBarBoard
 SpacesBarPublicationReceipt
+PushDeepLinkRequest / PushDeepLinkTargetType
 Substitution domain models
 ```
 
@@ -113,7 +116,7 @@ Domain не зависит от Flutter widgets, `BuildContext`, `Color`, Firest
 
 ## 2.5 Gateways / adapters
 
-Firebase-specific code отвечает за Firestore read/write, transactions, server timestamps и schema mapping.
+Firebase-specific code отвечает за Firestore read/write, snapshots, transactions, server timestamps и schema mapping.
 
 Local persistence adapter (`SharedPreferences`) не является authoritative business storage.
 
@@ -160,13 +163,24 @@ Indexes:
 
 Default = Spaces.
 
-Back policy:
+Root Back policy:
 
 ```text
 Contacts → Spaces
 Profile → Spaces
 Spaces → exit
 ```
+
+Push-created SpacesBar route uses:
+
+```text
+HomeScreen(
+  spacesBarTargetMessageId: ...,
+  allowRoutePop: true,
+)
+```
+
+This is intentionally different from normal root `HomeScreen(allowRoutePop: false)`.
 
 When Spaces is selected root AppBar shows:
 
@@ -240,8 +254,6 @@ Odd final tile:
 ```text
 span two columns
 ```
-
-A shorter full-width height may be selected later.
 
 For >8:
 
@@ -336,6 +348,15 @@ untilCancelled
 
 `expiresAt` is derived in domain.
 
+Lifetime is used for:
+
+```text
+expiry
+visual accent
+```
+
+Lifetime is NOT current presentation priority.
+
 ## 8.3 Board
 
 ```text
@@ -386,17 +407,20 @@ glow radius
 font size
 carousel page
 local hidden state
+push delivery state
 ```
 
 ---
 
-# 10. SpacesBar read path
+# 10. SpacesBar realtime read path
+
+Current path:
 
 ```text
 SpacesPage
-→ SpacesBarPresentationService
-→ SpacesBarBoardFirestoreGateway
-→ spaces/spacesBar
+→ SpacesBarPresentationService.watch(userId)
+→ SpacesBarBoardFirestoreGateway.watch()
+→ snapshots() on spaces/spacesBar
 ```
 
 Local side:
@@ -406,16 +430,22 @@ SpacesBarHiddenMessagesPreferences
 → SharedPreferences
 ```
 
-Then:
+Each board event resolves:
 
 ```text
-SpacesBarVisibleMessagesResolver
-→ active
+authoritative board
+→ active messages
+→ load current local hidden ids
 → remove locally hidden
-→ presentation ordering
+→ newest-first sort
+→ SpacesBarPresentationState
 ```
 
-No per-message Firestore reads. Board read is one document read.
+No per-message Firestore reads.
+
+A listener is one document realtime stream.
+
+One-shot `load()` remains available for focused read scenarios/tests, but main Spaces screen uses realtime watch.
 
 ---
 
@@ -437,7 +467,7 @@ activeMessages = authoritative active server messages
 visibleMessages = active - local hidden
 ```
 
-Manager editor therefore can show an active message that local presentation hid.
+Manager editor can therefore show an active message that local presentation hid.
 
 ---
 
@@ -468,26 +498,25 @@ The same user on two devices can have different local visibility. This is intend
 
 If product requirements later require account-wide dismiss, create a new explicit backend design; do not silently change current semantics.
 
+Push exact-target does not override local hide.
+
 ---
 
 # 13. Presentation ordering
 
-Resolver order:
-
-```text
-oneHour
-→ twelveHours
-→ twentyFourHours
-→ untilCancelled
-```
-
-Equal lifetime:
+Current resolver order:
 
 ```text
 newer createdAt first
 ```
 
-Then deterministic message id/revision tie-breaker.
+Tie-breaker:
+
+```text
+message id/revision descending
+```
+
+Lifetime does not affect ordering.
 
 This is presentation ordering, not stored priority.
 
@@ -504,8 +533,6 @@ SpacesPage
 → Firestore transaction
 ```
 
-`SpacesBarManagementService` performs application-layer permission gating.
-
 Allowed roles:
 
 ```text
@@ -516,6 +543,8 @@ owner
 Member fails before gateway invocation.
 
 Firestore Rules independently enforce manager writes.
+
+Realtime listener observes publish/delete result, so main SpacesBar does not require an explicit post-write reload.
 
 ---
 
@@ -550,12 +579,13 @@ trash
 → confirmation
 → deleteMessage(messageId)
 → transaction
-→ reload board
 ```
 
 Transaction removes requested message, cleans expired state, increments revision and rewrites board.
 
 Do not use whole-document delete.
+
+Delete-only write must not generate a SpacesBar push.
 
 ---
 
@@ -662,7 +692,43 @@ Member does not get pencil.
 
 ---
 
-# 19. Visual semantics
+# 19. Exact target UI contract
+
+Panel input:
+
+```text
+targetMessageId
+```
+
+Priority contract:
+
+```text
+explicit push target
+> newly-added realtime message
+```
+
+while the user is still on that explicit target.
+
+This prevents:
+
+```text
+tap old push
+→ initial target visible
+→ newer realtime snapshot arrives
+→ accidental jump to newest
+```
+
+Once the user manually moves away from target, normal carousel/realtime behavior resumes.
+
+Regression test exists in:
+
+```text
+test/widgets/spaces/spaces_bar/spaces_bar_panel_test.dart
+```
+
+---
+
+# 20. Visual semantics
 
 Lifetime → accent:
 
@@ -683,22 +749,17 @@ soft inward glow
 neutral card background
 ```
 
-Future tuning target:
-
-```text
-glow approximately 7–12 px inward
-```
-
 Message card intentionally does not show pin icon or lifetime text.
 
 ---
 
-# 20. Current carousel limitation
+# 21. Current carousel limitation
 
 Current:
 
 ```text
-PageView pages are separate cards
+finite PageView
+pages are separate cards
 ```
 
 Accepted for current checkpoint.
@@ -708,38 +769,22 @@ Future presentation-only refactor:
 ```text
 one stationary outer SpacesBar
 → content changes inside
+
+finite
+→ infinite/cyclic swipe
 ```
 
-Possible implementation:
-
-```text
-GestureDetector / horizontal gesture
-AnimatedSwitcher
-slide/fade content transition
-logical currentIndex
-```
-
-No changes required to Firestore/domain/management/local hide/15-second policy.
-
-Also deferred:
-
-```text
-finite PageView → infinite/cyclic swipe
-```
-
-Dots can remain based on logical modulo index.
+No changes required to Firestore/domain/management/local hide/realtime/push/15-second policy.
 
 ---
 
-# 21. SpacesBar editor
+# 22. SpacesBar editor
 
 Widget:
 
 ```text
 SpacesBarEditorSheet
 ```
-
-Outputs publish/delete actions.
 
 Form:
 
@@ -754,7 +799,201 @@ At 3/3 publish form is replaced by capacity notice. Transaction and Rules remain
 
 ---
 
-# 22. Substitution architecture
+# 23. Push deep-link architecture
+
+Domain model:
+
+```text
+PushDeepLinkRequest
+PushDeepLinkTargetType
+```
+
+Supported target types:
+
+```text
+chat
+spacesBar
+```
+
+Remote data:
+
+```text
+chat:
+deepLinkType = chat
+chatId = ...
+
+spacesBar:
+deepLinkType = spacesBar
+spacesBarMessageId = ...
+```
+
+Legacy raw `chatId` remote/local payload remains supported.
+
+Type-aware deduplication:
+
+```text
+chat:<id>
+spacesBar:<id>
+```
+
+SpacesBar resolver does not load chat data.
+
+---
+
+# 24. Push navigation architecture
+
+```text
+RemoteMessage / local notification response
+→ PushDeepLinkRequest
+→ PushDeepLinkCoordinator
+→ target-specific resolver
+→ target-specific navigation
+```
+
+SpacesBar:
+
+```text
+resolveSpacesBarMessageId
+→ authenticated user check
+→ HomeScreen(
+     spacesBarTargetMessageId: id,
+     allowRoutePop: true,
+   )
+→ SpacesPage
+→ SpacesBarPanel(targetMessageId: id)
+```
+
+No Firestore chat lookup for SpacesBar target.
+
+---
+
+# 25. SpacesBar Android notification channel
+
+Channel:
+
+```text
+epistola_spaces_bar_v1
+```
+
+Presentation:
+
+```text
+importance high
+sound seagull_notification
+vibration enabled
+pattern [0, 250, 100, 250]
+```
+
+Foreground uses Flutter local notifications.
+
+Background/locked screen uses FCM Android notification payload with same channel id and sound/vibration configuration.
+
+Device/OS channel settings remain authoritative for actual vibration behavior in background.
+
+---
+
+# 26. Cloud Function notification architecture
+
+Export:
+
+```text
+sendSpacesBarNotification
+```
+
+Trigger:
+
+```text
+onDocumentWritten("spaces/spacesBar")
+```
+
+Detector:
+
+```text
+detectSpacesBarPublication(beforeData, afterData)
+```
+
+Only one newly-added valid message produces a notification event.
+
+Ignored:
+
+```text
+delete-only
+existing-message update
+multi-add
+malformed add
+```
+
+Expired removals may occur in the same board write as one valid addition.
+
+Recipient discovery:
+
+```text
+collectionGroup("devices").get()
+```
+
+Then:
+
+```text
+validate token
+dedupe token
+collect publisher tokens
+remove publisher tokens from recipient map
+send multicast chunks <= 500
+delete invalid-token device documents
+```
+
+Publisher exclusion is based on `createdByUserId`, not role.
+
+Cost model for pilot:
+
+```text
+one devices collection-group read per SpacesBar publication
+no per-recipient user reads
+```
+
+---
+
+# 27. Cloud Function deployment
+
+Production:
+
+```text
+function: sendSpacesBarNotification
+region: europe-west1
+runtime: nodejs22
+generation: 2nd Gen
+```
+
+Tests:
+
+```text
+functions notification helper: 7/7
+functions lint: no errors
+```
+
+Known non-blocking tooling warning:
+
+```text
+current TypeScript version is newer than the parser's declared supported range
+```
+
+Do not upgrade Firebase Functions/TypeScript dependencies as part of unrelated feature work unless separately planned.
+
+---
+
+# 28. Backward compatibility note
+
+Device tokens from older Epistola installations are still recipient candidates.
+
+Therefore an older app version that does not implement SpacesBar may receive a SpacesBar FCM notification.
+
+Current pilot accepts this.
+
+If rollout requires stricter compatibility, add explicit client capability/app-version metadata and filter recipients server-side rather than overloading current deep-link semantics.
+
+---
+
+# 29. Substitution architecture
 
 Main screen:
 
@@ -777,7 +1016,7 @@ SpacesBar should not manually duplicate Substitution business events in long-ter
 
 ---
 
-# 23. Future multi-channel event architecture
+# 30. Future multi-channel event architecture
 
 Desired later design:
 
@@ -792,48 +1031,58 @@ A Substitution call should eventually be one business event projected into multi
 
 ---
 
-# 24. Verification
+# 31. Verification
 
 Current functional checkpoint:
 
 ```text
+123cda1 feat(spaces): add realtime spaces bar notifications
+```
+
+Latest final checks:
+
+```text
+Flutter tests: 849 passed
 flutter analyze: clean
-Flutter tests: 835 passed
-release APK: 57.4 MB
-diff check: clean
+git diff check: clean
+release APK: successful; latest recorded size 57.5 MB
+SpacesBar notification helper: 7/7
+Functions lint: no errors
+SpacesBar Rules: 22/22 targeted
+Firestore Rules: 155/155 full
 ```
 
-Manual emulator:
+Manual emulator + physical devices:
 
 ```text
-publish
-delete
+publish/delete
 3/3
+realtime cross-device update
+newest-first
 carousel
-colors
 15-sec timer
-```
-
-Manual phone:
-
-```text
 member permission UI
 local hide persistence
-per-device semantics
+push receive
+seagull sound
+vibration with locked screen on verified device
+exact-target from multiple pending notifications
 ```
 
 ---
 
-# 25. Near-term roadmap
+# 32. Near-term roadmap
 
-Next SpacesBar engineering block:
+Completed:
 
 ```text
-push integration
-exact message targeting/selection from push
+SpacesBar realtime
+SpacesBar push
+exact message targeting
+production notification function
 ```
 
-Deferred UI polish:
+Deferred presentation-only:
 
 ```text
 stationary frame with internal content transition
@@ -848,3 +1097,5 @@ Deferred Spaces Hub:
 regular/compact tile modes
 >8 continuation behavior
 ```
+
+Next functional block should be chosen from the current v0.8.0 roadmap after reading current branch source and `PROJECT_CONTEXT.md`; do not assume the old "push integration" roadmap item is still pending.
