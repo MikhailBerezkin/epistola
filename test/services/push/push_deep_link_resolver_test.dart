@@ -119,7 +119,7 @@ void main() {
 
         final messageId = await resolver.resolveSpacesBarMessageId(request);
 
-        expect(messageId, '42');
+        expect(messageId, 'general:42');
         expect(didLoadChat, isFalse);
       },
     );

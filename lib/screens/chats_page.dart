@@ -4,12 +4,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show HapticFeedback;
 
 import '../models/app_user.dart';
+import '../services/avatar/group_avatar_metadata_mapper.dart';
 import '../services/chat/chat_peer_resolver.dart';
 import '../services/chat/chat_peer_user_cache.dart';
 import '../services/chat_service.dart';
 import '../widgets/chat_tile.dart';
+import '../widgets/system_chat/epistola_system_chat_tile.dart';
 import 'chat_screen.dart';
-import '../services/avatar/group_avatar_metadata_mapper.dart';
+import 'epistola_system_chat_screen.dart';
 
 enum ChatFilter { private, group }
 
@@ -114,6 +116,15 @@ class _ChatsPageState extends State<ChatsPage> {
     }
   }
 
+  void _openEpistolaSystemChat() {
+    HapticFeedback.lightImpact();
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const EpistolaSystemChatScreen()),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -213,12 +224,9 @@ class _ChatsPageState extends State<ChatsPage> {
                   return type == 'group';
                 }).toList();
 
-                if (filteredChats.isEmpty) {
-                  final message = _selectedFilter == ChatFilter.private
-                      ? 'Пока нет личных чатов'
-                      : 'Пока нет групп';
-
-                  return Center(child: Text(message));
+                if (_selectedFilter == ChatFilter.group &&
+                    filteredChats.isEmpty) {
+                  return const Center(child: Text('Пока нет групп'));
                 }
 
                 final peerUserIds = ChatPeerResolver.collectOtherUserIds(
@@ -230,10 +238,26 @@ class _ChatsPageState extends State<ChatsPage> {
 
                 _loadMissingPeerUsers(peerUserIds);
 
+                final showEpistolaSystemChat =
+                    _selectedFilter == ChatFilter.private;
+
+                final itemCount =
+                    filteredChats.length + (showEpistolaSystemChat ? 1 : 0);
+
                 return ListView.builder(
-                  itemCount: filteredChats.length,
+                  itemCount: itemCount,
                   itemBuilder: (context, index) {
-                    final chat = filteredChats[index];
+                    if (showEpistolaSystemChat && index == 0) {
+                      return EpistolaSystemChatTile(
+                        onTap: _openEpistolaSystemChat,
+                      );
+                    }
+
+                    final chatIndex = showEpistolaSystemChat
+                        ? index - 1
+                        : index;
+
+                    final chat = filteredChats[chatIndex];
 
                     final data = chat.data() as Map<String, dynamic>;
 

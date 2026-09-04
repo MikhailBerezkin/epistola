@@ -4,7 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('finalizePendingCall', () {
-    test('creates first yearly statistics and deletes pending call', () async {
+    test('creates first yearly statistics, confirmed call, '
+        'and deletes pending call', () async {
       final context = _FakeFinalizationContext(
         pendingCalls: <String, Map<String, dynamic>>{
           '1': _pendingCallData(
@@ -30,24 +31,46 @@ void main() {
 
       expect(context.statisticsWrites, hasLength(1));
 
-      final write = context.statisticsWrites.single;
+      final statisticsWrite = context.statisticsWrites.single;
 
-      expect(write.year, 2026);
-      expect(write.data['year'], 2026);
-      expect(write.data['lastFinalizedCallId'], '1');
-      expect(write.data['updatedAt'], isA<FieldValue>());
+      expect(statisticsWrite.year, 2026);
+      expect(statisticsWrite.data['year'], 2026);
+      expect(statisticsWrite.data['lastFinalizedCallId'], '1');
+      expect(statisticsWrite.data['updatedAt'], isA<FieldValue>());
 
-      expect(write.data['monthCallCounts'], <String, dynamic>{
+      expect(statisticsWrite.data['monthCallCounts'], <String, dynamic>{
         '8': <String, dynamic>{'user-1': 1},
       });
 
-      expect(write.data['monthShifts'], <String, dynamic>{
+      expect(statisticsWrite.data['monthShifts'], <String, dynamic>{
         '8': <String, dynamic>{
           'user-1': <String>['day'],
         },
       });
 
-      expect(write.data['yearCallCounts'], <String, dynamic>{'user-1': 1});
+      expect(statisticsWrite.data['yearCallCounts'], <String, dynamic>{
+        'user-1': 1,
+      });
+
+      expect(context.confirmedCallWrites, hasLength(1));
+
+      final confirmedWrite = context.confirmedCallWrites.single;
+
+      expect(confirmedWrite.callId, '1');
+      expect(confirmedWrite.data['schemaVersion'], 1);
+      expect(confirmedWrite.data['callId'], '1');
+      expect(confirmedWrite.data['userId'], 'user-1');
+      expect(confirmedWrite.data['revision'], 1);
+      expect(confirmedWrite.data['calledByUserId'], 'brigadier-1');
+      expect(
+        confirmedWrite.data['calledAt'],
+        Timestamp.fromDate(DateTime.utc(2026, 8, 31, 10)),
+      );
+      expect(confirmedWrite.data['finalizedAt'], isA<FieldValue>());
+      expect(confirmedWrite.data['shiftYear'], 2026);
+      expect(confirmedWrite.data['shiftMonth'], 8);
+      expect(confirmedWrite.data['shiftDay'], 31);
+      expect(confirmedWrite.data['shiftKind'], 'day');
 
       expect(context.pendingCallDeletes, <String>['1']);
     });
@@ -103,6 +126,10 @@ void main() {
       expect(data['yearCallCounts'], <String, dynamic>{'user-1': 2});
 
       expect(data['lastFinalizedCallId'], '2');
+
+      expect(context.confirmedCallWrites, hasLength(1));
+      expect(context.confirmedCallWrites.single.data['shiftKind'], 'night');
+
       expect(context.pendingCallDeletes, <String>['2']);
     });
 
@@ -159,6 +186,8 @@ void main() {
       });
 
       expect(data['yearCallCounts'], <String, dynamic>{'user-1': 2});
+
+      expect(context.confirmedCallWrites, hasLength(1));
     });
 
     test('december night shift remains in shift start year', () async {
@@ -190,6 +219,45 @@ void main() {
           '12': <String, dynamic>{'user-1': 1},
         },
       );
+
+      expect(context.confirmedCallWrites, hasLength(1));
+      expect(context.confirmedCallWrites.single.data['shiftYear'], 2026);
+      expect(context.confirmedCallWrites.single.data['shiftMonth'], 12);
+      expect(context.confirmedCallWrites.single.data['shiftDay'], 31);
+      expect(context.confirmedCallWrites.single.data['shiftKind'], 'night');
+    });
+
+    test('successful finalize is exactly once in same context', () async {
+      final context = _FakeFinalizationContext(
+        pendingCalls: <String, Map<String, dynamic>>{
+          '3': _pendingCallData(
+            callId: '3',
+            revision: 3,
+            userId: 'user-1',
+            shiftYear: 2026,
+            shiftMonth: 9,
+            shiftDay: 1,
+            shiftKind: 'day',
+          ),
+        },
+      );
+
+      final gateway = _gateway(context);
+
+      final first = await gateway.finalizePendingCall(callId: '3');
+
+      final second = await gateway.finalizePendingCall(callId: '3');
+
+      expect(first, isTrue);
+      expect(second, isFalse);
+
+      expect(context.pendingCallReads, <String>['3', '3']);
+
+      expect(context.statisticsReads, <int>[2026]);
+
+      expect(context.statisticsWrites, hasLength(1));
+      expect(context.confirmedCallWrites, hasLength(1));
+      expect(context.pendingCallDeletes, <String>['3']);
     });
 
     test('missing pending call is harmless and writes nothing', () async {
@@ -203,6 +271,7 @@ void main() {
       expect(context.pendingCallReads, <String>['7']);
       expect(context.statisticsReads, isEmpty);
       expect(context.statisticsWrites, isEmpty);
+      expect(context.confirmedCallWrites, isEmpty);
       expect(context.pendingCallDeletes, isEmpty);
     });
 
@@ -220,6 +289,7 @@ void main() {
 
       expect(context.statisticsReads, isEmpty);
       expect(context.statisticsWrites, isEmpty);
+      expect(context.confirmedCallWrites, isEmpty);
       expect(context.pendingCallDeletes, isEmpty);
     });
 
@@ -247,12 +317,14 @@ void main() {
       );
 
       expect(context.statisticsWrites, isEmpty);
+      expect(context.confirmedCallWrites, isEmpty);
       expect(context.pendingCallDeletes, isEmpty);
     });
 
     test('invalid call id is rejected before transaction', () {
       final context = _FakeFinalizationContext();
       final runner = _FakeFinalizationRunner(context);
+
       final gateway = SubstitutionCallFinalizationFirestoreGateway(runner);
 
       expect(
@@ -358,7 +430,11 @@ final class _FakeFinalizationContext
 
   final List<String> pendingCallReads = <String>[];
   final List<int> statisticsReads = <int>[];
+
   final List<_StatisticsWrite> statisticsWrites = <_StatisticsWrite>[];
+
+  final List<_ConfirmedCallWrite> confirmedCallWrites = <_ConfirmedCallWrite>[];
+
   final List<String> pendingCallDeletes = <String>[];
 
   @override
@@ -400,8 +476,22 @@ final class _FakeFinalizationContext
   }
 
   @override
+  void writeConfirmedCall({
+    required String callId,
+    required Map<String, dynamic> data,
+  }) {
+    confirmedCallWrites.add(
+      _ConfirmedCallWrite(
+        callId: callId,
+        data: Map<String, dynamic>.from(data),
+      ),
+    );
+  }
+
+  @override
   void deletePendingCall({required String callId}) {
     pendingCallDeletes.add(callId);
+    _pendingCalls.remove(callId);
   }
 }
 
@@ -409,5 +499,12 @@ final class _StatisticsWrite {
   const _StatisticsWrite({required this.year, required this.data});
 
   final int year;
+  final Map<String, dynamic> data;
+}
+
+final class _ConfirmedCallWrite {
+  const _ConfirmedCallWrite({required this.callId, required this.data});
+
+  final String callId;
   final Map<String, dynamic> data;
 }

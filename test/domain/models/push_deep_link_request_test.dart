@@ -11,7 +11,7 @@ void main() {
       expect(request, isNotNull);
       expect(request?.targetType, PushDeepLinkTargetType.chat);
       expect(request?.chatId, 'private-chat-1');
-      expect(request?.spacesBarMessageId, isNull);
+      expect(request?.spacesBarPresentationId, isNull);
     });
 
     test('reads explicitly typed chat target from remote data', () {
@@ -24,7 +24,7 @@ void main() {
       expect(request?.chatId, 'group-chat-1');
     });
 
-    test('reads SpacesBar target from remote data', () {
+    test('reads legacy general SpacesBar target from remote data', () {
       final request = PushDeepLinkRequest.fromRemoteData({
         'deepLinkType': 'spacesBar',
         'spacesBarMessageId': '42',
@@ -34,6 +34,29 @@ void main() {
       expect(request?.targetType, PushDeepLinkTargetType.spacesBar);
       expect(request?.chatId, isNull);
       expect(request?.spacesBarMessageId, '42');
+      expect(request?.spacesBarPresentationId, 'general:42');
+    });
+
+    test('reads substitution SpacesBar target from remote data', () {
+      final request = PushDeepLinkRequest.fromRemoteData({
+        'deepLinkType': 'spacesBar',
+        'spacesBarPresentationId': 'substitution:17',
+      });
+
+      expect(request, isNotNull);
+      expect(request?.targetType, PushDeepLinkTargetType.spacesBar);
+      expect(request?.spacesBarMessageId, isNull);
+      expect(request?.spacesBarPresentationId, 'substitution:17');
+    });
+
+    test('prefers presentation target over legacy message target', () {
+      final request = PushDeepLinkRequest.fromRemoteData({
+        'deepLinkType': 'spacesBar',
+        'spacesBarPresentationId': 'substitution:17',
+        'spacesBarMessageId': '42',
+      });
+
+      expect(request?.spacesBarPresentationId, 'substitution:17');
     });
 
     test('reads legacy chatId from local notification payload', () {
@@ -53,8 +76,21 @@ void main() {
       expect(restored, original);
     });
 
-    test('round-trips SpacesBar local payload', () {
+    test('round-trips general SpacesBar local payload', () {
       final original = PushDeepLinkRequest.tryParseSpacesBarMessageId('17')!;
+
+      final restored = PushDeepLinkRequest.fromLocalPayload(
+        original.toLocalPayload(),
+      );
+
+      expect(restored, original);
+      expect(restored?.spacesBarPresentationId, 'general:17');
+    });
+
+    test('round-trips substitution SpacesBar local payload', () {
+      final original = PushDeepLinkRequest.tryParseSpacesBarPresentationId(
+        'substitution:17',
+      )!;
 
       final restored = PushDeepLinkRequest.fromLocalPayload(
         original.toLocalPayload(),
@@ -67,27 +103,42 @@ void main() {
       final chatRequest = PushDeepLinkRequest.tryParseChatId(
         '  private-chat-1  ',
       );
-      final spacesBarRequest = PushDeepLinkRequest.tryParseSpacesBarMessageId(
+
+      final generalRequest = PushDeepLinkRequest.tryParseSpacesBarMessageId(
         '  15  ',
       );
 
+      final substitutionRequest =
+          PushDeepLinkRequest.tryParseSpacesBarPresentationId(
+            '  substitution:19  ',
+          );
+
       expect(chatRequest?.chatId, 'private-chat-1');
-      expect(spacesBarRequest?.spacesBarMessageId, '15');
+      expect(generalRequest?.spacesBarPresentationId, 'general:15');
+      expect(substitutionRequest?.spacesBarPresentationId, 'substitution:19');
     });
 
     test('rejects missing or non-string target ids', () {
       expect(PushDeepLinkRequest.tryParseChatId(null), isNull);
       expect(PushDeepLinkRequest.tryParseChatId(123), isNull);
+
       expect(PushDeepLinkRequest.tryParseSpacesBarMessageId(null), isNull);
       expect(PushDeepLinkRequest.tryParseSpacesBarMessageId(123), isNull);
+
+      expect(PushDeepLinkRequest.tryParseSpacesBarPresentationId(null), isNull);
+      expect(PushDeepLinkRequest.tryParseSpacesBarPresentationId(123), isNull);
+
       expect(PushDeepLinkRequest.fromRemoteData(const {}), isNull);
     });
 
     test('rejects empty target ids', () {
       expect(PushDeepLinkRequest.tryParseChatId(''), isNull);
       expect(PushDeepLinkRequest.tryParseChatId('   '), isNull);
+
       expect(PushDeepLinkRequest.tryParseSpacesBarMessageId(''), isNull);
       expect(PushDeepLinkRequest.tryParseSpacesBarMessageId('   '), isNull);
+
+      expect(PushDeepLinkRequest.tryParseSpacesBarPresentationId(''), isNull);
     });
 
     test('rejects target ids containing a slash', () {
@@ -95,8 +146,26 @@ void main() {
         PushDeepLinkRequest.tryParseChatId('chats/private-chat-1'),
         isNull,
       );
+
       expect(
         PushDeepLinkRequest.tryParseSpacesBarMessageId('spaces/spacesBar/42'),
+        isNull,
+      );
+
+      expect(
+        PushDeepLinkRequest.tryParseSpacesBarPresentationId('substitution/17'),
+        isNull,
+      );
+    });
+
+    test('rejects unknown SpacesBar presentation source', () {
+      expect(
+        PushDeepLinkRequest.tryParseSpacesBarPresentationId('unknown:17'),
+        isNull,
+      );
+
+      expect(
+        PushDeepLinkRequest.tryParseSpacesBarPresentationId('substitution:'),
         isNull,
       );
     });
@@ -115,6 +184,7 @@ void main() {
       final first = PushDeepLinkRequest.tryParseChatId('1');
       final second = PushDeepLinkRequest.tryParseChatId('1');
       final differentChat = PushDeepLinkRequest.tryParseChatId('2');
+
       final spacesBar = PushDeepLinkRequest.tryParseSpacesBarMessageId('1');
 
       expect(first, second);
@@ -123,22 +193,41 @@ void main() {
       expect(first, isNot(spacesBar));
     });
 
-    test('uses separate deduplication keys for different targets', () {
+    test('uses separate deduplication keys for SpacesBar sources', () {
       final chat = PushDeepLinkRequest.tryParseChatId('1');
-      final spacesBar = PushDeepLinkRequest.tryParseSpacesBarMessageId('1');
+
+      final general = PushDeepLinkRequest.tryParseSpacesBarMessageId('1');
+
+      final substitution = PushDeepLinkRequest.tryParseSpacesBarPresentationId(
+        'substitution:1',
+      );
 
       expect(chat?.deduplicationKey, 'chat:1');
-      expect(spacesBar?.deduplicationKey, 'spacesBar:1');
+      expect(general?.deduplicationKey, 'spacesBar:general:1');
+      expect(substitution?.deduplicationKey, 'spacesBar:substitution:1');
     });
 
     test('provides readable string representations', () {
       final chat = PushDeepLinkRequest.tryParseChatId('chat-1');
-      final spacesBar = PushDeepLinkRequest.tryParseSpacesBarMessageId('7');
+
+      final general = PushDeepLinkRequest.tryParseSpacesBarMessageId('7');
+
+      final substitution = PushDeepLinkRequest.tryParseSpacesBarPresentationId(
+        'substitution:19',
+      );
 
       expect(chat.toString(), 'PushDeepLinkRequest(chatId: chat-1)');
+
       expect(
-        spacesBar.toString(),
-        'PushDeepLinkRequest(spacesBarMessageId: 7)',
+        general.toString(),
+        'PushDeepLinkRequest('
+        'spacesBarPresentationId: general:7)',
+      );
+
+      expect(
+        substitution.toString(),
+        'PushDeepLinkRequest('
+        'spacesBarPresentationId: substitution:19)',
       );
     });
   });

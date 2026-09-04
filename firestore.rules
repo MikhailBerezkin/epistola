@@ -1638,6 +1638,171 @@ function hasValidSubstitutionPendingCallData(data, callId) {
       ];
 }
 
+function hasValidSubstitutionConfirmedCallData(
+  data,
+  callId
+) {
+  return data.keys().hasAll([
+        'schemaVersion',
+        'callId',
+        'userId',
+        'revision',
+        'calledByUserId',
+        'calledAt',
+        'finalizedAt',
+        'shiftYear',
+        'shiftMonth',
+        'shiftDay',
+        'shiftKind'
+      ])
+
+      && data.keys().hasOnly([
+        'schemaVersion',
+        'callId',
+        'userId',
+        'revision',
+        'calledByUserId',
+        'calledAt',
+        'finalizedAt',
+        'shiftYear',
+        'shiftMonth',
+        'shiftDay',
+        'shiftKind'
+      ])
+
+      && data.schemaVersion is int
+      && data.schemaVersion == 1
+
+      && data.callId is string
+      && data.callId == callId
+      && data.callId.size() > 0
+
+      && data.userId is string
+      && data.userId.size() > 0
+      && !data.userId.matches('.*[/].*')
+
+      && data.revision is int
+      && data.revision > 0
+      && data.callId == string(data.revision)
+
+      && data.calledByUserId is string
+      && data.calledByUserId.size() > 0
+      && !data.calledByUserId.matches('.*[/].*')
+
+      && data.calledAt is timestamp
+
+      && data.finalizedAt is timestamp
+      && data.finalizedAt == request.time
+
+      && data.shiftYear is int
+      && data.shiftYear > 0
+
+      && data.shiftMonth is int
+      && data.shiftMonth >= 1
+      && data.shiftMonth <= 12
+
+      && data.shiftDay is int
+      && data.shiftDay >= 1
+      && data.shiftDay <= 31
+
+      && data.shiftKind is string
+      && data.shiftKind in [
+        'day',
+        'night'
+      ];
+}
+
+function isSubstitutionConfirmedCallForPending(
+  confirmed,
+  pending,
+  callId
+) {
+  return hasValidSubstitutionConfirmedCallData(
+        confirmed,
+        callId
+      )
+
+      && confirmed.userId
+          == pending.userId
+
+      && confirmed.revision
+          == pending.revision
+
+      && confirmed.calledByUserId
+          == pending.calledByUserId
+
+      && confirmed.calledAt
+          == pending.calledAt
+
+      && confirmed.shiftYear
+          == pending.shiftYear
+
+      && confirmed.shiftMonth
+          == pending.shiftMonth
+
+      && confirmed.shiftDay
+          == pending.shiftDay
+
+      && confirmed.shiftKind
+          == pending.shiftKind;
+}
+
+function isSubstitutionConfirmedCallCreate(
+  callId
+) {
+  let confirmed = request.resource.data;
+
+  let pendingPath =
+      /databases/$(database)/documents/spaces/substitution/pendingCalls/$(callId);
+
+  let pending =
+      get(pendingPath).data;
+
+  let statisticsId =
+      'year_' + string(
+        confirmed.get('shiftYear', 0)
+      );
+
+  let statisticsPath =
+      /databases/$(database)/documents/spaces/substitution/statistics/$(statisticsId);
+
+  return isSpacesManager()
+
+      && exists(pendingPath)
+      && !existsAfter(pendingPath)
+
+      && hasValidSubstitutionPendingCallData(
+        pending,
+        callId
+      )
+
+      && isSubstitutionConfirmedCallForPending(
+        confirmed,
+        pending,
+        callId
+      )
+
+      && pending.calledAt <= request.time
+
+      && request.time
+          >= pending.calledAt
+              + duration.value(6, 's')
+
+      && existsAfter(statisticsPath)
+
+      && getAfter(statisticsPath)
+          .data.lastFinalizedCallId
+          == callId
+
+      && getAfter(statisticsPath)
+          .data.year
+          == pending.shiftYear
+
+      && getAfter(statisticsPath)
+          .data.updatedAt
+          == request.time;
+}
+
 function isSubstitutionCallModuleUpdate() {
   let moduleBefore = resource.data;
   let moduleAfter = request.resource.data;
@@ -2260,6 +2425,9 @@ function isSubstitutionStatisticsFinalize(
   let pendingPath =
       /databases/$(database)/documents/spaces/substitution/pendingCalls/$(callId);
 
+  let confirmedPath =
+      /databases/$(database)/documents/spaces/substitution/confirmedCalls/$(callId);
+
   let statisticsPath =
       /databases/$(database)/documents/spaces/substitution/statistics/$(statisticsId);
 
@@ -2290,6 +2458,21 @@ function isSubstitutionStatisticsFinalize(
           >= get(pendingPath).data.calledAt
               + duration.value(6, 's')
 
+      && !exists(confirmedPath)
+      && existsAfter(confirmedPath)
+
+      && getAfter(confirmedPath)
+          .data.callId
+          == callId
+
+      && getAfter(confirmedPath)
+          .data.userId
+          == get(pendingPath).data.userId
+
+      && getAfter(confirmedPath)
+          .data.finalizedAt
+          == request.time
+
       && (
         !exists(statisticsPath)
         ? isNewSubstitutionStatistics(
@@ -2314,6 +2497,9 @@ function isSubstitutionFinalizationPendingDelete(
 
   let statisticsPath =
       /databases/$(database)/documents/spaces/substitution/statistics/$(statisticsId);
+
+  let confirmedPath =
+      /databases/$(database)/documents/spaces/substitution/confirmedCalls/$(callId);
 
   return isSpacesManager()
 
@@ -2340,6 +2526,21 @@ function isSubstitutionFinalizationPendingDelete(
 
       && getAfter(statisticsPath)
           .data.updatedAt
+          == request.time
+
+      && !exists(confirmedPath)
+      && existsAfter(confirmedPath)
+
+      && getAfter(confirmedPath)
+          .data.callId
+          == callId
+
+      && getAfter(confirmedPath)
+          .data.userId
+          == pending.userId
+
+      && getAfter(confirmedPath)
+          .data.finalizedAt
           == request.time;
 }
     function isValidSpacesBarLifetime(lifetime) {
@@ -2629,6 +2830,25 @@ match /spaces/substitution {
   callId
 );
   }
+
+  match /confirmedCalls/{callId} {
+  allow get: if
+      signedIn()
+      && resource.data.userId
+          == request.auth.uid;
+
+  allow list: if
+      signedIn()
+      && resource.data.userId
+          == request.auth.uid;
+
+  allow create: if
+      isSubstitutionConfirmedCallCreate(
+        callId
+      );
+
+  allow update, delete: if false;
+}
 
     match /statistics/{statisticsId} {
   allow get: if

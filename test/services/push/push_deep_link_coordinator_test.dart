@@ -184,7 +184,7 @@ void main() {
 
         await coordinator.handle(request);
 
-        expect(openedMessageIds, ['42']);
+        expect(openedMessageIds, ['general:42']);
         expect(didLoadChat, isFalse);
       },
     );

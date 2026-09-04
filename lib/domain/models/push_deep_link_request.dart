@@ -10,10 +10,18 @@ class PushDeepLinkRequest {
 
   static const String _deepLinkTypeKey = 'deepLinkType';
   static const String _chatIdKey = 'chatId';
+
+  // Legacy general SpacesBar push field.
   static const String _spacesBarMessageIdKey = 'spacesBarMessageId';
+
+  // New unified SpacesBar target field.
+  static const String _spacesBarPresentationIdKey = 'spacesBarPresentationId';
 
   static const String _chatTypeValue = 'chat';
   static const String _spacesBarTypeValue = 'spacesBar';
+
+  static const String _generalPresentationPrefix = 'general:';
+  static const String _substitutionPresentationPrefix = 'substitution:';
 
   final PushDeepLinkTargetType targetType;
   final String targetId;
@@ -24,7 +32,20 @@ class PushDeepLinkRequest {
 
   String? get chatId => isChat ? targetId : null;
 
-  String? get spacesBarMessageId => isSpacesBar ? targetId : null;
+  String? get spacesBarPresentationId {
+    return isSpacesBar ? targetId : null;
+  }
+
+  /// Backward-compatible general SpacesBar message ID.
+  ///
+  /// For a substitution target this intentionally returns null.
+  String? get spacesBarMessageId {
+    if (!isSpacesBar || !targetId.startsWith(_generalPresentationPrefix)) {
+      return null;
+    }
+
+    return targetId.substring(_generalPresentationPrefix.length);
+  }
 
   String get deduplicationKey {
     return switch (targetType) {
@@ -50,6 +71,16 @@ class PushDeepLinkRequest {
         return tryParseChatId(data[_chatIdKey]);
 
       case _spacesBarTypeValue:
+        final presentationRequest = tryParseSpacesBarPresentationId(
+          data[_spacesBarPresentationIdKey],
+        );
+
+        if (presentationRequest != null) {
+          return presentationRequest;
+        }
+
+        // Backward compatibility with already deployed general
+        // SpacesBar notifications.
         return tryParseSpacesBarMessageId(data[_spacesBarMessageIdKey]);
 
       default:
@@ -68,7 +99,7 @@ class PushDeepLinkRequest {
       return null;
     }
 
-    // New typed payload format.
+    // Typed payload format.
     if (normalizedPayload.startsWith('{')) {
       try {
         final decoded = jsonDecode(normalizedPayload);
@@ -94,22 +125,71 @@ class PushDeepLinkRequest {
       }
     }
 
-    // Backward compatibility with existing local notifications,
+    // Backward compatibility with old local notifications,
     // where payload was simply the raw chatId.
     return tryParseChatId(normalizedPayload);
   }
 
   static PushDeepLinkRequest? tryParseChatId(Object? value) {
-    return _tryParseTarget(
+    final targetId = _normalizeTargetId(value);
+
+    if (targetId == null) {
+      return null;
+    }
+
+    return PushDeepLinkRequest._(
       targetType: PushDeepLinkTargetType.chat,
-      value: value,
+      targetId: targetId,
     );
   }
 
+  /// Backward-compatible parser for general SpacesBar message IDs.
+  ///
+  /// Internally they are normalized into:
+  ///
+  /// `general:<messageId>`
   static PushDeepLinkRequest? tryParseSpacesBarMessageId(Object? value) {
-    return _tryParseTarget(
+    final messageId = _normalizeTargetId(value);
+
+    if (messageId == null) {
+      return null;
+    }
+
+    return PushDeepLinkRequest._(
       targetType: PushDeepLinkTargetType.spacesBar,
-      value: value,
+      targetId: '$_generalPresentationPrefix$messageId',
+    );
+  }
+
+  /// Parses a unified SpacesBar presentation ID:
+  ///
+  /// `general:<messageId>`
+  /// `substitution:<callId>`
+  static PushDeepLinkRequest? tryParseSpacesBarPresentationId(Object? value) {
+    final presentationId = _normalizeTargetId(value);
+
+    if (presentationId == null) {
+      return null;
+    }
+
+    final isGeneral = presentationId.startsWith(_generalPresentationPrefix);
+    final isSubstitution = presentationId.startsWith(
+      _substitutionPresentationPrefix,
+    );
+
+    if (!isGeneral && !isSubstitution) {
+      return null;
+    }
+
+    final separatorIndex = presentationId.indexOf(':');
+
+    if (separatorIndex < 0 || separatorIndex == presentationId.length - 1) {
+      return null;
+    }
+
+    return PushDeepLinkRequest._(
+      targetType: PushDeepLinkTargetType.spacesBar,
+      targetId: presentationId,
     );
   }
 
@@ -121,17 +201,14 @@ class PushDeepLinkRequest {
       },
       PushDeepLinkTargetType.spacesBar => <String, dynamic>{
         _deepLinkTypeKey: _spacesBarTypeValue,
-        _spacesBarMessageIdKey: targetId,
+        _spacesBarPresentationIdKey: targetId,
       },
     };
 
     return jsonEncode(data);
   }
 
-  static PushDeepLinkRequest? _tryParseTarget({
-    required PushDeepLinkTargetType targetType,
-    required Object? value,
-  }) {
+  static String? _normalizeTargetId(Object? value) {
     if (value is! String) {
       return null;
     }
@@ -142,7 +219,7 @@ class PushDeepLinkRequest {
       return null;
     }
 
-    return PushDeepLinkRequest._(targetType: targetType, targetId: targetId);
+    return targetId;
   }
 
   @override
@@ -161,7 +238,7 @@ class PushDeepLinkRequest {
     return switch (targetType) {
       PushDeepLinkTargetType.chat => 'PushDeepLinkRequest(chatId: $targetId)',
       PushDeepLinkTargetType.spacesBar =>
-        'PushDeepLinkRequest(spacesBarMessageId: $targetId)',
+        'PushDeepLinkRequest(spacesBarPresentationId: $targetId)',
     };
   }
 }

@@ -1,32 +1,48 @@
 import 'dart:async';
 
 import 'package:epistola/domain/models/spaces_bar_message.dart';
+import 'package:epistola/services/spaces/spaces_bar/spaces_bar_presentation_item.dart';
 import 'package:flutter/material.dart';
 
 class SpacesBarPanel extends StatefulWidget {
   const SpacesBarPanel({
     super.key,
-    required this.messages,
+    this.messages = const <SpacesBarMessage>[],
+    this.items = const <SpacesBarPresentationItem>[],
     this.isLoading = false,
     this.error,
     this.onRetry,
     this.onHideMessage,
+    this.onHideSubstitutionCall,
     this.canManage = false,
     this.onEdit,
     this.targetMessageId,
     this.autoRotationInterval = const Duration(seconds: 15),
   });
 
+  /// Временный legacy-вход только для плавного перехода SpacesPage.
+  ///
+  /// После этапа 5C2 будет удалён.
   final List<SpacesBarMessage> messages;
+
+  /// Новый единый presentation-вход:
+  /// general announcements + personal substitution calls.
+  final List<SpacesBarPresentationItem> items;
+
   final bool isLoading;
   final Object? error;
   final VoidCallback? onRetry;
+
   final Future<void> Function(String messageId)? onHideMessage;
+
+  final Future<void> Function(String callId)? onHideSubstitutionCall;
 
   final bool canManage;
   final VoidCallback? onEdit;
 
+  /// Push target относится только к обычному general SpacesBar.
   final String? targetMessageId;
+
   final Duration autoRotationInterval;
 
   @override
@@ -39,7 +55,35 @@ class _SpacesBarPanelState extends State<SpacesBarPanel> {
   Timer? _rotationTimer;
   int _currentIndex = 0;
 
-  bool get _hasMultipleMessages => widget.messages.length > 1;
+  List<SpacesBarPresentationItem> get _items {
+    if (widget.items.isNotEmpty) {
+      return widget.items;
+    }
+
+    if (widget.messages.isEmpty) {
+      return const <SpacesBarPresentationItem>[];
+    }
+
+    return widget.messages
+        .map((message) => SpacesBarPresentationItem.general(message: message))
+        .toList(growable: false);
+  }
+
+  List<SpacesBarPresentationItem> _itemsFor(SpacesBarPanel widget) {
+    if (widget.items.isNotEmpty) {
+      return widget.items;
+    }
+
+    if (widget.messages.isEmpty) {
+      return const <SpacesBarPresentationItem>[];
+    }
+
+    return widget.messages
+        .map((message) => SpacesBarPresentationItem.general(message: message))
+        .toList(growable: false);
+  }
+
+  bool get _hasMultipleMessages => _items.length > 1;
 
   bool get _canEdit {
     return widget.canManage && widget.onEdit != null;
@@ -49,8 +93,15 @@ class _SpacesBarPanelState extends State<SpacesBarPanel> {
   void initState() {
     super.initState();
 
+    assert(
+      widget.messages.isEmpty || widget.items.isEmpty,
+      'Use either messages or items, not both.',
+    );
+
+    final items = _items;
+
     _currentIndex = _findTargetIndex(
-      messages: widget.messages,
+      items: items,
       targetMessageId: widget.targetMessageId,
     );
 
@@ -63,15 +114,18 @@ class _SpacesBarPanelState extends State<SpacesBarPanel> {
   void didUpdateWidget(covariant SpacesBarPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
 
-    if (_sameMessageIds(oldWidget.messages, widget.messages) &&
+    final oldItems = _itemsFor(oldWidget);
+    final newItems = _items;
+
+    if (_samePresentationIds(oldItems, newItems) &&
         oldWidget.autoRotationInterval == widget.autoRotationInterval &&
         oldWidget.targetMessageId == widget.targetMessageId) {
       return;
     }
 
-    final previousMessageId =
-        _currentIndex >= 0 && _currentIndex < oldWidget.messages.length
-        ? oldWidget.messages[_currentIndex].id
+    final previousPresentationId =
+        _currentIndex >= 0 && _currentIndex < oldItems.length
+        ? oldItems[_currentIndex].presentationId
         : null;
 
     var nextIndex = 0;
@@ -80,13 +134,11 @@ class _SpacesBarPanelState extends State<SpacesBarPanel> {
 
     final targetIndex = targetMessageId == null
         ? -1
-        : widget.messages.indexWhere(
-            (message) => message.id == targetMessageId,
-          );
+        : newItems.indexWhere((item) => _matchesTarget(item, targetMessageId));
 
     final targetWasAvailable =
         targetMessageId != null &&
-        oldWidget.messages.any((message) => message.id == targetMessageId);
+        oldItems.any((item) => _matchesTarget(item, targetMessageId));
 
     final targetChanged = oldWidget.targetMessageId != widget.targetMessageId;
 
@@ -95,22 +147,23 @@ class _SpacesBarPanelState extends State<SpacesBarPanel> {
 
     if (shouldApplyTarget) {
       nextIndex = targetIndex;
-    } else if (targetIndex >= 0 && previousMessageId == targetMessageId) {
+    } else if (targetIndex >= 0 &&
+        previousPresentationId == newItems[targetIndex].presentationId) {
       nextIndex = targetIndex;
     } else {
-      final oldMessageIds = oldWidget.messages
-          .map((message) => message.id)
+      final oldPresentationIds = oldItems
+          .map((item) => item.presentationId)
           .toSet();
 
-      final addedMessageIndex = widget.messages.indexWhere(
-        (message) => !oldMessageIds.contains(message.id),
+      final addedItemIndex = newItems.indexWhere(
+        (item) => !oldPresentationIds.contains(item.presentationId),
       );
 
-      if (addedMessageIndex >= 0) {
-        nextIndex = addedMessageIndex;
-      } else if (previousMessageId != null) {
-        final preservedIndex = widget.messages.indexWhere(
-          (message) => message.id == previousMessageId,
+      if (addedItemIndex >= 0) {
+        nextIndex = addedItemIndex;
+      } else if (previousPresentationId != null) {
+        final preservedIndex = newItems.indexWhere(
+          (item) => item.presentationId == previousPresentationId,
         );
 
         if (preservedIndex >= 0) {
@@ -119,9 +172,9 @@ class _SpacesBarPanelState extends State<SpacesBarPanel> {
       }
     }
 
-    _currentIndex = widget.messages.isEmpty
+    _currentIndex = newItems.isEmpty
         ? 0
-        : nextIndex.clamp(0, widget.messages.length - 1);
+        : nextIndex.clamp(0, newItems.length - 1);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_pageController.hasClients) {
@@ -134,16 +187,20 @@ class _SpacesBarPanelState extends State<SpacesBarPanel> {
     _scheduleRotation();
   }
 
+  bool _matchesTarget(SpacesBarPresentationItem item, String targetId) {
+    return item.presentationId == targetId || item.generalMessageId == targetId;
+  }
+
   int _findTargetIndex({
-    required List<SpacesBarMessage> messages,
+    required List<SpacesBarPresentationItem> items,
     required String? targetMessageId,
   }) {
-    if (messages.isEmpty || targetMessageId == null) {
+    if (items.isEmpty || targetMessageId == null) {
       return 0;
     }
 
-    final targetIndex = messages.indexWhere(
-      (message) => message.id == targetMessageId,
+    final targetIndex = items.indexWhere(
+      (item) => _matchesTarget(item, targetMessageId),
     );
 
     return targetIndex >= 0 ? targetIndex : 0;
@@ -157,16 +214,16 @@ class _SpacesBarPanelState extends State<SpacesBarPanel> {
     super.dispose();
   }
 
-  bool _sameMessageIds(
-    List<SpacesBarMessage> first,
-    List<SpacesBarMessage> second,
+  bool _samePresentationIds(
+    List<SpacesBarPresentationItem> first,
+    List<SpacesBarPresentationItem> second,
   ) {
     if (first.length != second.length) {
       return false;
     }
 
     for (var index = 0; index < first.length; index += 1) {
-      if (first[index].id != second[index].id) {
+      if (first[index].presentationId != second[index].presentationId) {
         return false;
       }
     }
@@ -177,9 +234,7 @@ class _SpacesBarPanelState extends State<SpacesBarPanel> {
   void _scheduleRotation() {
     _rotationTimer?.cancel();
 
-    if (widget.isLoading ||
-        widget.error != null ||
-        widget.messages.length <= 1) {
+    if (widget.isLoading || widget.error != null || _items.length <= 1) {
       return;
     }
 
@@ -187,7 +242,9 @@ class _SpacesBarPanelState extends State<SpacesBarPanel> {
   }
 
   void _rotateToNextMessage() {
-    if (!mounted || !_hasMultipleMessages) {
+    final items = _items;
+
+    if (!mounted || items.length <= 1) {
       return;
     }
 
@@ -196,27 +253,30 @@ class _SpacesBarPanelState extends State<SpacesBarPanel> {
       return;
     }
 
-    _animateToPage((_currentIndex + 1) % widget.messages.length);
+    _animateToPage((_currentIndex + 1) % items.length);
   }
 
   void _goToPreviousMessage() {
-    if (!_hasMultipleMessages) {
+    final items = _items;
+
+    if (items.length <= 1) {
       return;
     }
 
-    final previousIndex =
-        (_currentIndex - 1 + widget.messages.length) % widget.messages.length;
+    final previousIndex = (_currentIndex - 1 + items.length) % items.length;
 
     _scheduleRotation();
     _animateToPage(previousIndex);
   }
 
   void _goToNextMessage() {
-    if (!_hasMultipleMessages) {
+    final items = _items;
+
+    if (items.length <= 1) {
       return;
     }
 
-    final nextIndex = (_currentIndex + 1) % widget.messages.length;
+    final nextIndex = (_currentIndex + 1) % items.length;
 
     _scheduleRotation();
     _animateToPage(nextIndex);
@@ -244,7 +304,7 @@ class _SpacesBarPanelState extends State<SpacesBarPanel> {
     }
 
     // Любой переход, включая swipe,
-    // начинает новый полный 20-секундный интервал.
+    // начинает новый полный интервал.
     _scheduleRotation();
   }
 
@@ -286,16 +346,24 @@ class _SpacesBarPanelState extends State<SpacesBarPanel> {
       );
     }
 
-    if (widget.messages.isEmpty) {
+    final items = _items;
+
+    if (items.isEmpty) {
       return _SpacesBarFrame(
         onEdit: _canEdit ? widget.onEdit : null,
-        child: const Center(
+        child: Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.push_pin_outlined, size: 32),
-              SizedBox(height: 8),
-              Text(
+              Image.asset(
+                'assets/images/epistola_seagull_stencil.png',
+                key: const Key('spaces-bar-empty-seagull'),
+                width: 48,
+                height: 48,
+                fit: BoxFit.contain,
+              ),
+              const SizedBox(height: 4),
+              const Text(
                 'Нет новых закреплённых сообщений',
                 textAlign: TextAlign.center,
               ),
@@ -305,31 +373,35 @@ class _SpacesBarPanelState extends State<SpacesBarPanel> {
       );
     }
 
-    final currentMessage = widget.messages[_currentIndex];
+    if (_currentIndex >= items.length) {
+      _currentIndex = 0;
+    }
+
+    final currentItem = items[_currentIndex];
 
     return SizedBox(
       height: 141,
       child: Semantics(
-        label: 'spaces-bar-current-message-${currentMessage.id}',
+        label: _currentItemSemanticsLabel(currentItem),
         container: true,
         child: Stack(
           children: [
             Positioned.fill(
               child: PageView.builder(
                 controller: _pageController,
-                itemCount: widget.messages.length,
+                itemCount: items.length,
                 onPageChanged: _handlePageChanged,
                 itemBuilder: (context, index) {
-                  return _SpacesBarMessageCard(
-                    message: widget.messages[index],
+                  return _SpacesBarItemCard(
+                    item: items[index],
                     onHideMessage: widget.onHideMessage,
+                    onHideSubstitutionCall: widget.onHideSubstitutionCall,
                     hasNavigation: _hasMultipleMessages,
                     reserveBottomSpace: _hasMultipleMessages || _canEdit,
                   );
                 },
               ),
             ),
-
             if (_hasMultipleMessages) ...[
               Positioned(
                 left: 5,
@@ -357,13 +429,12 @@ class _SpacesBarPanelState extends State<SpacesBarPanel> {
                 bottom: 7,
                 child: Center(
                   child: _SpacesBarDots(
-                    count: widget.messages.length,
+                    count: items.length,
                     currentIndex: _currentIndex,
                   ),
                 ),
               ),
             ],
-
             if (_canEdit)
               Positioned(
                 right: 7,
@@ -407,27 +478,32 @@ class _SpacesBarFrame extends StatelessWidget {
   }
 }
 
-class _SpacesBarMessageCard extends StatelessWidget {
-  const _SpacesBarMessageCard({
-    required this.message,
+class _SpacesBarItemCard extends StatelessWidget {
+  const _SpacesBarItemCard({
+    required this.item,
     required this.onHideMessage,
+    required this.onHideSubstitutionCall,
     required this.hasNavigation,
     required this.reserveBottomSpace,
   });
 
-  final SpacesBarMessage message;
-  final Future<void> Function(String messageId)? onHideMessage;
-  final bool hasNavigation;
+  final SpacesBarPresentationItem item;
 
+  final Future<void> Function(String messageId)? onHideMessage;
+
+  final Future<void> Function(String callId)? onHideSubstitutionCall;
+
+  final bool hasNavigation;
   final bool reserveBottomSpace;
 
   @override
   Widget build(BuildContext context) {
-    final accent = _accentForLifetime(message.lifetime);
+    final accent = _accentForItem(item);
+
     final borderRadius = BorderRadius.circular(16);
 
     return Card(
-      key: ValueKey<String>('spaces-bar-message-${message.id}'),
+      key: ValueKey<String>(_cardKey(item)),
       margin: const EdgeInsets.symmetric(horizontal: 1),
       clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(
@@ -447,11 +523,11 @@ class _SpacesBarMessageCard extends StatelessWidget {
             ),
             Positioned.fill(
               child: InkWell(
-                onLongPress: onHideMessage == null
-                    ? null
-                    : () {
+                onLongPress: _canHideItem
+                    ? () {
                         unawaited(_showMessageActions(context));
-                      },
+                      }
+                    : null,
                 child: Padding(
                   padding: EdgeInsets.fromLTRB(
                     hasNavigation ? 40 : 16,
@@ -459,7 +535,7 @@ class _SpacesBarMessageCard extends StatelessWidget {
                     hasNavigation ? 40 : 16,
                     reserveBottomSpace ? 26 : 12,
                   ),
-                  child: _OverflowAwareMessageText(message: message),
+                  child: _OverflowAwareMessageText(item: item),
                 ),
               ),
             ),
@@ -467,6 +543,14 @@ class _SpacesBarMessageCard extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  bool get _canHideItem {
+    return switch (item.source) {
+      SpacesBarPresentationItemSource.generalMessage => onHideMessage != null,
+      SpacesBarPresentationItemSource.substitutionCall =>
+        onHideSubstitutionCall != null,
+    };
   }
 
   Future<void> _showMessageActions(BuildContext context) async {
@@ -507,10 +591,20 @@ class _SpacesBarMessageCard extends StatelessWidget {
       return;
     }
 
-    final hideMessage = onHideMessage;
+    switch (item.source) {
+      case SpacesBarPresentationItemSource.generalMessage:
+        final hideMessage = onHideMessage;
 
-    if (hideMessage != null) {
-      await hideMessage(message.id);
+        if (hideMessage != null) {
+          await hideMessage(item.sourceId);
+        }
+
+      case SpacesBarPresentationItemSource.substitutionCall:
+        final hideCall = onHideSubstitutionCall;
+
+        if (hideCall != null) {
+          await hideCall(item.sourceId);
+        }
     }
   }
 }
@@ -597,9 +691,9 @@ class _SpacesBarEditButton extends StatelessWidget {
 }
 
 class _OverflowAwareMessageText extends StatelessWidget {
-  const _OverflowAwareMessageText({required this.message});
+  const _OverflowAwareMessageText({required this.item});
 
-  final SpacesBarMessage message;
+  final SpacesBarPresentationItem item;
 
   @override
   Widget build(BuildContext context) {
@@ -610,7 +704,7 @@ class _OverflowAwareMessageText extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final textPainter = TextPainter(
-          text: TextSpan(text: message.text, style: textStyle),
+          text: TextSpan(text: item.text, style: textStyle),
           maxLines: 4,
           textDirection: Directionality.of(context),
           textScaler: MediaQuery.textScalerOf(context),
@@ -623,7 +717,7 @@ class _OverflowAwareMessageText extends StatelessWidget {
           children: [
             Expanded(
               child: Text(
-                message.text,
+                item.text,
                 maxLines: hasOverflow ? 3 : 4,
                 overflow: TextOverflow.ellipsis,
                 style: textStyle,
@@ -656,6 +750,8 @@ class _OverflowAwareMessageText extends StatelessWidget {
       showDragHandle: true,
       isScrollControlled: true,
       builder: (sheetContext) {
+        final generalMessage = item.generalMessage;
+
         return SafeArea(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(24, 4, 24, 24),
@@ -664,18 +760,20 @@ class _OverflowAwareMessageText extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Text(
-                  'Закреплённое сообщение',
+                  item.isSubstitutionCall
+                      ? 'Вызов на смену'
+                      : 'Закреплённое сообщение',
                   style: Theme.of(sheetContext).textTheme.titleLarge,
                 ),
-                const SizedBox(height: 6),
-                Text(
-                  _lifetimeLabel(message.lifetime),
-                  style: Theme.of(sheetContext).textTheme.labelLarge,
-                ),
+                if (generalMessage != null) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    _lifetimeLabel(generalMessage.lifetime),
+                    style: Theme.of(sheetContext).textTheme.labelLarge,
+                  ),
+                ],
                 const SizedBox(height: 16),
-                Flexible(
-                  child: SingleChildScrollView(child: Text(message.text)),
-                ),
+                Flexible(child: SingleChildScrollView(child: Text(item.text))),
                 const SizedBox(height: 16),
                 Align(
                   alignment: Alignment.centerRight,
@@ -728,6 +826,24 @@ class _SpacesBarDots extends StatelessWidget {
 
 enum _SpacesBarMessageAction { hide }
 
+String _currentItemSemanticsLabel(SpacesBarPresentationItem item) {
+  return switch (item.source) {
+    SpacesBarPresentationItemSource.generalMessage =>
+      'spaces-bar-current-message-${item.sourceId}',
+    SpacesBarPresentationItemSource.substitutionCall =>
+      'spaces-bar-current-substitution-call-${item.sourceId}',
+  };
+}
+
+String _cardKey(SpacesBarPresentationItem item) {
+  return switch (item.source) {
+    SpacesBarPresentationItemSource.generalMessage =>
+      'spaces-bar-message-${item.sourceId}',
+    SpacesBarPresentationItemSource.substitutionCall =>
+      'spaces-bar-substitution-call-${item.sourceId}',
+  };
+}
+
 String _lifetimeLabel(SpacesBarMessageLifetime lifetime) {
   return switch (lifetime) {
     SpacesBarMessageLifetime.oneHour => '1 час',
@@ -735,6 +851,23 @@ String _lifetimeLabel(SpacesBarMessageLifetime lifetime) {
     SpacesBarMessageLifetime.twentyFourHours => '24 часа',
     SpacesBarMessageLifetime.untilCancelled => 'До отмены',
   };
+}
+
+Color _accentForItem(SpacesBarPresentationItem item) {
+  if (item.isSubstitutionCall) {
+    return Colors.purple;
+  }
+
+  final generalMessage = item.generalMessage;
+
+  if (generalMessage == null) {
+    throw StateError(
+      'General SpacesBar item '
+      'does not contain a message.',
+    );
+  }
+
+  return _accentForLifetime(generalMessage.lifetime);
 }
 
 Color _accentForLifetime(SpacesBarMessageLifetime lifetime) {

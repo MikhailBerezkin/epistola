@@ -94,7 +94,7 @@ class PushDeepLinkResolver {
       return null;
     }
 
-    return request.spacesBarMessageId;
+    return request.spacesBarPresentationId;
   }
 
   Future<PushDeepLinkDestination?> resolve(PushDeepLinkRequest request) async {

@@ -22,11 +22,12 @@ class SpacesPage extends StatefulWidget {
   State<SpacesPage> createState() => _SpacesPageState();
 }
 
-class _SpacesPageState extends State<SpacesPage> {
+class _SpacesPageState extends State<SpacesPage> with WidgetsBindingObserver {
   late final SpacesBarPresentationService _spacesBarService;
   late final SpacesBarManagementService _spacesBarManagementService;
 
   StreamSubscription<SpacesBarPresentationState>? _spacesBarSubscription;
+  Timer? _spacesBarExpiryTimer;
 
   SpacesBarPresentationState? _spacesBarState;
   bool _isSpacesBarLoading = true;
@@ -42,6 +43,8 @@ class _SpacesPageState extends State<SpacesPage> {
   @override
   void initState() {
     super.initState();
+
+    WidgetsBinding.instance.addObserver(this);
 
     _spacesBarService = createSpacesBarPresentationService();
     _spacesBarManagementService = createSpacesBarManagementService();
@@ -95,6 +98,9 @@ class _SpacesPageState extends State<SpacesPage> {
     await _spacesBarSubscription?.cancel();
     _spacesBarSubscription = null;
 
+    _spacesBarExpiryTimer?.cancel();
+    _spacesBarExpiryTimer = null;
+
     if (!mounted) {
       return;
     }
@@ -127,6 +133,8 @@ class _SpacesPageState extends State<SpacesPage> {
               _spacesBarError = null;
               _isSpacesBarLoading = false;
             });
+
+            _scheduleSpacesBarExpiry(state);
           },
           onError: (Object error, StackTrace stackTrace) {
             if (!mounted) {
@@ -141,9 +149,70 @@ class _SpacesPageState extends State<SpacesPage> {
         );
   }
 
+  void _scheduleSpacesBarExpiry(SpacesBarPresentationState state) {
+    _spacesBarExpiryTimer?.cancel();
+    _spacesBarExpiryTimer = null;
+
+    final expiryAtLocal = state.nextSubstitutionExpiryAtLocal;
+
+    if (expiryAtLocal == null) {
+      return;
+    }
+
+    final delay = expiryAtLocal.difference(DateTime.now());
+
+    if (delay <= Duration.zero) {
+      _refreshSpacesBarForCurrentTime();
+      return;
+    }
+
+    _spacesBarExpiryTimer = Timer(delay, _refreshSpacesBarForCurrentTime);
+  }
+
+  void _refreshSpacesBarForCurrentTime() {
+    if (!mounted) {
+      return;
+    }
+
+    final currentState = _spacesBarState;
+
+    if (currentState == null) {
+      return;
+    }
+
+    final nextState = _spacesBarService.refreshForCurrentTime(
+      currentState: currentState,
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _spacesBarState = nextState;
+    });
+
+    _scheduleSpacesBarExpiry(nextState);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) {
+      return;
+    }
+
+    _refreshSpacesBarForCurrentTime();
+  }
+
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+
+    _spacesBarExpiryTimer?.cancel();
+    _spacesBarExpiryTimer = null;
+
     unawaited(_spacesBarSubscription?.cancel());
+
     super.dispose();
   }
 
@@ -169,12 +238,45 @@ class _SpacesPageState extends State<SpacesPage> {
       setState(() {
         _spacesBarState = nextState;
       });
+      _scheduleSpacesBarExpiry(nextState);
     } catch (_) {
       if (!mounted) {
         return;
       }
 
       _showSpacesBarSnackBar('Не удалось убрать сообщение.');
+    }
+  }
+
+  Future<void> _hideSpacesBarSubstitutionCall(String callId) async {
+    final userId = _currentUserId;
+    final currentState = _spacesBarState;
+
+    if (userId.isEmpty || currentState == null) {
+      return;
+    }
+
+    try {
+      final nextState = await _spacesBarService.hideSubstitutionCall(
+        userId: userId,
+        callId: callId,
+        currentState: currentState,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _spacesBarState = nextState;
+      });
+      _scheduleSpacesBarExpiry(nextState);
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      _showSpacesBarSnackBar('Не удалось убрать вызов.');
     }
   }
 
@@ -287,7 +389,7 @@ class _SpacesPageState extends State<SpacesPage> {
 
   @override
   Widget build(BuildContext context) {
-    final visibleMessages = _spacesBarState?.visibleMessages ?? const [];
+    final presentationItems = _spacesBarState?.presentationItems ?? const [];
 
     return Scaffold(
       body: RefreshIndicator(
@@ -299,7 +401,7 @@ class _SpacesPageState extends State<SpacesPage> {
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
               sliver: SliverToBoxAdapter(
                 child: SpacesBarPanel(
-                  messages: visibleMessages,
+                  items: presentationItems,
                   targetMessageId: widget.spacesBarTargetMessageId,
                   isLoading: _isSpacesBarLoading,
                   error: _spacesBarError,
@@ -307,6 +409,7 @@ class _SpacesPageState extends State<SpacesPage> {
                     unawaited(_startSpacesBarWatch());
                   },
                   onHideMessage: _hideSpacesBarMessage,
+                  onHideSubstitutionCall: _hideSpacesBarSubstitutionCall,
                   canManage:
                       !_isAccessRoleLoading && _accessRole.canManageSpacesBar,
                   onEdit:

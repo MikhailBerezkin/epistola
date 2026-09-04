@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import 'substitution_confirmed_call_mapper.dart';
 import 'substitution_pending_call_mapper.dart';
 import 'substitution_statistics_accumulator.dart';
 import 'substitution_statistics_mapper.dart';
@@ -10,6 +11,11 @@ abstract interface class SubstitutionCallFinalizationTransactionContext {
   Future<Map<String, dynamic>?> readStatistics({required int year});
 
   void writeStatistics({required int year, required Map<String, dynamic> data});
+
+  void writeConfirmedCall({
+    required String callId,
+    required Map<String, dynamic> data,
+  });
 
   void deletePendingCall({required String callId});
 }
@@ -45,7 +51,7 @@ final class SubstitutionCallFinalizationFirestoreGateway {
       );
 
       // Главная exactly-once защита:
-      // если pendingCall уже удалён предыдущим finalize,
+      // если pendingCall уже удалён предыдущим успешным finalize,
       // повторный вызов ничего не делает.
       if (pendingCallData == null) {
         return false;
@@ -64,6 +70,15 @@ final class SubstitutionCallFinalizationFirestoreGateway {
       if (pendingCall.callId != normalizedCallId) {
         throw StateError(
           'Substitution pending call document id does not match callId.',
+        );
+      }
+
+      final rawCalledAt =
+          pendingCallData[SubstitutionPendingCallMapper.calledAtField];
+
+      if (rawCalledAt is! Timestamp) {
+        throw StateError(
+          'Substitution pending call document contains invalid calledAt.',
         );
       }
 
@@ -89,7 +104,7 @@ final class SubstitutionCallFinalizationFirestoreGateway {
         pendingCall: pendingCall,
       );
 
-      final writeData = SubstitutionStatisticsMapper.toWriteMap(
+      final statisticsWriteData = SubstitutionStatisticsMapper.toWriteMap(
         year: mutation.year,
         monthCallCounts: mutation.monthCallCounts,
         monthShifts: mutation.monthShifts,
@@ -97,7 +112,18 @@ final class SubstitutionCallFinalizationFirestoreGateway {
         finalizedCallId: mutation.finalizedCallId,
       );
 
-      context.writeStatistics(year: statisticsYear, data: writeData);
+      final confirmedCallWriteData =
+          SubstitutionConfirmedCallMapper.toCreateMap(
+            pendingCall: pendingCall,
+            calledAt: rawCalledAt,
+          );
+
+      context.writeStatistics(year: statisticsYear, data: statisticsWriteData);
+
+      context.writeConfirmedCall(
+        callId: normalizedCallId,
+        data: confirmedCallWriteData,
+      );
 
       context.deletePendingCall(callId: normalizedCallId);
 
@@ -174,6 +200,12 @@ final class _FirebaseSubstitutionCallFinalizationTransactionContext
     return _moduleReference.collection('pendingCalls').doc(callId);
   }
 
+  DocumentReference<Map<String, dynamic>> _confirmedCallReference(
+    String callId,
+  ) {
+    return _moduleReference.collection('confirmedCalls').doc(callId);
+  }
+
   DocumentReference<Map<String, dynamic>> _statisticsReference(int year) {
     return _moduleReference
         .collection('statistics')
@@ -214,6 +246,14 @@ final class _FirebaseSubstitutionCallFinalizationTransactionContext
     required Map<String, dynamic> data,
   }) {
     _transaction.set(_statisticsReference(year), data);
+  }
+
+  @override
+  void writeConfirmedCall({
+    required String callId,
+    required Map<String, dynamic> data,
+  }) {
+    _transaction.set(_confirmedCallReference(callId), data);
   }
 
   @override

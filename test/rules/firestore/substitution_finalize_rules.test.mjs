@@ -86,8 +86,11 @@ describe('Substitution confirmed-call finalize rules', () => {
   test(
     'allows brigadier to finalize expired pending call',
     async () => {
+      const calledAt =
+          new Date(Date.now() - 10_000);
+
       await seedPendingCall({
-        calledAt: new Date(Date.now() - 10_000),
+        calledAt,
       });
 
       const db = authenticatedFirestore(brigadier);
@@ -96,6 +99,7 @@ describe('Substitution confirmed-call finalize rules', () => {
       addFirstFinalizeWrites({
         batch,
         db,
+        calledAt,
       });
 
       await assertSucceeds(batch.commit());
@@ -111,22 +115,61 @@ describe('Substitution confirmed-call finalize rules', () => {
       const statistics = statisticsSnapshot.data();
 
       assert.equal(statistics.year, 2026);
+
       assert.equal(
         statistics.monthCallCounts['8'][member.uid],
         1,
       );
+
       assert.deepEqual(
         statistics.monthShifts['8'][member.uid],
         ['night'],
       );
+
       assert.equal(
         statistics.yearCallCounts[member.uid],
         1,
       );
+
       assert.equal(
         statistics.lastFinalizedCallId,
         '1',
       );
+
+      const memberDb = authenticatedFirestore(member);
+
+const confirmedSnapshot = await assertSucceeds(
+  getDoc(
+    confirmedCallDoc(memberDb, '1'),
+  ),
+);
+
+      assert.equal(
+        confirmedSnapshot.exists(),
+        true,
+      );
+
+      const confirmed = confirmedSnapshot.data();
+
+      assert.equal(confirmed.schemaVersion, 1);
+      assert.equal(confirmed.callId, '1');
+      assert.equal(confirmed.userId, member.uid);
+      assert.equal(confirmed.revision, 1);
+
+      assert.equal(
+        confirmed.calledByUserId,
+        brigadier.uid,
+      );
+
+      assert.equal(
+        confirmed.calledAt.toMillis(),
+        calledAt.getTime(),
+      );
+
+      assert.equal(confirmed.shiftYear, 2026);
+      assert.equal(confirmed.shiftMonth, 8);
+      assert.equal(confirmed.shiftDay, 31);
+      assert.equal(confirmed.shiftKind, 'night');
 
       const pendingSnapshot = await assertSucceeds(
         getDoc(
@@ -141,8 +184,11 @@ describe('Substitution confirmed-call finalize rules', () => {
   test(
     'rejects finalize before six second window expires',
     async () => {
+      const calledAt =
+          new Date(Date.now() - 1_000);
+
       await seedPendingCall({
-        calledAt: new Date(Date.now() - 1_000),
+        calledAt,
       });
 
       const db = authenticatedFirestore(brigadier);
@@ -151,6 +197,7 @@ describe('Substitution confirmed-call finalize rules', () => {
       addFirstFinalizeWrites({
         batch,
         db,
+        calledAt,
       });
 
       await assertFails(batch.commit());
@@ -158,10 +205,13 @@ describe('Substitution confirmed-call finalize rules', () => {
   );
 
   test(
-    'rejects statistics write without deleting pending call',
+    'rejects statistics and confirmed call without deleting pending call',
     async () => {
+      const calledAt =
+          new Date(Date.now() - 10_000);
+
       await seedPendingCall({
-        calledAt: new Date(Date.now() - 10_000),
+        calledAt,
       });
 
       const db = authenticatedFirestore(brigadier);
@@ -172,6 +222,13 @@ describe('Substitution confirmed-call finalize rules', () => {
         firstStatisticsData(),
       );
 
+      batch.set(
+        confirmedCallDoc(db, '1'),
+        confirmedCallData({
+          calledAt,
+        }),
+      );
+
       await assertFails(batch.commit());
     },
   );
@@ -180,7 +237,8 @@ describe('Substitution confirmed-call finalize rules', () => {
     'rejects deleting expired pending call without statistics write',
     async () => {
       await seedPendingCall({
-        calledAt: new Date(Date.now() - 10_000),
+        calledAt:
+            new Date(Date.now() - 10_000),
       });
 
       const db = authenticatedFirestore(brigadier);
@@ -197,8 +255,11 @@ describe('Substitution confirmed-call finalize rules', () => {
   test(
     'rejects ordinary member finalizing pending call',
     async () => {
+      const calledAt =
+          new Date(Date.now() - 10_000);
+
       await seedPendingCall({
-        calledAt: new Date(Date.now() - 10_000),
+        calledAt,
       });
 
       const db = authenticatedFirestore(member);
@@ -207,6 +268,7 @@ describe('Substitution confirmed-call finalize rules', () => {
       addFirstFinalizeWrites({
         batch,
         db,
+        calledAt,
       });
 
       await assertFails(batch.commit());
@@ -216,10 +278,13 @@ describe('Substitution confirmed-call finalize rules', () => {
   test(
     'allows existing yearly statistics to increment exactly once',
     async () => {
+      const calledAt =
+          new Date(Date.now() - 10_000);
+
       await seedPendingCall({
         callId: '2',
         revision: 2,
-        calledAt: new Date(Date.now() - 10_000),
+        calledAt,
         shiftKind: 'day',
       });
 
@@ -241,7 +306,8 @@ describe('Substitution confirmed-call finalize rules', () => {
             [member.uid]: 1,
           },
           lastFinalizedCallId: '1',
-          updatedAt: new Date(Date.now() - 20_000),
+          updatedAt:
+              new Date(Date.now() - 20_000),
         },
       });
 
@@ -271,6 +337,16 @@ describe('Substitution confirmed-call finalize rules', () => {
           lastFinalizedCallId: '2',
           updatedAt: serverTimestamp(),
         },
+      );
+
+      batch.set(
+        confirmedCallDoc(db, '2'),
+        confirmedCallData({
+          callId: '2',
+          revision: 2,
+          calledAt,
+          shiftKind: 'day',
+        }),
       );
 
       batch.delete(
@@ -310,10 +386,13 @@ describe('Substitution confirmed-call finalize rules', () => {
   test(
     'rejects changing another participant statistics during finalize',
     async () => {
+      const calledAt =
+          new Date(Date.now() - 10_000);
+
       await seedPendingCall({
         callId: '2',
         revision: 2,
-        calledAt: new Date(Date.now() - 10_000),
+        calledAt,
         shiftKind: 'day',
       });
 
@@ -338,7 +417,8 @@ describe('Substitution confirmed-call finalize rules', () => {
             [secondMember.uid]: 1,
           },
           lastFinalizedCallId: '1',
-          updatedAt: new Date(Date.now() - 20_000),
+          updatedAt:
+              new Date(Date.now() - 20_000),
         },
       });
 
@@ -376,6 +456,16 @@ describe('Substitution confirmed-call finalize rules', () => {
         },
       );
 
+      batch.set(
+        confirmedCallDoc(db, '2'),
+        confirmedCallData({
+          callId: '2',
+          revision: 2,
+          calledAt,
+          shiftKind: 'day',
+        }),
+      );
+
       batch.delete(
         pendingCallDoc(db, '2'),
       );
@@ -387,8 +477,11 @@ describe('Substitution confirmed-call finalize rules', () => {
   test(
     'rejects second finalize attempt for same call',
     async () => {
+      const calledAt =
+          new Date(Date.now() - 10_000);
+
       await seedPendingCall({
-        calledAt: new Date(Date.now() - 10_000),
+        calledAt,
       });
 
       const db = authenticatedFirestore(brigadier);
@@ -398,6 +491,7 @@ describe('Substitution confirmed-call finalize rules', () => {
       addFirstFinalizeWrites({
         batch: firstBatch,
         db,
+        calledAt,
       });
 
       await assertSucceeds(firstBatch.commit());
@@ -441,7 +535,8 @@ describe('Substitution confirmed-call finalize rules', () => {
     'rejects writing statistics into wrong yearly document',
     async () => {
       await seedPendingCall({
-        calledAt: new Date(Date.now() - 10_000),
+        calledAt:
+            new Date(Date.now() - 10_000),
       });
 
       const db = authenticatedFirestore(owner);
@@ -462,51 +557,54 @@ describe('Substitution confirmed-call finalize rules', () => {
       await assertFails(batch.commit());
     },
   );
+
   test(
-  'allows brigadier to list pending calls',
-  async () => {
-    await seedPendingCall({
-      calledAt: new Date(Date.now() - 10_000),
-    });
+    'allows brigadier to list pending calls',
+    async () => {
+      await seedPendingCall({
+        calledAt:
+            new Date(Date.now() - 10_000),
+      });
 
-    const db = authenticatedFirestore(brigadier);
+      const db = authenticatedFirestore(brigadier);
 
-    const snapshot = await assertSucceeds(
-      getDocs(
-        collection(
-          db,
-          'spaces',
-          'substitution',
-          'pendingCalls',
+      const snapshot = await assertSucceeds(
+        getDocs(
+          collection(
+            db,
+            'spaces',
+            'substitution',
+            'pendingCalls',
+          ),
         ),
-      ),
-    );
+      );
 
-    assert.equal(snapshot.size, 1);
-  },
-);
+      assert.equal(snapshot.size, 1);
+    },
+  );
 
-test(
-  'rejects ordinary member listing pending calls',
-  async () => {
-    await seedPendingCall({
-      calledAt: new Date(Date.now() - 10_000),
-    });
+  test(
+    'rejects ordinary member listing pending calls',
+    async () => {
+      await seedPendingCall({
+        calledAt:
+            new Date(Date.now() - 10_000),
+      });
 
-    const db = authenticatedFirestore(member);
+      const db = authenticatedFirestore(member);
 
-    await assertFails(
-      getDocs(
-        collection(
-          db,
-          'spaces',
-          'substitution',
-          'pendingCalls',
+      await assertFails(
+        getDocs(
+          collection(
+            db,
+            'spaces',
+            'substitution',
+            'pendingCalls',
+          ),
         ),
-      ),
-    );
-  },
-);
+      );
+    },
+  );
 });
 
 function authenticatedFirestore(user) {
@@ -526,6 +624,16 @@ function pendingCallDoc(db, callId) {
     'spaces',
     'substitution',
     'pendingCalls',
+    callId,
+  );
+}
+
+function confirmedCallDoc(db, callId) {
+  return doc(
+    db,
+    'spaces',
+    'substitution',
+    'confirmedCalls',
     callId,
   );
 }
@@ -561,13 +669,47 @@ function firstStatisticsData() {
   };
 }
 
+function confirmedCallData({
+  callId = '1',
+  revision = 1,
+  calledAt,
+  userId = member.uid,
+  calledByUserId = brigadier.uid,
+  shiftYear = 2026,
+  shiftMonth = 8,
+  shiftDay = 31,
+  shiftKind = 'night',
+}) {
+  return {
+    schemaVersion: 1,
+    callId,
+    userId,
+    revision,
+    calledByUserId,
+    calledAt,
+    finalizedAt: serverTimestamp(),
+    shiftYear,
+    shiftMonth,
+    shiftDay,
+    shiftKind,
+  };
+}
+
 function addFirstFinalizeWrites({
   batch,
   db,
+  calledAt,
 }) {
   batch.set(
     statisticsDoc(db, 2026),
     firstStatisticsData(),
+  );
+
+  batch.set(
+    confirmedCallDoc(db, '1'),
+    confirmedCallData({
+      calledAt,
+    }),
   );
 
   batch.delete(

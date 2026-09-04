@@ -8,6 +8,9 @@ import {
   detectSpacesBarPublication,
 } from "./spaces_bar_notification";
 import {
+  buildSubstitutionCallNotification,
+} from "./substitution_call_notification";
+import {
   onDocumentCreated,
   onDocumentWritten,
 } from "firebase-functions/v2/firestore";
@@ -1129,3 +1132,184 @@ export const sendSpacesBarNotification = onDocumentWritten(
     );
   },
 );
+export const sendSubstitutionCallNotification =
+  onDocumentCreated(
+    "spaces/substitution/confirmedCalls/{callId}",
+    async (event) => {
+      const snapshot = event.data;
+
+      if (!snapshot) {
+        logger.warn(
+          "Confirmed substitution call snapshot is missing",
+          {
+            callId: event.params.callId,
+          },
+        );
+
+        return;
+      }
+
+      const notification =
+        buildSubstitutionCallNotification(
+          event.params.callId,
+          snapshot.data(),
+        );
+
+      if (notification === null) {
+        logger.warn(
+          "Confirmed substitution call is invalid for push",
+          {
+            callId: event.params.callId,
+          },
+        );
+
+        return;
+      }
+
+      const firestore = getFirestore();
+
+      const devicesSnapshot = await firestore
+        .collection("users")
+        .doc(notification.recipientUserId)
+        .collection("devices")
+        .get();
+
+      const referencesByToken = new Map<
+        string,
+        FirebaseFirestore.DocumentReference[]
+      >();
+
+      for (const document of devicesSnapshot.docs) {
+        const token = document.data().token;
+
+        if (
+          typeof token !== "string" ||
+          token.length === 0
+        ) {
+          continue;
+        }
+
+        const existingReferences =
+          referencesByToken.get(token);
+
+        if (existingReferences !== undefined) {
+          existingReferences.push(document.ref);
+        } else {
+          referencesByToken.set(
+            token,
+            [document.ref],
+          );
+        }
+      }
+
+      const tokenEntries = Array.from(
+        referencesByToken.entries(),
+      );
+
+      if (tokenEntries.length === 0) {
+        logger.info(
+          "Substitution call push skipped: no recipient tokens",
+          {
+            callId: notification.callId,
+            recipientUserId:
+              notification.recipientUserId,
+          },
+        );
+
+        return;
+      }
+
+      const invalidTokenReferences:
+        FirebaseFirestore.DocumentReference[] = [];
+
+      let successCount = 0;
+      let failureCount = 0;
+
+      for (
+        let start = 0;
+        start < tokenEntries.length;
+        start += FCM_MULTICAST_TOKEN_LIMIT
+      ) {
+        const batch = tokenEntries.slice(
+          start,
+          start + FCM_MULTICAST_TOKEN_LIMIT,
+        );
+
+        const response =
+          await getMessaging().sendEachForMulticast({
+            tokens: batch.map(([token]) => token),
+            notification: {
+              title: "Epistola — Подсменка",
+              body: notification.body,
+            },
+            data: {
+              deepLinkType: "spacesBar",
+              spacesBarPresentationId:
+                notification.presentationId,
+              notificationMode: "sound",
+            },
+            android: {
+              priority: "high",
+              notification: {
+                channelId:
+                  SPACES_BAR_NOTIFICATION_CHANNEL_ID,
+                sound: "seagull_notification",
+                vibrateTimingsMillis: [
+                  0,
+                  250,
+                  100,
+                  250,
+                ],
+              },
+            },
+          });
+
+        successCount += response.successCount;
+        failureCount += response.failureCount;
+
+        response.responses.forEach(
+          (sendResponse, index) => {
+            const errorCode =
+              sendResponse.error?.code;
+
+            if (
+              !errorCode ||
+              !INVALID_FCM_TOKEN_CODES.has(
+                errorCode,
+              )
+            ) {
+              return;
+            }
+
+            const [, references] = batch[index];
+
+            invalidTokenReferences.push(
+              ...references,
+            );
+          },
+        );
+      }
+
+      await Promise.all(
+        invalidTokenReferences.map(
+          (reference) => reference.delete(),
+        ),
+      );
+
+      logger.info(
+        "Substitution call push notification processed",
+        {
+          callId: notification.callId,
+          recipientUserId:
+            notification.recipientUserId,
+          registeredDeviceDocuments:
+            devicesSnapshot.size,
+          recipientTokens: tokenEntries.length,
+          successCount,
+          failureCount,
+          removedInvalidTokens:
+            invalidTokenReferences.length,
+        },
+      );
+    },
+  );
