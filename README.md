@@ -20,16 +20,16 @@ Pilot target:
 
 ---
 
-## Current development status
+# Current development status
 
 | Параметр | Значение |
 |---|---|
 | Target | `v0.8.0` |
-| Stage | `Spaces / Substitution / SpacesBar Foundation` |
+| Stage | `Spaces / Substitution / SpacesBar` |
 | Branch | `feat/v0.8.0-spaces-substitution-foundation` |
-| Last functional checkpoint | `123cda1` |
-| Commit | `feat(spaces): add realtime spaces bar notifications` |
-| SpacesBar Rules checkpoint | `60966a6` |
+| Last functional checkpoint | `9ebf9ab` |
+| Commit | `feat(spaces): add confirmed substitution call delivery` |
+| Previous SpacesBar checkpoint | `123cda1` |
 | Stable baseline before v0.8.0 | `v0.7.4` |
 | Firebase project | `epistola-434b7` |
 | Android package | `com.epistola.app` |
@@ -38,7 +38,7 @@ Pilot target:
 After the functional push:
 
 ```text
-HEAD = origin feature branch = 123cda1
+HEAD = origin feature branch = 9ebf9ab
 working tree = clean
 ```
 
@@ -62,7 +62,7 @@ Business transaction invariants stay below UI.
 
 UI role visibility is not the security boundary.
 
-Presentation-specific colors/layout are not persisted as domain data.
+Presentation-only state should not be persisted as authoritative backend data.
 
 ---
 
@@ -90,8 +90,6 @@ Chats are an internal Space:
 
 Messenger internals remain chat/Messenger architecture.
 
-SpacesBar push opens a temporary Spaces route with an exact message target; normal root Back behavior remains separate.
-
 ---
 
 # Current Spaces Hub
@@ -107,51 +105,34 @@ Tiles:
 ОТ и ТБ
 ```
 
-Header when Spaces is selected:
+Working:
 
 ```text
-Epistola
-Пространства
+Чаты
+"Список"
 ```
 
-`⋮` is reserved for future Spaces tile configuration.
-
-Current six-tile layout remains unchanged.
+Other tiles are placeholders.
 
 ---
 
 # SpacesBar
 
-SpacesBar is implemented above the tile grid.
-
-Current height:
+Current:
 
 ```text
-141 px
+height: 141 px
+message font: 18 px
+auto rotation: 15 sec
 ```
 
-Current message font:
+General announcement capacity:
 
 ```text
-18 px
+3 active messages
 ```
 
-Maximum active messages:
-
-```text
-3
-```
-
-Lifetimes:
-
-```text
-1 hour
-12 hours
-24 hours
-until cancelled
-```
-
-Visual accents:
+General lifetimes / accents:
 
 ```text
 1h → green
@@ -160,219 +141,159 @@ Visual accents:
 until cancelled → red
 ```
 
-Lifetime controls expiry/accent, not current presentation priority.
-
-Current message order:
+Personal substitution call accent:
 
 ```text
-newest createdAt first
-→ id/revision descending tie-breaker
+purple
+```
+
+Multiple items:
+
+```text
+chevrons
+dots
+horizontal PageView
+15-second rotation
+manual navigation resets timer
+```
+
+Empty state uses:
+
+```text
+assets/images/epistola_seagull_stencil.png
 ```
 
 ---
 
-## SpacesBar realtime
+# General SpacesBar backend
 
-The main Spaces screen listens to the single authoritative board document:
+Authoritative board:
 
 ```text
 spaces/spacesBar
 ```
 
-Flow:
+Manager roles:
 
 ```text
-Firestore snapshot
-→ active messages
-→ current local hidden ids
-→ newest-first resolver
-→ SpacesBarPanel
-```
-
-Manual two-device verification:
-
-```text
-publish/delete on manager device
-→ already-open member phone updates automatically
-```
-
-No per-message Firestore queries are used.
-
----
-
-## SpacesBar carousel
-
-For one visible message:
-
-```text
-no chevrons
-no dots
-```
-
-For two or three:
-
-```text
-left/right chevrons
-dots
-horizontal swipe
-automatic rotation
-```
-
-Current auto-rotation:
-
-```text
-15 seconds
-```
-
-Manual swipe/chevron navigation resets the interval.
-
-Current implementation uses separate finite `PageView` cards.
-
-Planned later:
-
-```text
-one stationary SpacesBar frame
-content changes inside the frame
-cyclic/infinite swipe without hard end boundary
-```
-
----
-
-## SpacesBar roles
-
-Roles:
-
-```text
-member
 brigadier
 owner
 ```
 
-Manager pencil:
-
-```text
-brigadier → yes
-owner → yes
-member → no
-```
-
 Owner remains highest priority.
 
----
+General messages use Firestore transactions and are limited to `3/3`.
 
-## SpacesBar editor
-
-Manager editor supports:
+General local hide:
 
 ```text
-active count N/3
-active message list
-delete for all
-multiline text
-250 chars
-lifetime selection
-publish
+SharedPreferences
+spaces_bar.hidden_message_ids.v1.<uid>
 ```
 
-At `3/3` the publish form is hidden until one message is deleted.
+No Firestore write is performed for local hide.
 
----
-
-## Local hide vs global delete
-
-Long press:
+General presentation order:
 
 ```text
-Убрать сообщение
+createdAt descending
+→ deterministic id/revision tie-breaker
 ```
-
-This is local-only and stored in `SharedPreferences`.
-
-Properties:
-
-```text
-per user
-per device
-survives app restart
-no Firestore write
-```
-
-Manager editor trash performs authoritative delete-for-all.
 
 ---
 
-## SpacesBar backend
+# Personal substitution SpacesBar
 
-Firestore document:
-
-```text
-spaces/spacesBar
-```
-
-Schema version:
+Successful call finalization creates:
 
 ```text
-1
+spaces/substitution/confirmedCalls/{callId}
 ```
 
-Board stores:
+Finalization transaction:
 
 ```text
-revision
-messages
-updatedAt
+update statistics
+create confirmedCall
+delete pendingCall
 ```
 
-Message stores:
+The called user watches only their own confirmed calls.
+
+Presentation IDs:
 
 ```text
-text
-lifetime
-createdByUserId
-createdAt
+general:<messageId>
+substitution:<callId>
 ```
 
-Writes use Firestore transactions.
+Personal calls do not consume the general `3/3` capacity.
 
-Rules are deployed to production.
+A personal call remains active until shift start:
+
+```text
+day → 08:00 local
+night → 20:00 local
+```
+
+`SpacesPage` uses a local Timer for shift-start expiry, so no server write is needed at that moment.
+
+Personal local hide:
+
+```text
+spaces_bar.hidden_substitution_call_ids.v1.<uid>
+```
+
+Confirmed-call history remains after the SpacesBar item expires.
 
 ---
 
-# SpacesBar push notifications
+# Unified SpacesBar push target
 
-Functional checkpoint `123cda1` adds full SpacesBar push integration.
-
-Remote deep link:
+Typed push model supports:
 
 ```text
-deepLinkType = spacesBar
-spacesBarMessageId = <id>
+chat
+spacesBar
 ```
 
-Existing chat deep links remain backward-compatible.
-
-Android notification channel:
+Unified field:
 
 ```text
-epistola_spaces_bar_v1
+spacesBarPresentationId
 ```
 
-Behavior:
+Values:
 
 ```text
-high priority
-seagull_notification sound
-vibration
-announcement preview
+general:<messageId>
+substitution:<callId>
 ```
 
-Cloud Function:
+Backward compatibility remains for:
+
+```text
+legacy chatId
+legacy spacesBarMessageId
+```
+
+Legacy general:
+
+```text
+spacesBarMessageId=42
+→ general:42
+```
+
+Some internal method/parameter names still contain `MessageId`, but current behavior can carry a unified presentation ID.
+
+---
+
+# General SpacesBar push
+
+Function:
 
 ```text
 sendSpacesBarNotification
-europe-west1
-Node.js 22
-2nd Gen
 ```
 
 Trigger:
@@ -381,233 +302,255 @@ Trigger:
 onDocumentWritten("spaces/spacesBar")
 ```
 
-Only one newly published valid message generates a push.
+Only one valid newly published general message generates a push.
 
-No push for:
+Publisher tokens are excluded.
+
+Channel:
 
 ```text
-delete-only
-existing-message update
-malformed/multi-add write
+epistola_spaces_bar_v1
 ```
 
-Publisher tokens are excluded by `createdByUserId`.
+Sound:
 
-Invalid FCM token records are cleaned after multicast failures.
+```text
+seagull_notification
+```
 
 ---
 
-## Exact push target
+# Substitution call push
 
-If several SpacesBar notifications are pending:
+Function:
 
 ```text
-push №9
-push №10
-tap push №9
-→ message №9 must open
+sendSubstitutionCallNotification
 ```
 
-A newer realtime snapshot must not override the explicit push target while the user remains on that target.
+Trigger:
 
-This scenario has a regression widget test and passed manual physical-device verification.
+```text
+onDocumentCreated(
+  "spaces/substitution/confirmedCalls/{callId}"
+)
+```
+
+Recipient lookup:
+
+```text
+users/{calledUserId}/devices
+```
+
+Payload:
+
+```text
+deepLinkType = spacesBar
+spacesBarPresentationId = substitution:<callId>
+notificationMode = sound
+```
+
+The same SpacesBar Android notification channel is used.
+
+No separate push is generated by technical history.
 
 ---
 
-## Manual push verification
+# Epistola technical chat
 
-Verified on physical Android device for a `member`:
-
-```text
-push received
-seagull sound
-vibration
-works with screen off
-tap opens Spaces
-correct target announcement shown
-```
-
-The earlier missing vibration on Poco F6 was traced to device settings, not Epistola.
-
-Backward-compatibility note:
+Private chats include a read-only technical row:
 
 ```text
-older Epistola installs can still receive the new FCM push
-because their registered device token remains in backend
+Epistola
+Технические сообщения
 ```
 
-If rollout later requires it, recipient filtering can be extended with client version/capability metadata.
+Avatar:
+
+```text
+assets/images/epistola_app_icon.png
+```
+
+This is not a normal chat.
+
+There is no fake `chats` record and no generic `systemMessages` collection.
+
+Source:
+
+```text
+confirmedCalls
+→ system message mapper/source/service
+→ EpistolaSystemChatScreen
+```
+
+The realtime listener exists only while the technical screen is open.
+
+Current boundary:
+
+```text
+no composer
+no send
+no delete/clear
+no reactions
+no typing
+no read receipts
+no unread badge
+```
 
 ---
 
-# Future Spaces tile behavior
+# Gull artwork
 
-Agreed product direction:
+Runtime:
 
 ```text
-<= 6 active tiles
-→ regular layout with subtitles
-
-7–8 active tiles
-→ compact shorter layout
-→ subtitles hidden
-
-odd count
-→ last tile spans full width
-
-> 8 active tiles
-→ vertical scroll
-→ optional subtle continuation indicator
+assets/images/epistola_app_icon.png
+assets/images/epistola_seagull_stencil.png
 ```
 
-SpacesBar height stays fixed.
+Master artwork:
 
-`⋮` will later control visible Spaces and may also support ordering.
+```text
+Аватар Чайки.png
+Аватар Чайки трафарет.png
+```
+
+Current use:
+
+```text
+app icon asset → technical chat avatar
+stencil → empty SpacesBar
+```
+
+The Android launcher icon was not replaced in functional checkpoint `9ebf9ab`.
 
 ---
 
 # "Список" / Substitution
 
-`"Список"` is the main production work module being developed in v0.8.0.
-
-Foundation already includes:
+Current foundation includes:
 
 ```text
 participants
 rotation queue
 availability
-vacation/sick status
+vacation/sick
 participant management
 work display name
-call participant flow
+call flow
 Undo
 pending call persistence
-exactly-once finalization
 recovery
+exactly-once finalization
 monthly/yearly statistics
+confirmedCall event
+personal SpacesBar
+Epistola technical history
+confirmed-call push
 Firestore Rules
 ```
 
-Owner remains highest-priority.
+Owner remains highest priority.
 
 ---
 
-# Existing Messenger foundations
-
-Private chats:
-
-```text
-text
-images
-pagination
-logical delete
-push deep links
-read receipts
-typing
-active-chat notification suppression
-avatar/user card
-notification controls
-```
-
-Group chats:
-
-```text
-roles
-owner protection
-avatars
-push deep links
-reactions
-identity/member cards
-notification controls
-```
-
-Notifications:
-
-```text
-FCM
-custom sound
-vibration
-image preview
-channels
-active-chat suppression
-```
-
----
-
-# Current verification
+# Verification
 
 Latest functional checkpoint:
 
 ```text
-123cda1 feat(spaces): add realtime spaces bar notifications
+9ebf9ab
+feat(spaces): add confirmed substitution call delivery
 ```
 
 Checks:
 
 ```text
 flutter.bat test
-→ 849 passed
+→ 922 passed
 
 flutter.bat analyze
 → No issues found
 
-git diff check
-→ clean
-
 release APK
 → SUCCESS
-→ latest recorded size 57.5 MB
+→ 58.2 MB
 
-SpacesBar notification helper
-→ 7/7
+substitution notification helper
+→ 6/6
 
 Functions lint
 → no errors
 
-SpacesBar Rules
-→ 22/22 targeted
+Functions build
+→ SUCCESS
 
-full Firestore Rules
-→ 155/155
+latest full Firestore Rules suite for this block
+→ 165/165
 ```
 
-Manual testing completed on emulator and physical Android devices.
+Production:
+
+```text
+confirmedCalls Rules deployed
+sendSpacesBarNotification deployed
+sendSubstitutionCallNotification deployed
+```
+
+Manual physical-device future-call scenario completed successfully.
 
 ---
 
-# Next work
+# Deferred work
 
-The previous immediate SpacesBar block is complete:
-
-```text
-realtime sync
-newest-first order
-push integration
-exact message targeting
-production function deploy
-```
-
-Deferred presentation-only work:
+SpacesBar presentation-only:
 
 ```text
-stationary SpacesBar frame with internal transition
-infinite cyclic swipe
+stationary outer frame
+true cyclic/infinite swipe
 glow tuning
 ```
 
-Deferred Spaces Hub work:
+Spaces Hub:
 
 ```text
 ⋮ tile configuration
-regular/compact layout switching
->8 tile scroll hint
+regular/compact layout
+>8 continuation
 ```
 
-For full operational handoff read:
+Possible dedicated cleanup:
 
 ```text
-PROJECT_CONTEXT.md
-ARCHITECTURE.md
+rename legacy SpacesBar "*MessageId" routing APIs
 ```
 
-Before new work, confirm current branch/HEAD/status and inspect current source first.
+Possible visual follow-up:
+
+```text
+replace actual Android launcher icon with approved gull artwork
+```
+
+---
+
+# Source of truth for new chats
+
+Before new work:
+
+```powershell
+git.exe branch --show-current
+git.exe status --short
+git.exe rev-parse --short HEAD
+git.exe rev-parse --short origin/feat/v0.8.0-spaces-substitution-foundation
+```
+
+Then read from the current feature branch:
+
+```text
+current source
+PROJECT_CONTEXT.md
+ARCHITECTURE.md
+README.md
+```
+
+Do not use `main` as the source of current `v0.8.0` state until release/merge is explicitly completed.
