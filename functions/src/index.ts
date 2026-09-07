@@ -3,10 +3,14 @@ import {getDatabase} from "firebase-admin/database";
 import {getFirestore, Timestamp} from "firebase-admin/firestore";
 import {getMessaging} from "firebase-admin/messaging";
 import {logger} from "firebase-functions";
+import * as functionsV1 from "firebase-functions/v1";
 import {setGlobalOptions} from "firebase-functions/v2";
 import {
   detectSpacesBarPublication,
 } from "./spaces_bar_notification";
+import {
+  buildDeletedUserCleanupPlan,
+} from "./deleted_user_cleanup";
 import {
   buildSubstitutionCallNotification,
 } from "./substitution_call_notification";
@@ -1313,3 +1317,58 @@ export const sendSubstitutionCallNotification =
       );
     },
   );
+export const cleanupDeletedUserData = functionsV1
+  .region("europe-west1")
+  .auth.user()
+  .onDelete(async (user) => {
+    const cleanupPlan =
+      buildDeletedUserCleanupPlan(user.uid);
+
+    if (cleanupPlan === null) {
+      logger.warn(
+        "Deleted Authentication user has an invalid uid",
+      );
+
+      return;
+    }
+
+    const firestore = getFirestore();
+
+    const userReference = firestore.doc(
+      cleanupPlan.userDocumentPath,
+    );
+
+    const devicesSnapshot = await firestore
+      .collection(cleanupPlan.devicesCollectionPath)
+      .get();
+
+    const batch = firestore.batch();
+
+    for (const deviceDocument of devicesSnapshot.docs) {
+      batch.delete(deviceDocument.ref);
+    }
+
+    batch.delete(userReference);
+
+    batch.delete(
+      firestore.doc(
+        cleanupPlan.substitutionParticipantDocumentPath,
+      ),
+    );
+
+    batch.delete(
+      firestore.doc(
+        cleanupPlan.spacesAccessDocumentPath,
+      ),
+    );
+
+    await batch.commit();
+
+    logger.info(
+      "Deleted user data cleaned up",
+      {
+        userId: cleanupPlan.userId,
+        removedDeviceDocuments: devicesSnapshot.size,
+      },
+    );
+  });
