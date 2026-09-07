@@ -4,7 +4,8 @@ import 'package:epistola/domain/models/substitution_participant.dart';
 import 'package:epistola/domain/models/substitution_shift.dart';
 import 'package:epistola/services/spaces/substitution/substitution_call_firestore_gateway.dart';
 import 'package:epistola/services/spaces/substitution/substitution_dependencies.dart';
-import 'package:epistola/services/spaces/substitution/substitution_participant_firestore_gateway.dart';
+import 'package:epistola/services/spaces/substitution/substitution_participant_state_firestore_gateway.dart';
+import 'package:epistola/services/spaces/substitution/substitution_rotation_edit_firestore_gateway.dart';
 import 'package:epistola/services/spaces/substitution/substitution_statistics_firestore_gateway.dart';
 import 'package:epistola/services/spaces/substitution/substitution_work_display_name_firestore_gateway.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -48,16 +49,19 @@ void main() {
       });
     });
 
-    test('wires participant removal through firestore gateway', () async {
-      final deletedUserIds = <String>[];
+    test('wires participant removal through membership remover', () async {
+      String? removedUserId;
 
       final service = createSubstitutionParticipantActionsService(
-        gateway: _participantGateway(deletedUserIds: deletedUserIds),
+        gateway: _participantGateway(),
+        membershipRemover: ({required String userId}) async {
+          removedUserId = userId;
+        },
       );
 
       await service.removeParticipant(userId: ' user-7 ');
 
-      expect(deletedUserIds, <String>['user-7']);
+      expect(removedUserId, 'user-7');
     });
   });
 
@@ -162,6 +166,27 @@ void main() {
       expect(statistics!.callsForMonth(month: 8, userId: 'user-1'), 2);
 
       expect(statistics.callsForYear('user-1'), 2);
+    });
+  });
+
+  group('rotation edit dependencies', () {
+    test('wires rotation edit baseline through firestore gateway', () async {
+      final gateway = SubstitutionRotationEditFirestoreGateway(
+        moduleLoader: () async {
+          return <String, dynamic>{'nextRotationOrder': 32, 'revision': 11};
+        },
+        pendingCallLoader: ({required String callId}) async {
+          return null;
+        },
+        transactionRunner: const _UnusedRotationEditTransactionRunner(),
+      );
+
+      final service = createSubstitutionRotationEditService(gateway: gateway);
+
+      final baseline = await service.beginEditing();
+
+      expect(baseline.nextRotationOrder, 32);
+      expect(baseline.revision, 11);
     });
   });
 
@@ -271,20 +296,16 @@ void main() {
   });
 }
 
-SubstitutionParticipantFirestoreGateway _participantGateway({
+SubstitutionParticipantStateFirestoreGateway _participantGateway({
   List<_Update>? updates,
-  List<String>? deletedUserIds,
 }) {
-  return SubstitutionParticipantFirestoreGateway(
+  return SubstitutionParticipantStateFirestoreGateway(
     documentUpdater:
         ({required String userId, required Map<String, dynamic> data}) async {
           updates?.add(
             _Update(userId: userId, data: Map<String, dynamic>.from(data)),
           );
         },
-    documentDeleter: ({required String userId}) async {
-      deletedUserIds?.add(userId);
-    },
   );
 }
 
@@ -309,6 +330,19 @@ Map<String, dynamic> _pendingCallData() {
     'shiftDay': 31,
     'shiftKind': 'night',
   };
+}
+
+final class _UnusedRotationEditTransactionRunner
+    implements SubstitutionRotationEditTransactionRunner {
+  const _UnusedRotationEditTransactionRunner();
+
+  @override
+  Future<T> run<T>(
+    Future<T> Function(SubstitutionRotationEditTransactionContext context)
+    action,
+  ) {
+    throw StateError('Rotation edit transaction must not run in this test.');
+  }
 }
 
 final class _FakeCallTransactionRunner
@@ -444,12 +478,16 @@ final class _Update {
   }
 
   @override
-  int get hashCode => Object.hash(
-    userId,
-    Object.hashAll(
-      data.entries.map((entry) => Object.hash(entry.key, entry.value)),
-    ),
-  );
+  int get hashCode {
+    return Object.hash(
+      userId,
+      Object.hashAll(
+        data.entries.map((entry) {
+          return Object.hash(entry.key, entry.value);
+        }),
+      ),
+    );
+  }
 }
 
 bool _mapEquals(Map<String, dynamic> left, Map<String, dynamic> right) {

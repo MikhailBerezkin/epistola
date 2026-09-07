@@ -167,6 +167,120 @@ void main() {
       },
     );
 
+    test(
+      'removed participant keeps hidden anchor while active rotation moves past it',
+      () {
+        var result = [
+          participant('andrey', 10),
+          participant(
+            'boris',
+            20,
+            status: SubstitutionParticipantStatus.removed,
+          ),
+          participant('stepan', 30),
+          participant('viktor', 40),
+        ];
+
+        result = SubstitutionRotation.moveCalledParticipantToEnd(
+          participants: result,
+          userId: 'andrey',
+        );
+
+        expect(SubstitutionRotation.active(result).map((item) => item.userId), [
+          'stepan',
+          'viktor',
+          'andrey',
+        ]);
+
+        final boris = result.singleWhere((item) => item.userId == 'boris');
+
+        expect(boris.rotationOrder, 20);
+        expect(boris.status, SubstitutionParticipantStatus.removed);
+      },
+    );
+
+    test(
+      'removed participant naturally reaches top while active users are called',
+      () {
+        var result = [
+          participant('andrey', 10),
+          participant(
+            'boris',
+            20,
+            status: SubstitutionParticipantStatus.removed,
+          ),
+          participant('stepan', 30),
+          participant('viktor', 40),
+        ];
+
+        result = SubstitutionRotation.moveCalledParticipantToEnd(
+          participants: result,
+          userId: 'andrey',
+        );
+
+        result = SubstitutionRotation.moveCalledParticipantToEnd(
+          participants: result,
+          userId: 'stepan',
+        );
+
+        expect(result.map((item) => item.userId), [
+          'boris',
+          'viktor',
+          'andrey',
+          'stepan',
+        ]);
+
+        expect(SubstitutionRotation.active(result).map((item) => item.userId), [
+          'viktor',
+          'andrey',
+          'stepan',
+        ]);
+      },
+    );
+
+    test(
+      'restoring removed participant returns it at current hidden anchor',
+      () {
+        var result = [
+          participant('andrey', 10),
+          participant(
+            'boris',
+            20,
+            status: SubstitutionParticipantStatus.removed,
+          ),
+          participant('stepan', 30),
+          participant('viktor', 40),
+        ];
+
+        result = SubstitutionRotation.moveCalledParticipantToEnd(
+          participants: result,
+          userId: 'andrey',
+        );
+
+        result = SubstitutionRotation.moveCalledParticipantToEnd(
+          participants: result,
+          userId: 'stepan',
+        );
+
+        final borisIndex = result.indexWhere((item) => item.userId == 'boris');
+
+        result[borisIndex] = result[borisIndex].withStatus(
+          SubstitutionParticipantStatus.active,
+        );
+
+        result = SubstitutionRotation.ordered(result);
+
+        expect(result.map((item) => item.userId), [
+          'boris',
+          'viktor',
+          'andrey',
+          'stepan',
+        ]);
+
+        expect(result.first.rotationOrder, 20);
+      },
+    );
+
     test('inactive participant cannot be called', () {
       expect(
         () => SubstitutionRotation.moveCalledParticipantToEnd(
@@ -255,6 +369,152 @@ void main() {
         'sidorov',
         'ivanov',
       ]);
+    });
+    test('truly new participant is added at the front', () {
+      final result = SubstitutionRotation.addOrRestoreParticipants(
+        participants: [
+          participant('andrey', 10),
+          participant('viktor', 20),
+          participant('gleb', 30),
+        ],
+        userIds: const ['stepan'],
+      );
+
+      expect(result.participants.map((item) => item.userId), [
+        'stepan',
+        'andrey',
+        'viktor',
+        'gleb',
+      ]);
+
+      expect(result.participants.map((item) => item.rotationOrder), [
+        0,
+        11,
+        21,
+        31,
+      ]);
+
+      expect(result.addedCount, 1);
+      expect(result.createdUserIds, {'stepan'});
+      expect(result.restoredUserIds, isEmpty);
+    });
+
+    test('removed participant restores at preserved anchor', () {
+      final result = SubstitutionRotation.addOrRestoreParticipants(
+        participants: [
+          participant('andrey', 10),
+          participant(
+            'boris',
+            20,
+            status: SubstitutionParticipantStatus.removed,
+          ),
+          participant('viktor', 30),
+        ],
+        userIds: const ['boris'],
+      );
+
+      expect(result.participants.map((item) => item.userId), [
+        'andrey',
+        'boris',
+        'viktor',
+      ]);
+
+      final boris = result.participants.singleWhere(
+        (item) => item.userId == 'boris',
+      );
+
+      expect(boris.rotationOrder, 20);
+      expect(boris.status, SubstitutionParticipantStatus.active);
+
+      expect(result.addedCount, 1);
+      expect(result.createdUserIds, isEmpty);
+      expect(result.restoredUserIds, {'boris'});
+    });
+
+    test(
+      'new participant goes first while removed participant keeps old relative anchor',
+      () {
+        final result = SubstitutionRotation.addOrRestoreParticipants(
+          participants: [
+            participant('andrey', 10),
+            participant(
+              'boris',
+              20,
+              status: SubstitutionParticipantStatus.removed,
+            ),
+            participant('viktor', 30),
+          ],
+          userIds: const ['stepan', 'boris'],
+        );
+
+        expect(result.participants.map((item) => item.userId), [
+          'stepan',
+          'andrey',
+          'boris',
+          'viktor',
+        ]);
+
+        expect(result.participants.map((item) => item.rotationOrder), [
+          0,
+          11,
+          21,
+          31,
+        ]);
+
+        expect(result.createdUserIds, {'stepan'});
+        expect(result.restoredUserIds, {'boris'});
+        expect(result.addedCount, 2);
+      },
+    );
+
+    test('existing participant cannot gain new-entry priority', () {
+      final result = SubstitutionRotation.addOrRestoreParticipants(
+        participants: [
+          participant('andrey', 10),
+          participant('stepan', 20),
+          participant('viktor', 30),
+        ],
+        userIds: const ['stepan'],
+      );
+
+      expect(result.participants.map((item) => item.userId), [
+        'andrey',
+        'stepan',
+        'viktor',
+      ]);
+
+      expect(result.participants.map((item) => item.rotationOrder), [
+        10,
+        20,
+        30,
+      ]);
+
+      expect(result.addedCount, 0);
+      expect(result.createdUserIds, isEmpty);
+      expect(result.restoredUserIds, isEmpty);
+    });
+
+    test('several truly new participants keep requested order at front', () {
+      final result = SubstitutionRotation.addOrRestoreParticipants(
+        participants: [participant('andrey', 10), participant('viktor', 20)],
+        userIds: const ['stepan', 'mikhail'],
+      );
+
+      expect(result.participants.map((item) => item.userId), [
+        'stepan',
+        'mikhail',
+        'andrey',
+        'viktor',
+      ]);
+
+      expect(result.participants.map((item) => item.rotationOrder), [
+        0,
+        1,
+        12,
+        22,
+      ]);
+
+      expect(result.addedCount, 2);
     });
 
     test('unknown participant cannot be called', () {

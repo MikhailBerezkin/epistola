@@ -20,7 +20,8 @@ enum SubstitutionAvailability {
 enum SubstitutionParticipantStatus {
   active('active'),
   vacation('vacation'),
-  sick('sick');
+  sick('sick'),
+  removed('removed');
 
   const SubstitutionParticipantStatus(this.storageValue);
 
@@ -31,6 +32,7 @@ enum SubstitutionParticipantStatus {
       'active' => SubstitutionParticipantStatus.active,
       'vacation' => SubstitutionParticipantStatus.vacation,
       'sick' => SubstitutionParticipantStatus.sick,
+      'removed' => SubstitutionParticipantStatus.removed,
       _ => null,
     };
   }
@@ -55,6 +57,7 @@ class SubstitutionParticipant {
   bool get isOnVacation => status == SubstitutionParticipantStatus.vacation;
 
   bool get isSick => status == SubstitutionParticipantStatus.sick;
+  bool get isRemoved => status == SubstitutionParticipantStatus.removed;
 
   SubstitutionParticipant withAvailability(
     SubstitutionAvailability availability,

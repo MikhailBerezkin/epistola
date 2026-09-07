@@ -96,13 +96,30 @@ void main() {
       expect(participant, isNull);
     });
 
+    test('parses removed participant preserving rotation anchor', () {
+      final participant = SubstitutionParticipantMapper.fromMap(
+        userId: 'user-1',
+        data: const {
+          'rotationOrder': 10,
+          'availability': 'yellow',
+          'status': 'removed',
+        },
+      );
+
+      expect(participant, isNotNull);
+      expect(participant!.rotationOrder, 10);
+      expect(participant.availability, SubstitutionAvailability.yellow);
+      expect(participant.status, SubstitutionParticipantStatus.removed);
+      expect(participant.isRemoved, isTrue);
+    });
+
     test('rejects unsupported status', () {
       final participant = SubstitutionParticipantMapper.fromMap(
         userId: 'user-1',
         data: const {
           'rotationOrder': 10,
           'availability': 'green',
-          'status': 'removed',
+          'status': 'archived',
         },
       );
 
@@ -143,6 +160,23 @@ void main() {
 
       expect(data['availability'], 'green');
       expect(data['status'], 'active');
+    });
+
+    test('removed participant persists with its rotation anchor', () {
+      const participant = SubstitutionParticipant(
+        userId: 'user-1',
+        rotationOrder: 17,
+        availability: SubstitutionAvailability.red,
+        status: SubstitutionParticipantStatus.removed,
+      );
+
+      final data = SubstitutionParticipantMapper.toMap(participant);
+
+      expect(data, const {
+        'rotationOrder': 17,
+        'availability': 'red',
+        'status': 'removed',
+      });
     });
   });
 }

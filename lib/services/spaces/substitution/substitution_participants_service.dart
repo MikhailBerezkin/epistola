@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../domain/models/substitution_participant.dart';
 import '../../../domain/models/substitution_rotation.dart';
 import 'substitution_participant_mapper.dart';
+import 'substitution_rotation_membership_firestore_gateway.dart';
 
 typedef SubstitutionParticipantsWatcher =
     Stream<List<SubstitutionParticipant>> Function();
@@ -28,6 +29,11 @@ final class SubstitutionParticipantsService {
 
     final participantsReference = moduleReference.collection('participants');
 
+    final participantsGateway =
+        SubstitutionRotationMembershipFirestoreGateway.firebase(
+          firestore: resolvedFirestore,
+        );
+
     return SubstitutionParticipantsService(
       participantsWatcher: () {
         return participantsReference
@@ -50,60 +56,7 @@ final class SubstitutionParticipantsService {
               return participants;
             });
       },
-      participantsAdder: (userIds) {
-        return resolvedFirestore.runTransaction<int>((transaction) async {
-          final moduleSnapshot = await transaction.get(moduleReference);
-
-          final moduleData = moduleSnapshot.data();
-          final storedNextOrder = moduleData?['nextRotationOrder'];
-
-          var nextOrder = storedNextOrder is int && storedNextOrder >= 0
-              ? storedNextOrder
-              : 0;
-
-          final participantReferences = userIds
-              .map(participantsReference.doc)
-              .toList(growable: false);
-
-          final participantSnapshots =
-              <DocumentSnapshot<Map<String, dynamic>>>[];
-
-          // Firestore-транзакция сначала выполняет все чтения,
-          // и только потом записи.
-          for (final reference in participantReferences) {
-            participantSnapshots.add(await transaction.get(reference));
-          }
-
-          var addedCount = 0;
-
-          for (var index = 0; index < userIds.length; index++) {
-            if (participantSnapshots[index].exists) {
-              continue;
-            }
-
-            final participant = SubstitutionParticipant(
-              userId: userIds[index],
-              rotationOrder: nextOrder,
-            );
-
-            transaction.set(
-              participantReferences[index],
-              SubstitutionParticipantMapper.toMap(participant),
-            );
-
-            nextOrder++;
-            addedCount++;
-          }
-
-          if (addedCount > 0) {
-            transaction.set(moduleReference, <String, dynamic>{
-              'nextRotationOrder': nextOrder,
-            }, SetOptions(merge: true));
-          }
-
-          return addedCount;
-        });
-      },
+      participantsAdder: participantsGateway.addParticipants,
     );
   }
 
@@ -125,7 +78,8 @@ final class SubstitutionParticipantsService {
         throw ArgumentError.value(
           rawUserId,
           'userIds',
-          'Each user id must be non-empty and must not contain slashes.',
+          'Each user id must be non-empty '
+              'and must not contain slashes.',
         );
       }
 

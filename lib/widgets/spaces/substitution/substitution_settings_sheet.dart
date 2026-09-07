@@ -9,6 +9,7 @@ class SubstitutionSettingsSheet extends StatefulWidget {
     required this.showStatistics,
     required this.onQueueDisplayModeChanged,
     required this.onShowStatisticsChanged,
+    this.onEditParticipants,
     this.onAddParticipants,
   });
 
@@ -16,7 +17,11 @@ class SubstitutionSettingsSheet extends StatefulWidget {
   final bool showStatistics;
 
   final ValueChanged<SubstitutionQueueDisplayMode> onQueueDisplayModeChanged;
+
   final ValueChanged<bool> onShowStatisticsChanged;
+
+  /// Передаётся только для owner / brigadier.
+  final VoidCallback? onEditParticipants;
 
   /// Передаётся только для owner / brigadier.
   final VoidCallback? onAddParticipants;
@@ -64,7 +69,11 @@ class _SubstitutionSettingsSheetState extends State<SubstitutionSettingsSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final onEditParticipants = widget.onEditParticipants;
     final onAddParticipants = widget.onAddParticipants;
+
+    final hasManagementActions =
+        onEditParticipants != null || onAddParticipants != null;
 
     return SafeArea(
       top: false,
@@ -138,7 +147,7 @@ class _SubstitutionSettingsSheetState extends State<SubstitutionSettingsSheet> {
               secondary: const Icon(Icons.bar_chart_outlined),
             ),
 
-            if (onAddParticipants != null) ...[
+            if (hasManagementActions) ...[
               const SizedBox(height: 8),
               const Divider(),
               const SizedBox(height: 4),
@@ -149,14 +158,26 @@ class _SubstitutionSettingsSheetState extends State<SubstitutionSettingsSheet> {
                 ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 4),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.person_add_alt_1_outlined),
-                title: const Text('Добавить участников'),
-                subtitle: const Text('Добавить людей в Список'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: onAddParticipants,
-              ),
+
+              if (onEditParticipants != null)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.swap_vert),
+                  title: const Text('Режим редактирования списка'),
+                  subtitle: const Text('Изменить порядок участников'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: onEditParticipants,
+                ),
+
+              if (onAddParticipants != null)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.person_add_alt_1_outlined),
+                  title: const Text('Добавить участников'),
+                  subtitle: const Text('Добавить людей в Список'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: onAddParticipants,
+                ),
             ],
           ],
         ),

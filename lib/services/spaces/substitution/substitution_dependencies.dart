@@ -5,26 +5,43 @@ import 'substitution_call_firestore_gateway.dart';
 import 'substitution_call_reconciliation_service.dart';
 import 'substitution_call_service.dart';
 import 'substitution_participant_actions_service.dart';
-import 'substitution_participant_firestore_gateway.dart';
+import 'substitution_participant_state_firestore_gateway.dart';
 import 'substitution_pending_call_firestore_gateway.dart';
+import 'substitution_rotation_edit_firestore_gateway.dart';
+import 'substitution_rotation_edit_service.dart';
 import 'substitution_statistics_firestore_gateway.dart';
 import 'substitution_statistics_service.dart';
 import 'substitution_work_display_name_firestore_gateway.dart';
 import 'substitution_work_display_name_service.dart';
+import 'substitution_rotation_membership_firestore_gateway.dart';
 
 SubstitutionParticipantActionsService
 createSubstitutionParticipantActionsService({
   FirebaseFirestore? firestore,
-  SubstitutionParticipantFirestoreGateway? gateway,
+  SubstitutionParticipantStateFirestoreGateway? gateway,
+  SubstitutionParticipantRemover? membershipRemover,
 }) {
   final resolvedGateway =
       gateway ??
-      SubstitutionParticipantFirestoreGateway.firebase(firestore: firestore);
+      SubstitutionParticipantStateFirestoreGateway.firebase(
+        firestore: firestore,
+      );
+
+  final resolvedMembershipRemover =
+      membershipRemover ??
+      ({required String userId}) {
+        final membershipGateway =
+            SubstitutionRotationMembershipFirestoreGateway.firebase(
+              firestore: firestore,
+            );
+
+        return membershipGateway.removeParticipant(userId: userId);
+      };
 
   return SubstitutionParticipantActionsService(
     availabilityWriter: resolvedGateway.updateAvailability,
     statusWriter: resolvedGateway.updateStatus,
-    participantRemover: resolvedGateway.removeParticipant,
+    participantRemover: resolvedMembershipRemover,
   );
 }
 
@@ -39,6 +56,27 @@ SubstitutionCallService createSubstitutionCallService({
   return SubstitutionCallService(
     participantCaller: resolvedGateway.callParticipant,
     callUndoer: resolvedGateway.undoLastCall,
+  );
+}
+
+SubstitutionRotationEditService createSubstitutionRotationEditService({
+  FirebaseFirestore? firestore,
+  SubstitutionRotationEditFirestoreGateway? gateway,
+}) {
+  final resolvedGateway =
+      gateway ??
+      SubstitutionRotationEditFirestoreGateway.firebase(firestore: firestore);
+
+  return SubstitutionRotationEditService(
+    baselineLoader: () async {
+      final baseline = await resolvedGateway.loadBaseline();
+
+      return SubstitutionRotationEditBaseline(
+        nextRotationOrder: baseline.nextRotationOrder,
+        revision: baseline.revision,
+      );
+    },
+    rotationWriter: resolvedGateway.applyOrder,
   );
 }
 

@@ -223,40 +223,84 @@ describe('Substitution space rules', () => {
   );
 
   test(
-    'allows owner to add green active participant',
-    async () => {
-      const db = authenticatedFirestore(owner);
+  'allows owner to atomically add green active participant at queue front',
+  async () => {
+    const db = authenticatedFirestore(owner);
+    const batch = writeBatch(db);
 
-      await assertSucceeds(
-        setDoc(
-          participantDoc(db, candidate.uid),
-          {
-            rotationOrder: 2,
-            availability: 'green',
-            status: 'active',
-          },
-        ),
-      );
-    },
-  );
+    batch.update(
+      participantDoc(db, member.uid),
+      {
+        rotationOrder: 1,
+      },
+    );
+
+    batch.update(
+      participantDoc(db, secondMember.uid),
+      {
+        rotationOrder: 2,
+      },
+    );
+
+    batch.set(
+      participantDoc(db, candidate.uid),
+      {
+        rotationOrder: 0,
+        availability: 'green',
+        status: 'active',
+      },
+    );
+
+    batch.update(
+      doc(db, 'spaces', 'substitution'),
+      {
+        nextRotationOrder: 3,
+      },
+    );
+
+    await assertSucceeds(batch.commit());
+  },
+);
 
   test(
-    'allows brigadier to add green active participant',
-    async () => {
-      const db = authenticatedFirestore(brigadier);
+  'allows brigadier to atomically add green active participant at queue front',
+  async () => {
+    const db = authenticatedFirestore(brigadier);
+    const batch = writeBatch(db);
 
-      await assertSucceeds(
-        setDoc(
-          participantDoc(db, candidate.uid),
-          {
-            rotationOrder: 2,
-            availability: 'green',
-            status: 'active',
-          },
-        ),
-      );
-    },
-  );
+    batch.update(
+      participantDoc(db, member.uid),
+      {
+        rotationOrder: 1,
+      },
+    );
+
+    batch.update(
+      participantDoc(db, secondMember.uid),
+      {
+        rotationOrder: 2,
+      },
+    );
+
+    batch.set(
+      participantDoc(db, candidate.uid),
+      {
+        rotationOrder: 0,
+        availability: 'green',
+        status: 'active',
+      },
+    );
+
+    batch.update(
+      doc(db, 'spaces', 'substitution'),
+      {
+        nextRotationOrder: 3,
+      },
+    );
+
+    await assertSucceeds(batch.commit());
+  },
+);
 
   test(
     'rejects ordinary member adding participant',
@@ -362,6 +406,185 @@ describe('Substitution space rules', () => {
       );
     },
   );
+
+  test(
+  'allows brigadier to atomically edit substitution rotation',
+  async () => {
+    const db = authenticatedFirestore(brigadier);
+    const batch = writeBatch(db);
+
+    batch.update(
+      participantDoc(db, member.uid),
+      {
+        rotationOrder: 1,
+      },
+    );
+
+    batch.update(
+      participantDoc(db, secondMember.uid),
+      {
+        rotationOrder: 0,
+      },
+    );
+
+    batch.update(
+      doc(db, 'spaces', 'substitution'),
+      {
+        nextRotationOrder: 3,
+      },
+    );
+
+    await assertSucceeds(batch.commit());
+
+    const firstSnapshot = await getDoc(
+      participantDoc(db, secondMember.uid),
+    );
+
+    const secondSnapshot = await getDoc(
+      participantDoc(db, member.uid),
+    );
+
+    assert.equal(
+      firstSnapshot.data().rotationOrder,
+      0,
+    );
+
+    assert.equal(
+      secondSnapshot.data().rotationOrder,
+      1,
+    );
+  },
+);
+
+test(
+  'allows owner to atomically edit substitution rotation',
+  async () => {
+    const db = authenticatedFirestore(owner);
+    const batch = writeBatch(db);
+
+    batch.update(
+      participantDoc(db, member.uid),
+      {
+        rotationOrder: 1,
+      },
+    );
+
+    batch.update(
+      participantDoc(db, secondMember.uid),
+      {
+        rotationOrder: 0,
+      },
+    );
+
+    batch.update(
+      doc(db, 'spaces', 'substitution'),
+      {
+        nextRotationOrder: 3,
+      },
+    );
+
+    await assertSucceeds(batch.commit());
+  },
+);
+
+test(
+  'rejects ordinary member editing substitution rotation',
+  async () => {
+    const db = authenticatedFirestore(member);
+    const batch = writeBatch(db);
+
+    batch.update(
+      participantDoc(db, member.uid),
+      {
+        rotationOrder: 1,
+      },
+    );
+
+    batch.update(
+      participantDoc(db, secondMember.uid),
+      {
+        rotationOrder: 0,
+      },
+    );
+
+    batch.update(
+      doc(db, 'spaces', 'substitution'),
+      {
+        nextRotationOrder: 3,
+      },
+    );
+
+    await assertFails(batch.commit());
+  },
+);
+
+test(
+  'rejects rotation edit without module advance',
+  async () => {
+    const db = authenticatedFirestore(brigadier);
+    const batch = writeBatch(db);
+
+    batch.update(
+      participantDoc(db, member.uid),
+      {
+        rotationOrder: 1,
+      },
+    );
+
+    batch.update(
+      participantDoc(db, secondMember.uid),
+      {
+        rotationOrder: 0,
+      },
+    );
+
+    await assertFails(batch.commit());
+  },
+);
+
+test(
+  'rejects rotation edit while substitution call is pending',
+  async () => {
+    const db = authenticatedFirestore(brigadier);
+
+    const callBatch = writeBatch(db);
+
+    addCallWrites({
+      batch: callBatch,
+      db,
+      calledByUserId: brigadier.uid,
+      participantUserId: member.uid,
+      previousRotationOrder: 0,
+    });
+
+    await assertSucceeds(callBatch.commit());
+
+    const editBatch = writeBatch(db);
+
+    editBatch.update(
+      participantDoc(db, secondMember.uid),
+      {
+        rotationOrder: 0,
+      },
+    );
+
+    editBatch.update(
+      participantDoc(db, member.uid),
+      {
+        rotationOrder: 1,
+      },
+    );
+
+    editBatch.update(
+      doc(db, 'spaces', 'substitution'),
+      {
+        nextRotationOrder: 4,
+      },
+    );
+
+    await assertFails(editBatch.commit());
+  },
+);
 
   test(
     'rejects member changing another participant',
@@ -540,17 +763,297 @@ describe('Substitution space rules', () => {
   );
 
   test(
-    'allows owner to remove participant',
-    async () => {
-      const db = authenticatedFirestore(owner);
+  'rejects owner physically deleting participant',
+  async () => {
+    const db = authenticatedFirestore(owner);
 
-      await assertSucceeds(
-        deleteDoc(
-          participantDoc(db, member.uid),
-        ),
-      );
-    },
-  );
+    await assertFails(
+      deleteDoc(
+        participantDoc(db, member.uid),
+      ),
+    );
+  },
+);
+
+test(
+  'allows brigadier to atomically soft-remove participant',
+  async () => {
+    const db = authenticatedFirestore(brigadier);
+    const batch = writeBatch(db);
+
+    batch.update(
+      participantDoc(db, member.uid),
+      {
+        status: 'removed',
+      },
+    );
+
+    batch.update(
+      doc(db, 'spaces', 'substitution'),
+      {
+        nextRotationOrder: 3,
+      },
+    );
+
+    await assertSucceeds(batch.commit());
+
+    const snapshot = await getDoc(
+      participantDoc(db, member.uid),
+    );
+
+    assert.equal(snapshot.data().status, 'removed');
+    assert.equal(snapshot.data().rotationOrder, 0);
+  },
+);
+
+test(
+  'rejects soft-remove without mutation marker',
+  async () => {
+    const db = authenticatedFirestore(owner);
+
+    await assertFails(
+      updateDoc(
+        participantDoc(db, member.uid),
+        {
+          status: 'removed',
+        },
+      ),
+    );
+  },
+);
+
+test(
+  'allows owner to atomically restore removed participant',
+  async () => {
+    await setParticipantStatusWithoutRules({
+      userId: member.uid,
+      status: 'removed',
+    });
+
+    const db = authenticatedFirestore(owner);
+    const batch = writeBatch(db);
+
+    batch.update(
+      participantDoc(db, member.uid),
+      {
+        status: 'active',
+      },
+    );
+
+    batch.update(
+      doc(db, 'spaces', 'substitution'),
+      {
+        nextRotationOrder: 3,
+      },
+    );
+
+    await assertSucceeds(batch.commit());
+
+    const snapshot = await getDoc(
+      participantDoc(db, member.uid),
+    );
+
+    assert.equal(snapshot.data().status, 'active');
+    assert.equal(snapshot.data().rotationOrder, 0);
+  },
+);
+
+test(
+  'rejects restoring removed participant without mutation marker',
+  async () => {
+    await setParticipantStatusWithoutRules({
+      userId: member.uid,
+      status: 'removed',
+    });
+
+    const db = authenticatedFirestore(owner);
+
+    await assertFails(
+      updateDoc(
+        participantDoc(db, member.uid),
+        {
+          status: 'active',
+        },
+      ),
+    );
+  },
+);
+
+test(
+  'rejects new participant creation without module advance',
+  async () => {
+    const db = authenticatedFirestore(owner);
+
+    await assertFails(
+      setDoc(
+        participantDoc(db, candidate.uid),
+        {
+          rotationOrder: 0,
+          availability: 'green',
+          status: 'active',
+        },
+      ),
+    );
+  },
+);
+
+test(
+  'rejects new participant inserted outside new queue prefix',
+  async () => {
+    const db = authenticatedFirestore(owner);
+    const batch = writeBatch(db);
+
+    batch.set(
+      participantDoc(db, candidate.uid),
+      {
+        rotationOrder: 2,
+        availability: 'green',
+        status: 'active',
+      },
+    );
+
+    batch.update(
+      doc(db, 'spaces', 'substitution'),
+      {
+        nextRotationOrder: 3,
+      },
+    );
+
+    await assertFails(batch.commit());
+  },
+);
+
+test(
+  'rejects ordinary member atomically soft-removing participant',
+  async () => {
+    const db = authenticatedFirestore(member);
+    const batch = writeBatch(db);
+
+    batch.update(
+      participantDoc(db, secondMember.uid),
+      {
+        status: 'removed',
+      },
+    );
+
+    batch.update(
+      doc(db, 'spaces', 'substitution'),
+      {
+        nextRotationOrder: 3,
+      },
+    );
+
+    await assertFails(batch.commit());
+  },
+);
+
+test(
+  'rejects membership change while substitution call is pending',
+  async () => {
+    const db = authenticatedFirestore(brigadier);
+
+    const callBatch = writeBatch(db);
+
+    addCallWrites({
+      batch: callBatch,
+      db,
+      calledByUserId: brigadier.uid,
+      participantUserId: member.uid,
+      previousRotationOrder: 0,
+    });
+
+    await assertSucceeds(callBatch.commit());
+
+    const membershipBatch = writeBatch(db);
+
+    membershipBatch.update(
+      participantDoc(db, secondMember.uid),
+      {
+        status: 'removed',
+      },
+    );
+
+    membershipBatch.update(
+      doc(db, 'spaces', 'substitution'),
+      {
+        nextRotationOrder: 4,
+      },
+    );
+
+    await assertFails(
+      membershipBatch.commit(),
+    );
+  },
+);
+
+test(
+  'allows atomic new plus restored membership change',
+  async () => {
+    await setParticipantStatusWithoutRules({
+      userId: member.uid,
+      status: 'removed',
+    });
+
+    const db = authenticatedFirestore(owner);
+    const batch = writeBatch(db);
+
+    batch.set(
+      participantDoc(db, candidate.uid),
+      {
+        rotationOrder: 0,
+        availability: 'green',
+        status: 'active',
+      },
+    );
+
+    batch.update(
+      participantDoc(db, member.uid),
+      {
+        rotationOrder: 1,
+        status: 'active',
+      },
+    );
+
+    batch.update(
+      participantDoc(db, secondMember.uid),
+      {
+        rotationOrder: 2,
+      },
+    );
+
+    batch.update(
+      doc(db, 'spaces', 'substitution'),
+      {
+        nextRotationOrder: 3,
+      },
+    );
+
+    await assertSucceeds(batch.commit());
+
+    const restoredSnapshot = await getDoc(
+      participantDoc(db, member.uid),
+    );
+
+    const newSnapshot = await getDoc(
+      participantDoc(db, candidate.uid),
+    );
+
+    assert.equal(
+      newSnapshot.data().rotationOrder,
+      0,
+    );
+
+    assert.equal(
+      restoredSnapshot.data().status,
+      'active',
+    );
+
+    assert.equal(
+      restoredSnapshot.data().rotationOrder,
+      1,
+    );
+  },
+);
 
   test(
     'rejects member removing participant',

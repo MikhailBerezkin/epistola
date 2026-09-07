@@ -12,6 +12,20 @@ class SubstitutionRotationMove {
   });
 }
 
+class SubstitutionRotationAddition {
+  final List<SubstitutionParticipant> participants;
+  final int addedCount;
+  final Set<String> createdUserIds;
+  final Set<String> restoredUserIds;
+
+  const SubstitutionRotationAddition({
+    required this.participants,
+    required this.addedCount,
+    required this.createdUserIds,
+    required this.restoredUserIds,
+  });
+}
+
 class SubstitutionRotation {
   const SubstitutionRotation._();
 
@@ -48,6 +62,88 @@ class SubstitutionRotation {
     }
 
     return maxOrder + 1;
+  }
+
+  static SubstitutionRotationAddition addOrRestoreParticipants({
+    required Iterable<SubstitutionParticipant> participants,
+    required Iterable<String> userIds,
+  }) {
+    final current = ordered(participants);
+
+    final participantsById = <String, SubstitutionParticipant>{
+      for (final participant in current) participant.userId: participant,
+    };
+
+    final requestedUserIds = <String>[];
+    final seenUserIds = <String>{};
+
+    for (final rawUserId in userIds) {
+      final userId = rawUserId.trim();
+
+      if (userId.isEmpty || userId.contains('/')) {
+        throw ArgumentError.value(
+          rawUserId,
+          'userIds',
+          'Each user id must be non-empty and must not contain slashes.',
+        );
+      }
+
+      if (seenUserIds.add(userId)) {
+        requestedUserIds.add(userId);
+      }
+    }
+
+    final newUserIds = <String>[];
+    final restoredUserIds = <String>{};
+
+    for (final userId in requestedUserIds) {
+      final existing = participantsById[userId];
+
+      if (existing == null) {
+        newUserIds.add(userId);
+        continue;
+      }
+
+      if (existing.isRemoved) {
+        restoredUserIds.add(userId);
+      }
+    }
+
+    final newCount = newUserIds.length;
+
+    final result = <SubstitutionParticipant>[];
+
+    for (var index = 0; index < newUserIds.length; index++) {
+      result.add(
+        SubstitutionParticipant(
+          userId: newUserIds[index],
+          rotationOrder: index,
+        ),
+      );
+    }
+
+    for (final participant in current) {
+      final shiftedParticipant = newCount == 0
+          ? participant
+          : participant.copyWith(
+              rotationOrder: participant.rotationOrder + newCount,
+            );
+
+      if (restoredUserIds.contains(participant.userId)) {
+        result.add(
+          shiftedParticipant.withStatus(SubstitutionParticipantStatus.active),
+        );
+      } else {
+        result.add(shiftedParticipant);
+      }
+    }
+
+    return SubstitutionRotationAddition(
+      participants: ordered(result),
+      addedCount: newUserIds.length + restoredUserIds.length,
+      createdUserIds: Set<String>.unmodifiable(newUserIds),
+      restoredUserIds: Set<String>.unmodifiable(restoredUserIds),
+    );
   }
 
   static SubstitutionRotationMove callParticipant({

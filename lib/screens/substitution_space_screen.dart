@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../domain/models/spaces_access_role.dart';
 import '../domain/models/substitution_call_receipt.dart';
 import '../domain/models/substitution_participant.dart';
+import '../domain/models/substitution_rotation_draft.dart';
 import '../models/app_user.dart';
 import '../services/spaces/spaces_dependencies.dart';
 import '../services/spaces/substitution/substitution_call_service.dart';
@@ -24,6 +25,7 @@ import '../services/spaces/substitution/substitution_ui_preferences.dart';
 import '../domain/models/substitution_statistics.dart';
 import '../services/spaces/substitution/substitution_statistics_service.dart';
 import '../domain/models/substitution_shift.dart';
+import '../services/spaces/substitution/substitution_rotation_edit_service.dart';
 
 class SubstitutionSpaceScreen extends StatefulWidget {
   const SubstitutionSpaceScreen({super.key});
@@ -44,12 +46,19 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
   late final SubstitutionUiPreferences _uiPreferences;
   late final SubstitutionStatisticsService _statisticsService;
   late final TabController _tabController;
+  late final SubstitutionRotationEditService _rotationEditService;
 
   int _currentTabIndex = 0;
   SubstitutionQueueDisplayMode _queueDisplayMode =
       SubstitutionQueueDisplayMode.numberOnly;
 
   bool _showStatistics = false;
+  SubstitutionRotationDraft? _rotationDraft;
+  SubstitutionRotationEditBaseline? _rotationEditBaseline;
+
+  bool _isRotationEditApplying = false;
+
+  bool get _isRotationEditing => _rotationDraft != null;
 
   SubstitutionStatistics? _statistics;
   bool _statisticsLoaded = false;
@@ -84,7 +93,8 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
   bool get _isActionInProgress {
     return _isRotationActionInProgress ||
         _isAvailabilityActionInProgress ||
-        _isWorkDisplayNameActionInProgress;
+        _isWorkDisplayNameActionInProgress ||
+        _isRotationEditApplying;
   }
 
   @override
@@ -99,6 +109,7 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
     _callService = createSubstitutionCallService();
     _callReconciliationService = createSubstitutionCallReconciliationService();
     _participantActionsService = createSubstitutionParticipantActionsService();
+    _rotationEditService = createSubstitutionRotationEditService();
     _workDisplayNameService = createSubstitutionWorkDisplayNameService();
     _statisticsService = createSubstitutionStatisticsService();
     _uiPreferences = SubstitutionUiPreferences();
@@ -129,6 +140,10 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
   }
 
   void _handleAppBarBack() {
+    if (_isRotationEditing) {
+      _cancelRotationEditing();
+      return;
+    }
     if (_isParticipantOverlayOpen) {
       _closeParticipantCard();
       return;
@@ -420,7 +435,9 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
   ) async {
     try {
       final changed = await _userCache.loadMissing(
-        participants.map((participant) => participant.userId),
+        participants
+            .where((participant) => !participant.isRemoved)
+            .map((participant) => participant.userId),
       );
 
       if (!mounted) {
@@ -478,6 +495,7 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
         builder: (_) {
           return SubstitutionAddParticipantsScreen(
             excludedUserIds: _participants
+                .where((participant) => !participant.isRemoved)
                 .map((participant) => participant.userId)
                 .toSet(),
           );
@@ -518,6 +536,204 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
     }
   }
 
+  Future<void> _beginRotationEditing() async {
+    if (_isActionInProgress ||
+        _isRotationEditing ||
+        !_accessRole.canManageSubstitution) {
+      return;
+    }
+
+    setState(() {
+      _isRotationActionInProgress = true;
+    });
+
+    try {
+      final baseline = await _rotationEditService.beginEditing();
+
+      if (!mounted) {
+        return;
+      }
+
+      final draft = SubstitutionRotationDraft.fromParticipants(_participants);
+
+      setState(() {
+        _rotationDraft = draft;
+        _rotationEditBaseline = baseline;
+        _isParticipantOverlayOpen = false;
+        _selectedParticipantId = null;
+      });
+
+      _goToParticipantList();
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Не удалось открыть режим редактирования списка'),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isRotationActionInProgress = false;
+        });
+      }
+    }
+  }
+
+  void _cancelRotationEditing() {
+    if (!_isRotationEditing || _isRotationEditApplying) {
+      return;
+    }
+
+    setState(() {
+      _rotationDraft = null;
+      _rotationEditBaseline = null;
+    });
+  }
+
+  void _moveRotationParticipantUp(SubstitutionParticipant participant) {
+    final draft = _rotationDraft;
+    if (_isRotationEditApplying) {
+      return;
+    }
+
+    if (draft == null || !draft.canMoveActiveUp(participant.userId)) {
+      return;
+    }
+
+    setState(() {
+      _rotationDraft = draft.moveActiveUp(participant.userId);
+    });
+  }
+
+  void _moveRotationParticipantDown(SubstitutionParticipant participant) {
+    final draft = _rotationDraft;
+    if (_isRotationEditApplying) {
+      return;
+    }
+
+    if (draft == null || !draft.canMoveActiveDown(participant.userId)) {
+      return;
+    }
+
+    setState(() {
+      _rotationDraft = draft.moveActiveDown(participant.userId);
+    });
+  }
+
+  Future<void> _applyRotationEditing() async {
+    final draft = _rotationDraft;
+    final baseline = _rotationEditBaseline;
+
+    if (draft == null ||
+        baseline == null ||
+        _isRotationEditApplying ||
+        !_accessRole.canManageSubstitution) {
+      return;
+    }
+
+    setState(() {
+      _isRotationEditApplying = true;
+    });
+
+    try {
+      final result = await _rotationEditService.apply(
+        draft: draft,
+        baseline: baseline,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      switch (result) {
+        case SubstitutionRotationEditApplyResult.noChanges:
+          setState(() {
+            _rotationDraft = null;
+            _rotationEditBaseline = null;
+          });
+
+        case SubstitutionRotationEditApplyResult.applied:
+          setState(() {
+            _rotationDraft = null;
+            _rotationEditBaseline = null;
+          });
+
+        case SubstitutionRotationEditApplyResult.conflict:
+          setState(() {
+            _rotationDraft = null;
+            _rotationEditBaseline = null;
+          });
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Список изменился. Откройте режим редактирования заново.',
+              ),
+            ),
+          );
+      }
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Не удалось применить изменения списка')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isRotationEditApplying = false;
+        });
+      }
+    }
+  }
+
+  Widget _buildRotationEditActions() {
+    final hasChanges = _rotationDraft?.hasChanges ?? false;
+
+    final canApply = hasChanges && !_isRotationEditApplying;
+
+    return Material(
+      elevation: 8,
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+          child: Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: _isRotationEditApplying
+                      ? null
+                      : _cancelRotationEditing,
+                  child: const Text('Отмена'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: FilledButton(
+                  onPressed: canApply
+                      ? () {
+                          unawaited(_applyRotationEditing());
+                        }
+                      : null,
+                  child: Text(
+                    _isRotationEditApplying ? 'Применение...' : 'Применить',
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _openSubstitutionSettings({
     required bool canManageSubstitution,
   }) async {
@@ -534,6 +750,12 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
           showStatistics: _showStatistics,
           onQueueDisplayModeChanged: _setQueueDisplayMode,
           onShowStatisticsChanged: _setShowStatistics,
+          onEditParticipants: canManageSubstitution
+              ? () {
+                  Navigator.of(sheetContext).pop();
+                  unawaited(_beginRotationEditing());
+                }
+              : null,
           onAddParticipants: canManageSubstitution
               ? () {
                   Navigator.of(sheetContext).pop();
@@ -1104,15 +1326,17 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
 
   @override
   Widget build(BuildContext context) {
-    final activeParticipants = _participants
+    final displayedParticipants = _rotationDraft?.participants ?? _participants;
+
+    final activeParticipants = displayedParticipants
         .where((participant) => participant.isActive)
         .toList(growable: false);
 
-    final vacationParticipants = _participants
+    final vacationParticipants = displayedParticipants
         .where((participant) => participant.isOnVacation)
         .toList(growable: false);
 
-    final sickParticipants = _participants
+    final sickParticipants = displayedParticipants
         .where((participant) => participant.isSick)
         .toList(growable: false);
 
@@ -1139,9 +1363,16 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
         !_isActionInProgress;
 
     return PopScope<Object?>(
-      canPop: !_isParticipantOverlayOpen && _currentTabIndex == 0,
+      canPop:
+          !_isRotationEditing &&
+          !_isParticipantOverlayOpen &&
+          _currentTabIndex == 0,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) {
+          return;
+        }
+        if (_isRotationEditing) {
+          _cancelRotationEditing();
           return;
         }
 
@@ -1160,11 +1391,13 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
           Scaffold(
             appBar: AppBar(
               leading: BackButton(onPressed: _handleAppBarBack),
-              title: const Text('"Список"'),
+              title: Text(
+                _isRotationEditing ? 'Редактирование списка' : '"Список"',
+              ),
               actions: [
                 IconButton(
                   tooltip: 'Настройки списка',
-                  onPressed: _isActionInProgress
+                  onPressed: _isActionInProgress || _isRotationEditing
                       ? null
                       : () {
                           unawaited(
@@ -1192,6 +1425,9 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
               usersById: usersById,
               canManageSubstitution: canManageSubstitution,
             ),
+            bottomNavigationBar: _isRotationEditing
+                ? _buildRotationEditActions()
+                : null,
           ),
           SubstitutionParticipantOverlay(
             isOpen: _isParticipantOverlayOpen,
@@ -1331,10 +1567,10 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
               ),
             ),
           ),
-        if (_showStatistics && _isStatisticsLoading)
+        if (_showStatistics && !_isRotationEditing && _isStatisticsLoading)
           const LinearProgressIndicator(minHeight: 2),
 
-        if (_showStatistics && _statisticsError != null)
+        if (_showStatistics && !_isRotationEditing && _statisticsError != null)
           Material(
             color: Theme.of(context).colorScheme.errorContainer,
             child: ListTile(
@@ -1357,14 +1593,30 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
                 emptyText: '...',
                 showQueueNumber: true,
                 queueDisplayMode: _queueDisplayMode,
-                showStatistics: _showStatistics,
+                showStatistics: _showStatistics && !_isRotationEditing,
                 statisticsCountFor: _currentMonthStatisticsCountFor,
-                onCall: canManageSubstitution && !_isActionInProgress
+                onCall:
+                    !_isRotationEditing &&
+                        canManageSubstitution &&
+                        !_isActionInProgress
                     ? (participant) {
                         unawaited(_confirmCallParticipant(participant));
                       }
                     : null,
-                onOpenCard: _openParticipantCard,
+                onOpenCard: _isRotationEditing ? null : _openParticipantCard,
+                showRotationControls: _isRotationEditing,
+                canMoveUp: (participant) {
+                  return _rotationDraft?.canMoveActiveUp(participant.userId) ??
+                      false;
+                },
+                canMoveDown: (participant) {
+                  return _rotationDraft?.canMoveActiveDown(
+                        participant.userId,
+                      ) ??
+                      false;
+                },
+                onMoveUp: _moveRotationParticipantUp,
+                onMoveDown: _moveRotationParticipantDown,
               ),
               _ParticipantListTab(
                 participants: vacationParticipants,
@@ -1372,9 +1624,9 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
                 emptyText: 'В отпуске никого нет',
                 showQueueNumber: false,
                 queueDisplayMode: _queueDisplayMode,
-                showStatistics: _showStatistics,
+                showStatistics: _showStatistics && !_isRotationEditing,
                 statisticsCountFor: _currentMonthStatisticsCountFor,
-                onOpenCard: _openParticipantCard,
+                onOpenCard: _isRotationEditing ? null : _openParticipantCard,
               ),
               _ParticipantListTab(
                 participants: sickParticipants,
@@ -1382,9 +1634,9 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
                 emptyText: 'На больничном никого нет',
                 showQueueNumber: false,
                 queueDisplayMode: _queueDisplayMode,
-                showStatistics: _showStatistics,
+                showStatistics: _showStatistics && !_isRotationEditing,
                 statisticsCountFor: _currentMonthStatisticsCountFor,
-                onOpenCard: _openParticipantCard,
+                onOpenCard: _isRotationEditing ? null : _openParticipantCard,
               ),
             ],
           ),
@@ -1394,7 +1646,7 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
   }
 }
 
-class _ParticipantListTab extends StatelessWidget {
+class _ParticipantListTab extends StatefulWidget {
   const _ParticipantListTab({
     required this.participants,
     required this.usersById,
@@ -1403,8 +1655,13 @@ class _ParticipantListTab extends StatelessWidget {
     required this.queueDisplayMode,
     required this.showStatistics,
     required this.statisticsCountFor,
-    required this.onOpenCard,
+    this.onOpenCard,
     this.onCall,
+    this.showRotationControls = false,
+    this.canMoveUp,
+    this.canMoveDown,
+    this.onMoveUp,
+    this.onMoveDown,
   });
 
   final List<SubstitutionParticipant> participants;
@@ -1416,40 +1673,231 @@ class _ParticipantListTab extends StatelessWidget {
   final bool showStatistics;
   final int? Function(String userId) statisticsCountFor;
 
-  final ValueChanged<SubstitutionParticipant> onOpenCard;
+  final ValueChanged<SubstitutionParticipant>? onOpenCard;
   final ValueChanged<SubstitutionParticipant>? onCall;
+
+  final bool showRotationControls;
+
+  final bool Function(SubstitutionParticipant participant)? canMoveUp;
+
+  final bool Function(SubstitutionParticipant participant)? canMoveDown;
+
+  final ValueChanged<SubstitutionParticipant>? onMoveUp;
+  final ValueChanged<SubstitutionParticipant>? onMoveDown;
+
+  @override
+  State<_ParticipantListTab> createState() => _ParticipantListTabState();
+}
+
+class _ParticipantListTabState extends State<_ParticipantListTab> {
+  final ScrollController _scrollController = ScrollController();
+
+  final Map<String, GlobalKey> _rowKeys = <String, GlobalKey>{};
+  double _appliedScrollReserve = 0;
+  bool _scrollReserveSyncScheduled = false;
+  bool _isMoveInProgress = false;
+
+  @override
+  void didUpdateWidget(covariant _ParticipantListTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    final currentUserIds = widget.participants
+        .map((participant) => participant.userId)
+        .toSet();
+
+    _rowKeys.removeWhere((userId, _) => !currentUserIds.contains(userId));
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _syncScrollReserve(double nextReserve) {
+    if (_scrollReserveSyncScheduled ||
+        (nextReserve - _appliedScrollReserve).abs() < 0.5) {
+      return;
+    }
+
+    _scrollReserveSyncScheduled = true;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scrollReserveSyncScheduled = false;
+
+      if (!mounted || !_scrollController.hasClients) {
+        return;
+      }
+
+      final delta = nextReserve - _appliedScrollReserve;
+
+      if (delta.abs() < 0.5) {
+        return;
+      }
+
+      final position = _scrollController.position;
+
+      final targetOffset = (_scrollController.offset + delta)
+          .clamp(position.minScrollExtent, position.maxScrollExtent)
+          .toDouble();
+
+      _appliedScrollReserve = nextReserve;
+
+      if ((targetOffset - _scrollController.offset).abs() < 0.5) {
+        return;
+      }
+
+      _scrollController.jumpTo(targetOffset);
+      _isMoveInProgress = false;
+    });
+  }
+
+  void _moveKeepingScreenPosition({
+    required SubstitutionParticipant participant,
+    required ValueChanged<SubstitutionParticipant> onMove,
+  }) {
+    if (_isMoveInProgress) {
+      return;
+    }
+
+    _isMoveInProgress = true;
+
+    final rowKey = _rowKeys[participant.userId];
+    final rowContext = rowKey?.currentContext;
+    final renderObject = rowContext?.findRenderObject();
+
+    final beforeDy = renderObject is RenderBox
+        ? renderObject.localToGlobal(Offset.zero).dy
+        : null;
+
+    onMove(participant);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      try {
+        if (!mounted || !_scrollController.hasClients) {
+          return;
+        }
+
+        if (beforeDy == null) {
+          return;
+        }
+
+        final updatedContext = _rowKeys[participant.userId]?.currentContext;
+
+        final updatedRenderObject = updatedContext?.findRenderObject();
+
+        if (updatedRenderObject is! RenderBox) {
+          return;
+        }
+
+        final afterDy = updatedRenderObject.localToGlobal(Offset.zero).dy;
+
+        final screenDelta = afterDy - beforeDy;
+
+        if (screenDelta.abs() < 0.5) {
+          return;
+        }
+
+        final position = _scrollController.position;
+
+        final targetOffset = (_scrollController.offset + screenDelta)
+            .clamp(position.minScrollExtent, position.maxScrollExtent)
+            .toDouble();
+
+        if ((targetOffset - _scrollController.offset).abs() < 0.5) {
+          return;
+        }
+
+        _scrollController.jumpTo(targetOffset);
+      } finally {
+        _isMoveInProgress = false;
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
-    if (participants.isEmpty) {
-      return _EmptySubstitutionTab(text: emptyText);
+    if (widget.participants.isEmpty) {
+      return _EmptySubstitutionTab(text: widget.emptyText);
     }
 
-    return ListView.separated(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      itemCount: participants.length,
-      separatorBuilder: (context, index) {
-        return const Divider(height: 1, indent: 72);
-      },
-      itemBuilder: (context, index) {
-        final participant = participants[index];
-        final user = usersById[participant.userId];
+    final bottomSystemInset = MediaQuery.viewPaddingOf(context).bottom;
 
-        return SubstitutionParticipantRow(
-          participant: participant,
-          user: user,
-          queuePosition: showQueueNumber ? index + 1 : null,
-          queueDisplayMode: queueDisplayMode,
-          statisticsCount: showStatistics
-              ? statisticsCountFor(participant.userId)
-              : null,
-          onCall: onCall == null
-              ? null
-              : () {
-                  onCall!(participant);
-                },
-          onOpenCard: () {
-            onOpenCard(participant);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final scrollReserve = widget.showRotationControls
+            ? constraints.maxHeight
+            : 0.0;
+
+        _syncScrollReserve(scrollReserve);
+
+        return ListView.separated(
+          controller: _scrollController,
+          padding: EdgeInsets.fromLTRB(
+            0,
+            8 + scrollReserve,
+            0,
+            8 + bottomSystemInset + scrollReserve,
+          ),
+          itemCount: widget.participants.length,
+          separatorBuilder: (context, index) {
+            return const Divider(height: 1, indent: 72);
+          },
+          itemBuilder: (context, index) {
+            final participant = widget.participants[index];
+
+            final user = widget.usersById[participant.userId];
+
+            final rowKey = _rowKeys.putIfAbsent(
+              participant.userId,
+              () => GlobalKey(),
+            );
+
+            return KeyedSubtree(
+              key: rowKey,
+              child: SubstitutionParticipantRow(
+                participant: participant,
+                user: user,
+                queuePosition: widget.showQueueNumber ? index + 1 : null,
+                queueDisplayMode: widget.queueDisplayMode,
+                statisticsCount: widget.showStatistics
+                    ? widget.statisticsCountFor(participant.userId)
+                    : null,
+                onCall: widget.onCall == null
+                    ? null
+                    : () {
+                        widget.onCall!(participant);
+                      },
+                onOpenCard: widget.onOpenCard == null
+                    ? null
+                    : () {
+                        widget.onOpenCard!(participant);
+                      },
+                showRotationControls: widget.showRotationControls,
+                onMoveUp:
+                    widget.showRotationControls &&
+                        (widget.canMoveUp?.call(participant) ?? false) &&
+                        widget.onMoveUp != null
+                    ? () {
+                        _moveKeepingScreenPosition(
+                          participant: participant,
+                          onMove: widget.onMoveUp!,
+                        );
+                      }
+                    : null,
+                onMoveDown:
+                    widget.showRotationControls &&
+                        (widget.canMoveDown?.call(participant) ?? false) &&
+                        widget.onMoveDown != null
+                    ? () {
+                        _moveKeepingScreenPosition(
+                          participant: participant,
+                          onMove: widget.onMoveDown!,
+                        );
+                      }
+                    : null,
+              ),
+            );
           },
         );
       },

@@ -1,5 +1,5 @@
 import 'package:epistola/domain/models/substitution_participant.dart';
-import 'package:epistola/services/spaces/substitution/substitution_participant_firestore_gateway.dart';
+import 'package:epistola/services/spaces/substitution/substitution_participant_state_firestore_gateway.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -15,9 +15,13 @@ void main() {
 
     expect(updates, hasLength(1));
     expect(updates.single.userId, 'user-1');
-    expect(updates.single.data, const {'availability': 'yellow'});
+
+    expect(updates.single.data, const <String, dynamic>{
+      'availability': 'yellow',
+    });
 
     expect(updates.single.data.containsKey('rotationOrder'), isFalse);
+
     expect(updates.single.data.containsKey('status'), isFalse);
   });
 
@@ -33,9 +37,11 @@ void main() {
 
     expect(updates, hasLength(1));
     expect(updates.single.userId, 'user-1');
-    expect(updates.single.data, const {'status': 'vacation'});
+
+    expect(updates.single.data, const <String, dynamic>{'status': 'vacation'});
 
     expect(updates.single.data.containsKey('rotationOrder'), isFalse);
+
     expect(updates.single.data.containsKey('availability'), isFalse);
   });
 
@@ -49,7 +55,7 @@ void main() {
       status: SubstitutionParticipantStatus.active,
     );
 
-    expect(updates.single.data, const {'status': 'active'});
+    expect(updates.single.data, const <String, dynamic>{'status': 'active'});
 
     expect(updates.single.data.containsKey('rotationOrder'), isFalse);
   });
@@ -64,34 +70,20 @@ void main() {
       status: SubstitutionParticipantStatus.sick,
     );
 
-    expect(updates.single.data, const {'status': 'sick'});
-  });
-
-  test('remove deletes only selected participant document', () async {
-    final deletedUserIds = <String>[];
-
-    final gateway = _gateway(deletedUserIds: deletedUserIds);
-
-    await gateway.removeParticipant(userId: 'user-7');
-
-    expect(deletedUserIds, ['user-7']);
+    expect(updates.single.data, const <String, dynamic>{'status': 'sick'});
   });
 }
 
-SubstitutionParticipantFirestoreGateway _gateway({
+SubstitutionParticipantStateFirestoreGateway _gateway({
   List<_Update>? updates,
-  List<String>? deletedUserIds,
 }) {
-  return SubstitutionParticipantFirestoreGateway(
+  return SubstitutionParticipantStateFirestoreGateway(
     documentUpdater:
         ({required String userId, required Map<String, dynamic> data}) async {
           updates?.add(
             _Update(userId: userId, data: Map<String, dynamic>.from(data)),
           );
         },
-    documentDeleter: ({required String userId}) async {
-      deletedUserIds?.add(userId);
-    },
   );
 }
 

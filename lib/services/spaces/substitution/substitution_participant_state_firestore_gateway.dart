@@ -9,17 +9,12 @@ typedef SubstitutionParticipantDocumentUpdater =
       required Map<String, dynamic> data,
     });
 
-typedef SubstitutionParticipantDocumentDeleter =
-    Future<void> Function({required String userId});
-
-final class SubstitutionParticipantFirestoreGateway {
-  SubstitutionParticipantFirestoreGateway({
+final class SubstitutionParticipantStateFirestoreGateway {
+  SubstitutionParticipantStateFirestoreGateway({
     required SubstitutionParticipantDocumentUpdater documentUpdater,
-    required SubstitutionParticipantDocumentDeleter documentDeleter,
-  }) : _updateDocument = documentUpdater,
-       _deleteDocument = documentDeleter;
+  }) : _updateDocument = documentUpdater;
 
-  factory SubstitutionParticipantFirestoreGateway.firebase({
+  factory SubstitutionParticipantStateFirestoreGateway.firebase({
     FirebaseFirestore? firestore,
   }) {
     final resolvedFirestore = firestore ?? FirebaseFirestore.instance;
@@ -29,19 +24,15 @@ final class SubstitutionParticipantFirestoreGateway {
         .doc('substitution')
         .collection('participants');
 
-    return SubstitutionParticipantFirestoreGateway(
+    return SubstitutionParticipantStateFirestoreGateway(
       documentUpdater:
           ({required String userId, required Map<String, dynamic> data}) {
             return participantsReference.doc(userId).update(data);
           },
-      documentDeleter: ({required String userId}) {
-        return participantsReference.doc(userId).delete();
-      },
     );
   }
 
   final SubstitutionParticipantDocumentUpdater _updateDocument;
-  final SubstitutionParticipantDocumentDeleter _deleteDocument;
 
   Future<void> updateAvailability({
     required String userId,
@@ -66,9 +57,5 @@ final class SubstitutionParticipantFirestoreGateway {
         SubstitutionParticipantMapper.statusField: status.storageValue,
       },
     );
-  }
-
-  Future<void> removeParticipant({required String userId}) {
-    return _deleteDocument(userId: userId);
   }
 }

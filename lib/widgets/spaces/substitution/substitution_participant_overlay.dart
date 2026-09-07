@@ -257,6 +257,7 @@ class _ParticipantStatusLine extends StatelessWidget {
       SubstitutionParticipantStatus.active => _activeText(),
       SubstitutionParticipantStatus.vacation => 'Отпуск',
       SubstitutionParticipantStatus.sick => 'Больничный',
+      SubstitutionParticipantStatus.removed => 'Удалён из списка',
     };
 
     return Text(

@@ -16,6 +16,10 @@ void main() {
         SubstitutionAvailability.tryParse('red'),
         SubstitutionAvailability.red,
       );
+      expect(
+        SubstitutionParticipantStatus.tryParse('removed'),
+        SubstitutionParticipantStatus.removed,
+      );
     });
 
     test('rejects unsupported values', () {
@@ -62,6 +66,7 @@ void main() {
       expect(participant.isActive, isTrue);
       expect(participant.isOnVacation, isFalse);
       expect(participant.isSick, isFalse);
+      expect(participant.isRemoved, isFalse);
     });
 
     test('changing availability does not change rotation order', () {
@@ -142,6 +147,41 @@ void main() {
 
       expect(updated.status, SubstitutionParticipantStatus.active);
       expect(updated.rotationOrder, 25);
+      expect(updated.isActive, isTrue);
+    });
+
+    test('moving to removed preserves rotation anchor', () {
+      const participant = SubstitutionParticipant(
+        userId: 'user-1',
+        rotationOrder: 25,
+        availability: SubstitutionAvailability.yellow,
+      );
+
+      final updated = participant.withStatus(
+        SubstitutionParticipantStatus.removed,
+      );
+
+      expect(updated.status, SubstitutionParticipantStatus.removed);
+      expect(updated.rotationOrder, 25);
+      expect(updated.availability, SubstitutionAvailability.yellow);
+      expect(updated.isRemoved, isTrue);
+      expect(updated.isActive, isFalse);
+    });
+
+    test('restoring removed participant preserves rotation anchor', () {
+      const participant = SubstitutionParticipant(
+        userId: 'user-1',
+        rotationOrder: 25,
+        status: SubstitutionParticipantStatus.removed,
+      );
+
+      final updated = participant.withStatus(
+        SubstitutionParticipantStatus.active,
+      );
+
+      expect(updated.status, SubstitutionParticipantStatus.active);
+      expect(updated.rotationOrder, 25);
+      expect(updated.isRemoved, isFalse);
       expect(updated.isActive, isTrue);
     });
   });

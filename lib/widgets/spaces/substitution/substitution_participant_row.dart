@@ -12,11 +12,14 @@ class SubstitutionParticipantRow extends StatelessWidget {
     required this.participant,
     required this.user,
     required this.queuePosition,
-    required this.onOpenCard,
     this.queueDisplayMode = SubstitutionQueueDisplayMode.avatarWithNumber,
     this.secondaryText,
     this.statisticsCount,
     this.onCall,
+    this.onOpenCard,
+    this.showRotationControls = false,
+    this.onMoveUp,
+    this.onMoveDown,
   });
 
   final SubstitutionParticipant participant;
@@ -24,9 +27,14 @@ class SubstitutionParticipantRow extends StatelessWidget {
   final int? queuePosition;
   final SubstitutionQueueDisplayMode queueDisplayMode;
   final String? secondaryText;
+
   final VoidCallback? onCall;
   final int? statisticsCount;
-  final VoidCallback onOpenCard;
+  final VoidCallback? onOpenCard;
+
+  final bool showRotationControls;
+  final VoidCallback? onMoveUp;
+  final VoidCallback? onMoveDown;
 
   @override
   Widget build(BuildContext context) {
@@ -46,36 +54,58 @@ class SubstitutionParticipantRow extends StatelessWidget {
       ),
       title: Text(displayName, maxLines: 2, overflow: TextOverflow.ellipsis),
       subtitle: _buildSubtitle(),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (onCall != null) ...[
-            FilledButton.tonal(
-              onPressed: onCall,
-              style: FilledButton.styleFrom(
-                minimumSize: const Size(0, 20),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 8,
-                ),
-                textStyle: const TextStyle(fontSize: 13),
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              ),
-              child: const Text('Вызвать'),
+      trailing: showRotationControls
+          ? _buildRotationControls()
+          : _buildNormalControls(),
+    );
+  }
+
+  Widget _buildRotationControls() {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton(
+          tooltip: 'Поднять выше',
+          onPressed: onMoveUp,
+          icon: const Icon(Icons.arrow_upward),
+        ),
+        IconButton(
+          tooltip: 'Опустить ниже',
+          onPressed: onMoveDown,
+          icon: const Icon(Icons.arrow_downward),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildNormalControls() {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (onCall != null) ...[
+          FilledButton.tonal(
+            onPressed: onCall,
+            style: FilledButton.styleFrom(
+              minimumSize: const Size(0, 20),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              textStyle: const TextStyle(fontSize: 13),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             ),
-            const SizedBox(width: 4),
-          ],
+            child: const Text('Вызвать'),
+          ),
+          const SizedBox(width: 4),
+        ],
+        if (onOpenCard != null)
           IconButton(
             tooltip: 'Открыть карточку',
             onPressed: onOpenCard,
             icon: const Icon(Icons.more_vert),
           ),
-          if (statisticsCount != null) ...[
-            const SizedBox(width: 2),
-            SubstitutionStatisticsBadge(count: statisticsCount!),
-          ],
+        if (statisticsCount != null) ...[
+          const SizedBox(width: 2),
+          SubstitutionStatisticsBadge(count: statisticsCount!),
         ],
-      ),
+      ],
     );
   }
 
