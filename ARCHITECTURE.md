@@ -26,21 +26,18 @@
 | Current development target | `v0.8.0` |
 | Stage | `Spaces / Substitution / SpacesBar` |
 | Feature branch | `feat/v0.8.0-spaces-substitution-foundation` |
-| Last functional checkpoint | `9ebf9ab` |
-| Functional commit | `feat(spaces): add confirmed substitution call delivery` |
-| Previous SpacesBar checkpoint | `123cda1` |
+| Last functional checkpoint | `544fcaf` |
+| Substitution list editor commit | `85238a2` |
+| Deleted-user cleanup commit | `e7ac582` |
+| Android launcher icon commit | `544fcaf` |
+| Previous confirmed-call checkpoint | `9ebf9ab` |
 | Stable baseline before v0.8.0 | `v0.7.4` |
 | Main platform | Android |
 | Pilot target | 40–50 users |
 
-After functional push:
-
-```text
-HEAD = origin feature branch = 9ebf9ab
-working tree = clean
-```
-
 `v0.8.0` is not yet declared merged/released.
+
+A docs-only commit may make HEAD newer than `544fcaf`.
 
 ---
 
@@ -60,7 +57,18 @@ Firebase Gateways / Adapters
 Firebase
 ```
 
-UI owns rendering, gestures, navigation, dialogs, loading/error states, animations and local visual preferences.
+UI owns:
+
+```text
+rendering
+gestures
+navigation
+dialogs
+loading/error states
+animations
+local visual preferences
+local editor draft presentation
+```
 
 UI must not own:
 
@@ -98,6 +106,8 @@ avoid per-widget Firestore reads
 minimize writes
 cache reusable user/role data by UID
 keep presentation state local when server authority is unnecessary
+persist participant reorder only on Apply
+reuse canonical business events for multiple projections
 ```
 
 ---
@@ -172,7 +182,25 @@ Working:
 "Список"
 ```
 
-Deferred layout:
+Placeholders/unimplemented:
+
+```text
+Судозаходы
+Календарь смен
+Автобусы
+ОТ и ТБ
+```
+
+Next planned application foundations include:
+
+```text
+Календарь смен
+Автобусы
+```
+
+Their exact domain/storage contracts are not defined by the current placeholder tiles and must be designed before implementation.
+
+Deferred Spaces Hub layout:
 
 ```text
 <=6 → regular
@@ -197,13 +225,18 @@ owner
 
 `owner` is highest priority.
 
-SpacesBar capability:
+Substitution managers:
 
 ```text
-canManageSpacesBar
-member = false
-brigadier = true
-owner = true
+brigadier
+owner
+```
+
+SpacesBar managers:
+
+```text
+brigadier
+owner
 ```
 
 UI visibility is not security. Rules independently enforce authoritative writes.
@@ -235,15 +268,6 @@ messages
 updatedAt
 ```
 
-General message:
-
-```text
-text
-lifetime
-createdByUserId
-createdAt
-```
-
 Capacity:
 
 ```text
@@ -267,7 +291,15 @@ untilCancelled
 
 Lifetime controls expiry and visual accent, not presentation priority.
 
-Do not persist presentation-only values such as Color, glow, font size, carousel page or local hide state.
+Do not persist presentation-only values such as:
+
+```text
+Color
+glow
+font size
+carousel page
+local hide state
+```
 
 ---
 
@@ -299,13 +331,6 @@ SpacesPage
 → Firestore transaction
 ```
 
-Manager:
-
-```text
-brigadier
-owner
-```
-
 Publish transaction:
 
 ```text
@@ -321,13 +346,6 @@ server timestamps
 
 Delete is transactional and does not delete the whole board document.
 
-General order:
-
-```text
-createdAt descending
-→ deterministic id/revision tie-breaker
-```
-
 ---
 
 # 9. Confirmed substitution call
@@ -336,18 +354,6 @@ Domain:
 
 ```text
 SubstitutionConfirmedCall
-```
-
-Fields:
-
-```text
-callId
-userId
-revision
-calledByUserId
-calledAt
-finalizedAt
-shift
 ```
 
 Authoritative path:
@@ -463,19 +469,6 @@ general:<messageId>
 substitution:<callId>
 ```
 
-General:
-
-```text
-publishedAt = message.createdAt
-```
-
-Substitution:
-
-```text
-publishedAt = call.finalizedAt
-accent = purple
-```
-
 Unified list:
 
 ```text
@@ -524,12 +517,6 @@ spaces_bar.hidden_substitution_call_ids.v1.<uid>
 ```
 
 `SpacesPage` schedules a local Timer for nearest visible expiry.
-
-At timer fire:
-
-```text
-refreshForCurrentTime(currentState)
-```
 
 No server write at shift start.
 
@@ -686,7 +673,7 @@ targetMessageId
 
 Current value may be a presentation ID.
 
-This is incremental compatibility debt. Do not rename during unrelated work.
+This is compatibility debt. Do not rename during unrelated work.
 
 ---
 
@@ -704,13 +691,7 @@ or legacy general:
 item.generalMessageId == target
 ```
 
-Explicit valid push target:
-
-```text
-target > newly-added realtime item
-```
-
-while user remains on target.
+Explicit valid push target remains stronger than newly-added realtime state while the user remains on the target.
 
 Manual navigation releases this priority.
 
@@ -739,62 +720,33 @@ OS/device settings remain authoritative for actual background vibration.
 
 ---
 
-# 20. General SpacesBar function
+# 20. Push Functions
 
-Export:
+General SpacesBar:
 
 ```text
 sendSpacesBarNotification
-```
-
-Trigger:
-
-```text
 onDocumentWritten("spaces/spacesBar")
 ```
-
-Only one valid new general message produces a push.
 
 Recipient discovery:
 
 ```text
 collectionGroup("devices")
+→ dedupe
+→ exclude publisher tokens
+→ multicast <=500
+→ cleanup invalid tokens
 ```
 
-Then:
-
-```text
-dedupe
-exclude publisher tokens
-multicast <=500
-cleanup invalid tokens
-```
-
----
-
-# 21. Substitution call function
-
-Export:
+Substitution confirmed call:
 
 ```text
 sendSubstitutionCallNotification
-```
-
-Trigger:
-
-```text
 onDocumentCreated(
   "spaces/substitution/confirmedCalls/{callId}"
 )
 ```
-
-Helper:
-
-```text
-buildSubstitutionCallNotification
-```
-
-Validates callId, recipient userId, date and shift kind.
 
 Recipient query:
 
@@ -814,7 +766,7 @@ No separate technical-chat push is created.
 
 ---
 
-# 22. Epistola technical chat
+# 21. Epistola technical chat
 
 Purpose:
 
@@ -827,12 +779,6 @@ Tile:
 ```text
 Epistola
 Технические сообщения
-```
-
-Avatar:
-
-```text
-assets/images/epistola_app_icon.png
 ```
 
 Not a normal chat document.
@@ -850,13 +796,6 @@ confirmedCalls
 → EpistolaSystemChatScreen
 ```
 
-System message:
-
-```text
-id = substitutionCall:<callId>
-createdAt = call.calledAt
-```
-
 History order:
 
 ```text
@@ -865,24 +804,7 @@ old → new
 
 Listener exists only while screen is open.
 
-`ChatsPage` does not keep a confirmedCalls preview listener.
-
----
-
-# 23. Technical-chat UX boundary
-
-Supported:
-
-```text
-loading
-error/retry
-empty
-realtime list
-initial bottom scroll
-conditional auto-scroll when near bottom
-```
-
-Not supported by design:
+Unsupported by design:
 
 ```text
 composer
@@ -897,148 +819,619 @@ unread count
 normal chat preview persistence
 ```
 
-Any expansion is a separate product decision.
+---
+
+# 22. Substitution participant canonical model
+
+Canonical path:
+
+```text
+spaces/substitution/participants/{userId}
+```
+
+Statuses:
+
+```text
+active
+vacation
+sick
+removed
+```
+
+The canonical queue contains both active and inactive participants.
+
+The visible queue is a projection of the canonical ordering.
+
+`removed` is a soft membership state, not a normal client document deletion.
 
 ---
 
-# 24. Visual assets
+# 23. Hidden canonical slot invariant
 
-Runtime:
+Inactive statuses:
+
+```text
+vacation
+sick
+removed
+```
+
+retain:
+
+```text
+rotationOrder
+canonical queue membership/anchor
+```
+
+Active participants can rotate or be manually reordered around hidden anchors.
+
+Example:
+
+```text
+A
+B (vacation)
+C
+D
+```
+
+Move `C` one visible active place up:
+
+```text
+C
+B (vacation)
+A
+D
+```
+
+The inactive slot remains fixed.
+
+On return/restore, the inactive participant reappears at the current canonical anchor.
+
+---
+
+# 24. New participant vs restore
+
+Never-before-added participant:
+
+```text
+one-time priority at top
+```
+
+Previously removed participant:
+
+```text
+restore existing anchor
+no top priority
+```
+
+This prevents repeated remove/re-add from gaming queue priority.
+
+Membership history inside substitution is therefore represented by keeping the participant document with status `removed`.
+
+Auth deletion is a separate lifecycle event and can physically clean the participant document.
+
+---
+
+# 25. Gateway separation
+
+State-only participant gateway:
+
+```text
+SubstitutionParticipantStateFirestoreGateway
+```
+
+Membership gateway:
+
+```text
+SubstitutionRotationMembershipFirestoreGateway
+```
+
+Rotation editor gateway:
+
+```text
+SubstitutionRotationEditFirestoreGateway
+```
+
+These represent distinct write contracts:
+
+```text
+state mutation
+membership mutation
+whole-list reorder
+```
+
+Do not collapse them into one generic participant gateway.
+
+---
+
+# 26. Rotation draft domain
+
+Domain:
+
+```text
+SubstitutionRotationDraft
+```
+
+Stores:
+
+```text
+original participants
+current participants
+```
+
+Active move API:
+
+```text
+canMoveActiveUp
+canMoveActiveDown
+moveActiveUp
+moveActiveDown
+```
+
+Inactive slots are preserved while active participants swap visible active positions.
+
+Normalization before persistence:
+
+```text
+rotationOrder = 0..N-1
+```
+
+across the complete canonical participant list.
+
+---
+
+# 27. Rotation edit service
+
+Service:
+
+```text
+SubstitutionRotationEditService
+```
+
+Baseline:
+
+```text
+SubstitutionRotationEditBaseline
+→ nextRotationOrder
+→ revision
+```
+
+Apply result:
+
+```text
+noChanges
+applied
+conflict
+```
+
+Editor UI is not authoritative; the service/gateway transaction remains the write boundary.
+
+---
+
+# 28. Rotation edit transaction
+
+Gateway:
+
+```text
+SubstitutionRotationEditFirestoreGateway
+```
+
+Transaction checks:
+
+```text
+module nextRotationOrder
+module revision
+pending-call absence
+participant composition
+participant existence
+original rotationOrder
+```
+
+Only changed participant:
+
+```text
+rotationOrder
+```
+
+is written.
+
+Concurrent unrelated participant state must not be overwritten:
+
+```text
+availability
+status
+```
+
+Successful Apply:
+
+```text
+normalize participant rotationOrder
+advance module nextRotationOrder by 1
+```
+
+The module marker is monotonic and is not normalized to participant count.
+
+Conflict produces no partial reorder.
+
+---
+
+# 29. Membership transaction gateway
+
+Gateway:
+
+```text
+SubstitutionRotationMembershipFirestoreGateway
+```
+
+Baseline includes:
+
+```text
+moduleExists
+nextRotationOrder
+revision
+ordered participants
+pending-call state
+```
+
+Add/restore:
+
+```text
+pending-call protection
+new participant insertion
+removed participant restoration
+baseline verification
+mutation-marker advance
+```
+
+Soft remove:
+
+```text
+status = removed
+rotationOrder retained
+availability retained
+baseline verification
+mutation-marker advance
+```
+
+Physical participant delete through client Rules is denied.
+
+---
+
+# 30. Firestore Rules — substitution editor/membership
+
+Rules recognize:
+
+```text
+active
+vacation
+sick
+removed
+```
+
+They separate:
+
+```text
+ordinary participant state updates
+membership changes involving removed
+rotation editor reorder
+call/finalization transactions
+```
+
+Membership/reorder manager roles:
+
+```text
+brigadier
+owner
+```
+
+Required transaction invariants include applicable:
+
+```text
+module marker update
+pending-call absence
+participant set/order checks
+new participant creation shape
+restore shape
+soft-remove shape
+allowed reorder fields
+```
+
+Current targeted suite:
+
+```text
+56/56 passed
+```
+
+Latest Rules were deployed before phone Apply testing.
+
+---
+
+# 31. Rotation editor presentation
+
+Screen orchestration:
+
+```text
+lib/screens/substitution_space_screen.dart
+```
+
+Editor entry:
+
+```text
+Настройки
+→ Режим редактирования списка
+```
+
+Manager only:
+
+```text
+brigadier
+owner
+```
+
+Before Apply:
+
+```text
+server baseline loaded once
+local draft
+0 Firestore reorder writes
+```
+
+Editing UI:
+
+```text
+Вызвать hidden
+participant card / ⋮ hidden
+statistics hidden
+↑ / ↓ on active rows
+settings disabled
+Отмена / Применить at bottom
+```
+
+Apply:
+
+```text
+SubstitutionRotationEditService.apply
+→ atomic gateway transaction
+```
+
+Conflict message:
+
+```text
+Список изменился. Откройте режим редактирования заново.
+```
+
+---
+
+# 32. Editor scroll stabilization
+
+Presentation-only behavior:
+
+```text
+measure row Y before local move
+→ update draft
+→ post-frame measure same row
+→ compensate ScrollController
+```
+
+Edit-only scroll reserve allows moves near the list edges.
+
+A frame-level move lock prevents overlapping GlobalKey/rebuild operations.
+
+Result:
+
+```text
+participant stays near same finger position
+normal fast repeated taps are safe
+ultra-fast overlapping taps can be dropped
+```
+
+Do not move this presentation behavior into domain/services.
+
+---
+
+# 33. Deleted Auth user cleanup
+
+Cloud Function handles ordinary single Auth-user deletion.
+
+Cleanup:
+
+```text
+users/{uid}
+users/{uid}/devices/*
+spaces/substitution/participants/{uid}
+spaces_access/{uid}
+```
+
+Preserve:
+
+```text
+confirmedCalls
+statistics
+chats
+messages
+```
+
+This is privileged backend cleanup and is intentionally separate from substitution soft removal.
+
+Bulk Admin SDK `deleteUsers([...])` may not trigger identical per-user handlers and must not be assumed supported without verification.
+
+---
+
+# 34. Android launcher assets
+
+Runtime assets:
 
 ```text
 assets/images/epistola_app_icon.png
 assets/images/epistola_seagull_stencil.png
 ```
 
-Master:
+Master artwork:
 
 ```text
 Аватар Чайки.png
 Аватар Чайки трафарет.png
 ```
 
-Current use:
+Android launcher icon now uses approved gull artwork in:
 
 ```text
-app icon asset → technical chat avatar
-stencil → empty SpacesBar
+mdpi
+hdpi
+xhdpi
+xxhdpi
+xxxhdpi
 ```
 
-Android launcher icon has not been replaced in functional checkpoint `9ebf9ab`.
+Physical-device verification passed.
 
 ---
 
-# 25. Substitution projection flow
+# 35. Existing Messenger architecture
+
+Private chats:
 
 ```text
-manager calls participant
-→ pendingCall
-→ Undo window
+text
+images
+pagination
+logical delete
+push deep links
+read receipts
+typing
+active-chat push suppression
+avatar/user card
+notification controls
 ```
 
-Undo:
+Group chats:
 
 ```text
-no confirmedCall
-→ no downstream confirmed-call projection
+roles
+owner/admin protections
+ownership transfer
+avatars
+push deep links
+reactions
+identity/member cards
+notification controls
 ```
 
-No Undo:
+Message history:
 
 ```text
-finalization transaction
-→ confirmedCall
+page size 20
+older-page loading
+scroll preservation
+realtime merge
+date separators
+floating date indicator
+image-aware scroll behavior
 ```
-
-Downstream projections:
-
-```text
-confirmedCall
-→ personal SpacesBar
-→ technical history
-→ substitution push
-```
-
-These channels project one canonical event, not unrelated authoritative copies.
 
 ---
 
-# 26. Existing substitution foundation
+# 36. Verification
+
+Current functional commits:
 
 ```text
-participants
-rotationOrder
-availability
-vacation/sick
-participant management
-work display name
-call/Undo
-pending calls
-recovery
-exactly-once finalization
-monthly/yearly statistics
-confirmed calls
-personal SpacesBar
-technical history
-push
-Rules
-```
-
-Owner priority/protections must not be weakened.
-
----
-
-# 27. Verification
-
-Functional commit:
-
-```text
-9ebf9ab
-feat(spaces): add confirmed substitution call delivery
+85238a2 feat(spaces): add substitution list editing
+e7ac582 feat(auth): clean deleted users from spaces
+544fcaf chore(android): update launcher icon
 ```
 
 Flutter:
 
 ```text
-922 tests passed
+978 tests passed
 analyze clean
-release APK 58.2 MB
+release APK 58.4 MB
 ```
 
-Functions:
+Rotation/editor targeted:
 
 ```text
-substitution helper 6/6
+38/38
+```
+
+Substitution Rules targeted:
+
+```text
+56/56
+```
+
+Deleted-user cleanup:
+
+```text
+4/4
 lint no errors
 build success
 ```
 
-Rules:
+Production/manual:
 
 ```text
-latest full suite for this block: 165/165
-```
-
-Production:
-
-```text
-confirmedCalls Rules deployed
-sendSpacesBarNotification deployed
-sendSubstitutionCallNotification deployed
-```
-
-Manual:
-
-```text
-future confirmed substitution call
-→ personal SpacesBar
-→ technical history
-→ push
+latest substitution Rules deployed
+deleted-user cleanup deployed
+phone reorder Apply persistence passed
+Cancel passed
+vacation hidden-slot behavior passed
+rapid-tap crash regression passed
+Android launcher icon passed
 ```
 
 ---
 
-# 28. Deferred architecture work
+# 37. Known queued issue
+
+Observed separately:
+
+```text
+owner may receive copy of substitution push intended for another user
+```
+
+Current unverified suspicion:
+
+```text
+stale FCM token after account switching
+```
+
+Investigate notification token lifecycle/logout separately.
+
+Do not alter rotation or call business logic until root cause is proven.
+
+---
+
+# 38. Next application foundations
+
+Planned after current checkpoint/handoff:
+
+```text
+Календарь смен
+Автобусы
+```
+
+Current repository only establishes them as Spaces tiles/placeholders.
+
+Therefore next implementation must begin with:
+
+```text
+audit placeholder route/UI
+define product scope
+define domain model
+define storage/read/write contract
+define role/security boundary
+define Firebase cost strategy
+define tests
+then implement UI on top
+```
+
+Do not silently invent coupling to `Substitution` or reuse its Firestore schema unless a genuine shared domain contract is intentionally designed.
+
+---
+
+# 39. Deferred architecture work
 
 Presentation-only:
 
@@ -1063,17 +1456,17 @@ legacy SpacesBar "*MessageId" APIs
 → presentation-ID terminology
 ```
 
-Visual follow-up:
+Notification lifecycle:
 
 ```text
-actual Android launcher icon replacement
+verify unregisterCurrentDevice/signOut token cleanup
 ```
 
 Do not mix these into unrelated feature work.
 
 ---
 
-# 29. Source-of-truth rule for next work
+# 40. Source-of-truth rule for next work
 
 At the beginning of a new development chat:
 
@@ -1084,5 +1477,13 @@ read PROJECT_CONTEXT.md
 read ARCHITECTURE.md
 read README.md
 ```
+
+Last functional checkpoint documented here:
+
+```text
+544fcaf
+```
+
+A docs-only commit may make HEAD newer.
 
 Historical one-off handoff files are not canonical after these documents are updated.

@@ -27,22 +27,19 @@ Pilot target:
 | Target | `v0.8.0` |
 | Stage | `Spaces / Substitution / SpacesBar` |
 | Branch | `feat/v0.8.0-spaces-substitution-foundation` |
-| Last functional checkpoint | `9ebf9ab` |
-| Commit | `feat(spaces): add confirmed substitution call delivery` |
-| Previous SpacesBar checkpoint | `123cda1` |
+| Last functional checkpoint | `544fcaf` |
+| Substitution list editor | `85238a2` |
+| Deleted-user cleanup | `e7ac582` |
+| Android launcher icon | `544fcaf` |
+| Previous confirmed-call checkpoint | `9ebf9ab` |
 | Stable baseline before v0.8.0 | `v0.7.4` |
 | Firebase project | `epistola-434b7` |
 | Android package | `com.epistola.app` |
 | Platform | Android |
 
-After the functional push:
-
-```text
-HEAD = origin feature branch = 9ebf9ab
-working tree = clean
-```
-
 `v0.8.0` is still a feature-branch target and has not yet been declared merged/released.
+
+A later docs-only commit may make HEAD newer than `544fcaf`.
 
 ---
 
@@ -105,67 +102,197 @@ Tiles:
 ОТ и ТБ
 ```
 
-Working:
+Working applications:
 
 ```text
 Чаты
 "Список"
 ```
 
-Other tiles are placeholders.
+Current placeholders:
+
+```text
+Судозаходы
+Календарь смен
+Автобусы
+ОТ и ТБ
+```
+
+Planned next application foundations include:
+
+```text
+Календарь смен
+Автобусы
+```
+
+Their product/data contracts must be defined before implementation rather than inferred from the placeholder tiles.
 
 ---
 
-# SpacesBar
+# "Список" / Substitution
 
-Current:
-
-```text
-height: 141 px
-message font: 18 px
-auto rotation: 15 sec
-```
-
-General announcement capacity:
+Current foundation includes:
 
 ```text
-3 active messages
+participants
+canonical rotation queue
+availability
+vacation/sick hidden slots
+removed hidden membership slots
+participant management
+new-participant one-time top priority
+restore at saved hidden anchor
+work display name
+call flow
+Undo
+pending-call persistence
+recovery
+exactly-once finalization
+monthly/yearly statistics
+confirmedCall event
+personal SpacesBar
+Epistola technical history
+confirmed-call push
+atomic list editor
+Firestore Rules
 ```
 
-General lifetimes / accents:
-
-```text
-1h → green
-12h → blue
-24h → orange
-until cancelled → red
-```
-
-Personal substitution call accent:
-
-```text
-purple
-```
-
-Multiple items:
-
-```text
-chevrons
-dots
-horizontal PageView
-15-second rotation
-manual navigation resets timer
-```
-
-Empty state uses:
-
-```text
-assets/images/epistola_seagull_stencil.png
-```
+Owner remains highest priority.
 
 ---
 
-# General SpacesBar backend
+# Participant membership semantics
+
+Participant statuses:
+
+```text
+active
+vacation
+sick
+removed
+```
+
+Vacation, sick and removed participants remain in the canonical rotation.
+
+Normal:
+
+```text
+Удалить из списка
+```
+
+means:
+
+```text
+status = removed
+```
+
+not physical participant-document deletion.
+
+A truly new participant receives one-time priority at the top.
+
+A previously removed participant is restored at the current hidden canonical anchor and does not regain top priority.
+
+This prevents remove/re-add from gaming the queue.
+
+---
+
+# Rotation list editor
+
+Available to:
+
+```text
+brigadier
+owner
+```
+
+Entry:
+
+```text
+"Список"
+→ Настройки
+→ Режим редактирования списка
+```
+
+Editing is local until Apply:
+
+```text
+↑ / ↓
+→ local draft only
+→ 0 Firestore reorder writes
+```
+
+Inactive vacation/sick/removed slots stay fixed while active participants move around them.
+
+Apply:
+
+```text
+atomic Firestore transaction
+normalize canonical participant rotationOrder to 0..N-1
+write only changed rotationOrder fields
+preserve unrelated concurrent availability/status
+advance monotonic mutation marker
+```
+
+Conflict protection checks the source order/composition and module baseline.
+
+Conflict UI:
+
+```text
+Список изменился. Откройте режим редактирования заново.
+```
+
+Cancel discards the draft without writes.
+
+The list preserves the moved row near the same finger position. A frame lock prevents rapid overlapping taps from crashing Flutter; ultra-fast overlapping taps may be dropped.
+
+---
+
+# Substitution gateway split
+
+Participant writes are now intentionally separated:
+
+```text
+SubstitutionParticipantStateFirestoreGateway
+→ ordinary state operations
+
+SubstitutionRotationMembershipFirestoreGateway
+→ add / restore / soft remove
+
+SubstitutionRotationEditFirestoreGateway
+→ atomic whole-list reorder
+```
+
+The separation keeps transaction invariants below UI and independently testable.
+
+---
+
+# Deleted Auth user cleanup
+
+A backend Auth-delete cleanup removes:
+
+```text
+users/{uid}
+device token documents
+spaces/substitution/participants/{uid}
+spaces_access/{uid}
+```
+
+Historical/business data remains:
+
+```text
+confirmedCalls
+statistics
+chats
+messages
+```
+
+Ordinary single-user deletion was verified in production.
+
+Bulk Admin SDK `deleteUsers([...])` may not trigger identical per-user cleanup and needs a separately verified path if used.
+
+---
+
+# General SpacesBar
 
 Authoritative board:
 
@@ -180,9 +307,20 @@ brigadier
 owner
 ```
 
-Owner remains highest priority.
+General announcement capacity:
 
-General messages use Firestore transactions and are limited to `3/3`.
+```text
+3 active messages
+```
+
+Lifetimes / accents:
+
+```text
+1h → green
+12h → blue
+24h → orange
+until cancelled → red
+```
 
 General local hide:
 
@@ -192,13 +330,6 @@ spaces_bar.hidden_message_ids.v1.<uid>
 ```
 
 No Firestore write is performed for local hide.
-
-General presentation order:
-
-```text
-createdAt descending
-→ deterministic id/revision tie-breaker
-```
 
 ---
 
@@ -210,15 +341,13 @@ Successful call finalization creates:
 spaces/substitution/confirmedCalls/{callId}
 ```
 
-Finalization transaction:
+Finalization:
 
 ```text
 update statistics
 create confirmedCall
 delete pendingCall
 ```
-
-The called user watches only their own confirmed calls.
 
 Presentation IDs:
 
@@ -227,7 +356,7 @@ general:<messageId>
 substitution:<callId>
 ```
 
-Personal calls do not consume the general `3/3` capacity.
+Personal calls do not consume general `3/3` capacity.
 
 A personal call remains active until shift start:
 
@@ -235,8 +364,6 @@ A personal call remains active until shift start:
 day → 08:00 local
 night → 20:00 local
 ```
-
-`SpacesPage` uses a local Timer for shift-start expiry, so no server write is needed at that moment.
 
 Personal local hide:
 
@@ -277,66 +404,25 @@ legacy chatId
 legacy spacesBarMessageId
 ```
 
-Legacy general:
-
-```text
-spacesBarMessageId=42
-→ general:42
-```
-
-Some internal method/parameter names still contain `MessageId`, but current behavior can carry a unified presentation ID.
+Some internal routing APIs still use `*MessageId` names while carrying presentation IDs. This remains deferred naming debt.
 
 ---
 
-# General SpacesBar push
+# Push functions
 
-Function:
+General SpacesBar:
 
 ```text
 sendSpacesBarNotification
 ```
 
-Trigger:
-
-```text
-onDocumentWritten("spaces/spacesBar")
-```
-
-Only one valid newly published general message generates a push.
-
-Publisher tokens are excluded.
-
-Channel:
-
-```text
-epistola_spaces_bar_v1
-```
-
-Sound:
-
-```text
-seagull_notification
-```
-
----
-
-# Substitution call push
-
-Function:
+Substitution call:
 
 ```text
 sendSubstitutionCallNotification
 ```
 
-Trigger:
-
-```text
-onDocumentCreated(
-  "spaces/substitution/confirmedCalls/{callId}"
-)
-```
-
-Recipient lookup:
+Substitution recipient lookup:
 
 ```text
 users/{calledUserId}/devices
@@ -350,7 +436,17 @@ spacesBarPresentationId = substitution:<callId>
 notificationMode = sound
 ```
 
-The same SpacesBar Android notification channel is used.
+Channel:
+
+```text
+epistola_spaces_bar_v1
+```
+
+Sound:
+
+```text
+seagull_notification
+```
 
 No separate push is generated by technical history.
 
@@ -358,17 +454,11 @@ No separate push is generated by technical history.
 
 # Epistola technical chat
 
-Private chats include a read-only technical row:
+Private chats include read-only technical row:
 
 ```text
 Epistola
 Технические сообщения
-```
-
-Avatar:
-
-```text
-assets/images/epistola_app_icon.png
 ```
 
 This is not a normal chat.
@@ -382,8 +472,6 @@ confirmedCalls
 → system message mapper/source/service
 → EpistolaSystemChatScreen
 ```
-
-The realtime listener exists only while the technical screen is open.
 
 Current boundary:
 
@@ -399,9 +487,9 @@ no unread badge
 
 ---
 
-# Gull artwork
+# Gull artwork / Android launcher icon
 
-Runtime:
+Runtime assets:
 
 ```text
 assets/images/epistola_app_icon.png
@@ -415,120 +503,109 @@ Master artwork:
 Аватар Чайки трафарет.png
 ```
 
-Current use:
+The Android launcher icon is now replaced with approved gull artwork in all five mipmap density folders.
 
-```text
-app icon asset → technical chat avatar
-stencil → empty SpacesBar
-```
-
-The Android launcher icon was not replaced in functional checkpoint `9ebf9ab`.
-
----
-
-# "Список" / Substitution
-
-Current foundation includes:
-
-```text
-participants
-rotation queue
-availability
-vacation/sick
-participant management
-work display name
-call flow
-Undo
-pending call persistence
-recovery
-exactly-once finalization
-monthly/yearly statistics
-confirmedCall event
-personal SpacesBar
-Epistola technical history
-confirmed-call push
-Firestore Rules
-```
-
-Owner remains highest priority.
+Physical-device verification passed.
 
 ---
 
 # Verification
 
-Latest functional checkpoint:
+Current functional commits:
 
 ```text
-9ebf9ab
-feat(spaces): add confirmed substitution call delivery
+85238a2
+feat(spaces): add substitution list editing
+
+e7ac582
+feat(auth): clean deleted users from spaces
+
+544fcaf
+chore(android): update launcher icon
 ```
 
 Checks:
 
 ```text
 flutter.bat test
-→ 922 passed
+→ 978 passed
 
 flutter.bat analyze
 → No issues found
 
 release APK
 → SUCCESS
-→ 58.2 MB
+→ 58.4 MB
 
-substitution notification helper
-→ 6/6
+rotation/editor targeted tests
+→ 38/38
+
+substitution Firestore Rules
+→ 56/56
+
+deleted-user cleanup tests
+→ 4/4
 
 Functions lint
 → no errors
 
 Functions build
 → SUCCESS
-
-latest full Firestore Rules suite for this block
-→ 165/165
 ```
 
-Production:
+Production/manual:
 
 ```text
-confirmedCalls Rules deployed
-sendSpacesBarNotification deployed
-sendSubstitutionCallNotification deployed
+latest substitution Rules deployed
+deleted-user cleanup deployed
+phone Apply persistence test passed
+Cancel test passed
+vacation hidden-slot behavior passed
+rapid-tap crash regression passed
+Android launcher icon passed
 ```
-
-Manual physical-device future-call scenario completed successfully.
 
 ---
 
-# Deferred work
+# Known queued issue
 
-SpacesBar presentation-only:
+Observed separately:
 
 ```text
-stationary outer frame
+owner may receive a copy of a substitution notification
+intended for the called user
+```
+
+Current suspicion is stale FCM token state after account switching, but this is not verified.
+
+Investigate device-token unregister/logout lifecycle separately; do not modify rotation/call business logic until root cause is proven.
+
+---
+
+# Planned next work
+
+After the current checkpoint and new-chat handoff:
+
+```text
+1. verify branch / status / HEAD / origin
+2. read current source and canonical docs
+3. continue remaining agreed roadmap work without reconstructing old decisions
+4. develop dedicated foundation for Календарь смен
+5. develop dedicated foundation for Автобусы
+```
+
+For `Календарь смен` and `Автобусы`, the current repository only establishes placeholder Spaces tiles. The next chat should first define the intended product/domain/storage/security contract from the current source and user requirements, then implement each foundation in small verifiable steps.
+
+Other deferred work:
+
+```text
+stationary SpacesBar frame
 true cyclic/infinite swipe
 glow tuning
-```
-
-Spaces Hub:
-
-```text
-⋮ tile configuration
+Spaces tile configuration
 regular/compact layout
 >8 continuation
-```
-
-Possible dedicated cleanup:
-
-```text
-rename legacy SpacesBar "*MessageId" routing APIs
-```
-
-Possible visual follow-up:
-
-```text
-replace actual Android launcher icon with approved gull artwork
+legacy SpacesBar "*MessageId" naming cleanup
 ```
 
 ---
@@ -538,10 +615,10 @@ replace actual Android launcher icon with approved gull artwork
 Before new work:
 
 ```powershell
-git.exe branch --show-current
-git.exe status --short
-git.exe rev-parse --short HEAD
-git.exe rev-parse --short origin/feat/v0.8.0-spaces-substitution-foundation
+git branch --show-current
+git status --short
+git rev-parse --short HEAD
+git rev-parse --short origin/feat/v0.8.0-spaces-substitution-foundation
 ```
 
 Then read from the current feature branch:
@@ -552,5 +629,22 @@ PROJECT_CONTEXT.md
 ARCHITECTURE.md
 README.md
 ```
+
+Priority:
+
+```text
+source
+→ PROJECT_CONTEXT.md
+→ ARCHITECTURE.md
+→ README.md
+```
+
+Last functional checkpoint documented here:
+
+```text
+544fcaf
+```
+
+A docs-only commit may make HEAD newer.
 
 Do not use `main` as the source of current `v0.8.0` state until release/merge is explicitly completed.

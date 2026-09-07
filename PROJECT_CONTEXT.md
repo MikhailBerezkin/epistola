@@ -29,29 +29,39 @@ Feature branch:
 feat/v0.8.0-spaces-substitution-foundation
 ```
 
-Последний functional checkpoint:
+Текущий локальный functional checkpoint:
+
+```text
+544fcaf
+chore(android): update launcher icon
+```
+
+Функциональные commits последнего завершённого блока:
+
+```text
+85238a2
+feat(spaces): add substitution list editing
+
+e7ac582
+feat(auth): clean deleted users from spaces
+
+544fcaf
+chore(android): update launcher icon
+```
+
+Предыдущий крупный Spaces/Substitution checkpoint:
 
 ```text
 9ebf9ab
 feat(spaces): add confirmed substitution call delivery
 ```
 
-После push:
-
-```text
-HEAD = 9ebf9ab
-origin/feat/v0.8.0-spaces-substitution-foundation = 9ebf9ab
-working tree = CLEAN
-```
-
-Предыдущий крупный SpacesBar checkpoint:
+Предыдущий SpacesBar realtime checkpoint:
 
 ```text
 123cda1
 feat(spaces): add realtime spaces bar notifications
 ```
-
-`v0.8.0` всё ещё в feature-ветке. Без отдельного Git-подтверждения не считать выполненными merge в `main`, release tag или release declaration.
 
 Последний стабильный release до `v0.8.0`:
 
@@ -59,22 +69,35 @@ feat(spaces): add realtime spaces bar notifications
 v0.7.4 — Avatar Interaction/Card + Notification Controls Foundation
 ```
 
+`v0.8.0` всё ещё находится в feature-ветке.
+
+Без отдельного Git-подтверждения не считать выполненными:
+
+```text
+merge в main
+release declaration
+release tag
+```
+
+На момент подготовки этого документа новые functional commits ещё не были финально запушены после документационного обновления. В новом чате обязательно проверять фактические `HEAD` и `origin`, а не выводить их из текста документа.
+
 ---
 
-# 2. Проверки checkpoint 9ebf9ab
+# 2. Финальные проверки текущего functional checkpoint
 
 Flutter:
 
 ```text
 flutter.bat test
-→ 922 tests passed
+→ 978 tests passed
 
 flutter.bat analyze
 → No issues found
 
 flutter.bat build apk --release
 → SUCCESS
-→ 58.2 MB
+→ build/app/outputs/flutter-apk/app-release.apk
+→ 58.4 MB
 ```
 
 Во время полного Flutter suite может появляться диагностический JPEG output:
@@ -84,7 +107,41 @@ Corrupt JPEG data...
 JPEG datastream contains no image
 ```
 
-Если итог `All tests passed`, это не падение suite.
+Если итог:
+
+```text
+All tests passed!
+```
+
+это не падение suite.
+
+Targeted rotation/editor suite:
+
+```text
+38/38 passed
+```
+
+Firestore Rules — последний targeted substitution suite:
+
+```text
+56/56 passed
+0 failed
+```
+
+Cloud Functions — deleted-user cleanup:
+
+```text
+node --test functions/test/deleted_user_cleanup.test.cjs
+→ 4/4 passed
+
+npm.cmd --prefix functions run lint
+→ no errors
+→ остаётся известное предупреждение TypeScript 6.0.3 /
+   @typescript-eslint supported range
+
+npm.cmd --prefix functions run build
+→ SUCCESS
+```
 
 Git:
 
@@ -92,61 +149,46 @@ Git:
 git diff --check
 → clean
 
+git diff --cached --check
+→ clean перед functional commits
+
 generated Flutter plugin files
 → восстановлены после последней Flutter-команды
-→ в commit не попали
+→ в functional commits не попали
 ```
 
-Cloud Functions:
+Production/manual verification:
 
 ```text
-node --test functions/test/substitution_call_notification.test.cjs
-→ 6/6 passed
-
-npm.cmd --prefix functions run lint
-→ no errors
-→ остаётся известное предупреждение TypeScript 6.0.3 / @typescript-eslint
-
-npm.cmd --prefix functions run build
-→ SUCCESS
-```
-
-Firestore Rules:
-
-```text
-latest full suite for this block
-→ 165/165 passed
-```
-
-Production:
-
-```text
-confirmedCalls Rules
+latest substitution Firestore Rules
 → deployed
 
-sendSpacesBarNotification
-→ deployed
+deleted-user cleanup Function
+→ deployed и проверен ранее в этом блоке
 
-sendSubstitutionCallNotification
-→ deployed
-```
+fresh release APK 58.4 MB
+→ проверен на физическом Android-телефоне
 
-Cloud Functions:
+Android launcher gull icon
+→ отображается
 
-```text
-region: europe-west1
-runtime: Node.js 22
-generation: 2nd Gen
-```
+Substitution list editor:
+→ открыть режим редактирования
+→ переместить участника
+→ Применить
+→ закрыть/повторно открыть "Список"
+→ новый порядок сохраняется
 
-Manual verification:
+Отмена:
+→ локальный draft отбрасывается
+→ сохранённый порядок не меняется
 
-```text
-future confirmed substitution call
-→ personal purple SpacesBar item
-→ Epistola technical history entry
-→ one substitution push
-→ fresh release APK handles unified SpacesBar target
+vacation participant:
+→ hidden canonical slot behavior проверен
+
+rapid arrow taps:
+→ Flutter assertion/crash больше не воспроизводится
+→ сверхбыстрые overlapping taps могут безопасно отбрасываться frame-lock'ом
 ```
 
 ---
@@ -159,6 +201,7 @@ Android package: com.epistola.app
 Firestore region: eur3
 Realtime Database region: europe-west1
 Cloud Functions region: europe-west1
+Cloud Functions runtime: Node.js 22
 Primary platform: Android
 Pilot target: 40–50 users
 ```
@@ -170,6 +213,8 @@ minimum unnecessary Firestore reads/writes
 no per-widget Firestore queries
 reuse UID-keyed caches
 keep presentation state local when server authority is unnecessary
+list reorder writes only once on Apply
+avoid duplicate authoritative business records
 ```
 
 ---
@@ -201,7 +246,7 @@ git
 Workflow:
 
 ```text
-2–3 safe related steps at a time
+small verifiable steps
 risky actions separately
 manual test before commit
 commit / push / deploy only after explicit approval
@@ -257,12 +302,30 @@ Current tiles:
 ОТ и ТБ
 ```
 
-Working modules:
+Currently implemented/working Spaces applications:
 
 ```text
 Чаты
 "Список"
 ```
+
+Currently unimplemented/placeholders:
+
+```text
+Судозаходы
+Календарь смен
+Автобусы
+ОТ и ТБ
+```
+
+Planned next product work after the current checkpoint includes dedicated foundations for:
+
+```text
+Календарь смен
+Автобусы
+```
+
+Do not invent their backend/domain contract from the placeholder UI. In the next chat first audit current source and then define each foundation deliberately before implementation.
 
 Deferred tile UX:
 
@@ -286,16 +349,31 @@ owner
 
 `owner` remains highest-priority.
 
+Substitution manager capability:
+
+```text
+member
+→ cannot manage participant membership/order
+
+brigadier
+→ can manage substitution
+
+owner
+→ can manage substitution
+→ remains highest-priority role
+```
+
 SpacesBar capability:
 
 ```text
 canManageSpacesBar
+
 member = false
 brigadier = true
 owner = true
 ```
 
-UI visibility is not the security boundary. Rules independently protect writes.
+UI visibility is not the security boundary. Firestore Rules independently protect authoritative writes.
 
 ---
 
@@ -307,7 +385,7 @@ Authoritative document:
 spaces/spacesBar
 ```
 
-Schema v1 stores:
+Schema v1:
 
 ```text
 revision
@@ -336,22 +414,13 @@ Message ID:
 messageId = new board revision
 ```
 
-Lifetimes:
+Lifetimes / accents:
 
 ```text
-1 hour
-12 hours
-24 hours
-until cancelled
-```
-
-Accents:
-
-```text
-1h → green
-12h → blue
-24h → orange
-untilCancelled → red
+1 hour → green
+12 hours → blue
+24 hours → orange
+until cancelled → red
 ```
 
 General order:
@@ -382,83 +451,7 @@ Manager editor counts only active general announcements for `3/3`.
 
 ---
 
-# 8. Canonical confirmed substitution call
-
-Successful finalization transaction:
-
-```text
-read pendingCall
-→ validate
-→ update statistics
-→ create confirmedCall
-→ delete pendingCall
-```
-
-Canonical immutable event:
-
-```text
-spaces/substitution/confirmedCalls/{callId}
-```
-
-Fields:
-
-```text
-schemaVersion
-callId
-userId
-revision
-calledByUserId
-calledAt
-finalizedAt
-shiftYear
-shiftMonth
-shiftDay
-shiftKind
-```
-
-Meaning:
-
-```text
-userId → called user
-calledByUserId → brigadier / owner who initiated call
-calledAt → original call time
-finalizedAt → final confirmation after Undo window
-```
-
-Exactly-once protection still comes from deleting the authoritative pending call in the same transaction.
-
-Confirmed-call gateway:
-
-```text
-SubstitutionConfirmedCallFirestoreGateway
-```
-
-Production query:
-
-```text
-confirmedCalls.where("userId", isEqualTo: currentUserId)
-```
-
-Supports load + watch, validates document shape and requires document.id == callId.
-
-Returned calls:
-
-```text
-finalizedAt descending
-→ revision descending
-```
-
-Rules:
-
-```text
-called user → get/list own confirmed calls
-manager finalization transaction → valid create
-update/delete → denied
-```
-
----
-
-# 9. Personal substitution SpacesBar
+# 8. Personal substitution SpacesBar
 
 Unified presentation model:
 
@@ -512,7 +505,7 @@ Personal calls do NOT consume general `3/3` capacity.
 
 ---
 
-# 10. Personal call expiry and local hide
+# 9. Personal call expiry and local hide
 
 A personal call is active only while:
 
@@ -535,7 +528,7 @@ confirmedCall remains
 Epistola technical history remains
 ```
 
-`SpacesPage` schedules a local Timer for the nearest visible expiry and recalculates on app resume. No Firestore write is needed at 08:00/20:00.
+`SpacesPage` schedules a local Timer for nearest visible expiry and recalculates on app resume.
 
 Separate local hide:
 
@@ -552,11 +545,9 @@ persistent
 no Firestore write
 ```
 
-A call for a shift that has already started can remain in technical history while no longer being active in SpacesBar.
-
 ---
 
-# 11. Current SpacesBar UI
+# 10. Current SpacesBar UI
 
 Main widget:
 
@@ -582,7 +573,7 @@ assets/images/epistola_seagull_stencil.png
 Нет новых закреплённых сообщений
 ```
 
-Current implementation still uses separate finite PageView cards.
+Current implementation still uses finite PageView boundaries.
 
 Deferred presentation-only:
 
@@ -594,7 +585,7 @@ glow tuning
 
 ---
 
-# 12. Unified SpacesBar push target
+# 11. Unified SpacesBar push target
 
 `PushDeepLinkRequest` supports:
 
@@ -647,25 +638,13 @@ targetMessageId
 
 These old names can now carry a unified presentation ID. Do not rename them during unrelated work.
 
-Target matching supports:
-
-```text
-item.presentationId == target
-```
-
-plus legacy general:
-
-```text
-item.generalMessageId == target
-```
-
-Explicit valid push target stays stronger than a newer realtime item until the user manually moves away.
+Explicit valid push target stays stronger than newer realtime state until user navigation releases the target.
 
 Local hide remains stronger than push-target forcing.
 
 ---
 
-# 13. General SpacesBar push
+# 12. General SpacesBar push
 
 Function:
 
@@ -705,6 +684,80 @@ seagull_notification
 
 ---
 
+# 13. Canonical confirmed substitution call
+
+Successful finalization transaction:
+
+```text
+read pendingCall
+→ validate
+→ update statistics
+→ create confirmedCall
+→ delete pendingCall
+```
+
+Canonical immutable event:
+
+```text
+spaces/substitution/confirmedCalls/{callId}
+```
+
+Fields:
+
+```text
+schemaVersion
+callId
+userId
+revision
+calledByUserId
+calledAt
+finalizedAt
+shiftYear
+shiftMonth
+shiftDay
+shiftKind
+```
+
+Meaning:
+
+```text
+userId → called user
+calledByUserId → brigadier / owner who initiated call
+calledAt → original call time
+finalizedAt → final confirmation after Undo window
+```
+
+Exactly-once protection comes from deleting the authoritative pending call in the same transaction.
+
+Confirmed-call gateway:
+
+```text
+SubstitutionConfirmedCallFirestoreGateway
+```
+
+Production query:
+
+```text
+confirmedCalls.where("userId", isEqualTo: currentUserId)
+```
+
+Returned calls:
+
+```text
+finalizedAt descending
+→ revision descending
+```
+
+Rules:
+
+```text
+called user → get/list own confirmed calls
+manager finalization transaction → valid create
+update/delete → denied
+```
+
+---
+
 # 14. Substitution confirmed-call push
 
 Function:
@@ -720,8 +773,6 @@ onDocumentCreated(
   "spaces/substitution/confirmedCalls/{callId}"
 )
 ```
-
-Helper validates callId, recipient userId, calendar date and day/night shift kind.
 
 Recipient query:
 
@@ -816,7 +867,525 @@ no unread badge
 
 ---
 
-# 16. Gull assets
+# 16. Participant statuses and membership semantics
+
+Canonical participant path:
+
+```text
+spaces/substitution/participants/{userId}
+```
+
+Current statuses:
+
+```text
+active
+vacation
+sick
+removed
+```
+
+Meaning:
+
+```text
+active
+→ visible in active queue
+→ can be called
+
+vacation
+→ hidden from active queue
+→ retains canonical rotation slot
+
+sick
+→ hidden from active queue
+→ retains canonical rotation slot
+
+removed
+→ hidden from List/Vacation/Sick tabs
+→ retains canonical rotation slot
+→ can later be restored
+```
+
+Normal substitution action:
+
+```text
+Удалить из списка
+```
+
+is a soft removal:
+
+```text
+status = removed
+```
+
+It is NOT a client physical document delete.
+
+Client Rules deny physical participant delete.
+
+Auth-user deletion is a separate privileged backend cleanup path.
+
+---
+
+# 17. Hidden canonical slot invariant
+
+Vacation, sick and removed participants remain in the canonical rotation.
+
+Example:
+
+```text
+A
+B (vacation)
+C
+D
+```
+
+Move active participant `C` one visible place up:
+
+```text
+C
+B (vacation)
+A
+D
+```
+
+`B` keeps the hidden canonical slot.
+
+Calls and list reorders operate active participants around hidden participants.
+
+When vacation/sick participant becomes active again, or removed participant is restored, that participant returns at the canonical position reached while hidden.
+
+This invariant is required to prevent invisible participants from losing queue history.
+
+---
+
+# 18. New participant and restore semantics
+
+Truly new, never-before-added participant:
+
+```text
+→ one-time priority at top
+```
+
+After normal calls the participant follows ordinary rotation.
+
+Previously removed participant:
+
+```text
+remove
+→ status = removed
+→ document and anchor remain
+
+restore
+→ status = active
+→ restore at current hidden canonical anchor
+→ NOT at top
+```
+
+Repeat remove/add cannot grant repeated new-user priority.
+
+The system distinguishes:
+
+```text
+never participated before
+vs
+participated before but currently removed
+```
+
+---
+
+# 19. Gateway responsibility split
+
+State-only participant gateway:
+
+```text
+SubstitutionParticipantStateFirestoreGateway
+```
+
+Transactional membership gateway:
+
+```text
+SubstitutionRotationMembershipFirestoreGateway
+```
+
+Rotation editor gateway:
+
+```text
+SubstitutionRotationEditFirestoreGateway
+```
+
+Reason for separation:
+
+```text
+ordinary participant state mutation
+≠ membership mutation
+≠ whole-list reorder
+```
+
+These operations have different Firestore transaction invariants and must remain independently testable.
+
+Former file/class naming was cleaned up accordingly.
+
+---
+
+# 20. Substitution rotation draft
+
+Domain:
+
+```text
+SubstitutionRotationDraft
+```
+
+Stores:
+
+```text
+original canonical participants
+current local participants
+```
+
+Entry into editor:
+
+```text
+load authoritative edit baseline
+→ snapshot current canonical participants
+→ local draft
+```
+
+Before Apply:
+
+```text
+0 Firestore writes
+```
+
+Arrow semantics:
+
+```text
+↑ → one visible active place up
+↓ → one visible active place down
+```
+
+Inactive vacation/sick/removed slots are skipped as visible move targets but retain their canonical positions.
+
+Before persistence:
+
+```text
+normalizedParticipants()
+→ full canonical rotationOrder = 0..N-1
+```
+
+---
+
+# 21. Rotation edit service and baseline
+
+Application service:
+
+```text
+SubstitutionRotationEditService
+```
+
+Baseline:
+
+```text
+SubstitutionRotationEditBaseline
+```
+
+Fields:
+
+```text
+nextRotationOrder
+revision
+```
+
+Apply result:
+
+```text
+noChanges
+applied
+conflict
+```
+
+No changes:
+
+```text
+→ exit editor
+→ no reorder write
+```
+
+Applied:
+
+```text
+→ atomic transaction committed
+→ exit editor
+→ realtime canonical list becomes authoritative
+```
+
+Conflict:
+
+```text
+→ discard stale edit session
+→ show:
+Список изменился. Откройте режим редактирования заново.
+```
+
+---
+
+# 22. Atomic rotation Apply
+
+`SubstitutionRotationEditFirestoreGateway` validates within the transaction:
+
+```text
+module nextRotationOrder marker
+module revision
+pending call absence
+participant composition
+participant existence
+original rotationOrder of each participant
+```
+
+It writes only changed:
+
+```text
+rotationOrder
+```
+
+Concurrent fields that are not the editor's responsibility must not be overwritten, including:
+
+```text
+availability
+status
+```
+
+Successful Apply normalizes participant `rotationOrder`:
+
+```text
+0..N-1
+```
+
+but does NOT normalize module `nextRotationOrder` to N.
+
+Editor Apply advances:
+
+```text
+nextRotationOrder = previous nextRotationOrder + 1
+```
+
+`nextRotationOrder` therefore also acts as a monotonic mutation/edit marker.
+
+Do not reinterpret it as always equal to participant count.
+
+---
+
+# 23. Membership transaction behavior
+
+`SubstitutionRotationMembershipFirestoreGateway` baseline includes:
+
+```text
+moduleExists
+nextRotationOrder
+revision
+ordered participants
+pending-call state
+```
+
+Add/restore:
+
+```text
+pending call → reject
+verify baseline
+new participant → create with new-participant priority
+removed participant → restore existing hidden anchor
+existing non-removed participant → no duplicate
+```
+
+Soft remove:
+
+```text
+pending call → reject
+missing target → error
+already removed → idempotent
+verify module/order/status baseline
+status = removed
+preserve rotationOrder
+preserve availability
+advance mutation marker
+```
+
+First-create case can create/initialize the substitution module as required by the existing gateway contract.
+
+---
+
+# 24. Firestore Rules for membership/editor
+
+Rules now recognize:
+
+```text
+active
+vacation
+sick
+removed
+```
+
+Ordinary participant state updates must not bypass membership semantics involving `removed`.
+
+Manager-only membership/reorder authorization:
+
+```text
+brigadier
+owner
+```
+
+Rules validate required transaction shape, including applicable:
+
+```text
+module mutation marker
+pending-call absence
+new participant creation
+restore
+soft remove
+rotationOrder updates
+```
+
+Client physical participant delete:
+
+```text
+denied
+```
+
+Current targeted suite:
+
+```text
+56/56 passed
+```
+
+Latest Rules were deployed before physical-device Apply verification.
+
+---
+
+# 25. Rotation editor UI
+
+Entry:
+
+```text
+"Список"
+→ Настройки
+→ Режим редактирования списка
+```
+
+Available only to:
+
+```text
+brigadier
+owner
+```
+
+Entering editor:
+
+```text
+beginEditing()
+→ server baseline
+→ local draft
+→ switch to active List tab
+```
+
+While editing:
+
+```text
+title = Редактирование списка
+normal "Вызвать" hidden
+participant ⋮ / card hidden
+statistics hidden
+settings disabled
+active rows show ↑ / ↓
+bottom actions = Отмена / Применить
+```
+
+`Применить` active only when draft has real changes.
+
+During Apply:
+
+```text
+Отмена disabled
+arrows ignored
+Применить shows Применение...
+```
+
+Back/system Back cancels local edit session when Apply is not in progress.
+
+---
+
+# 26. Editor scroll / rapid-tap stabilization
+
+The active list keeps the moved participant approximately under the same physical finger position.
+
+Implementation concept:
+
+```text
+measure row global Y before move
+→ mutate local draft
+→ post-frame measure same row after rebuild
+→ compensate ScrollController offset
+```
+
+Edit-only scroll reserve allows movement to continue near the first/last active position.
+
+A one-frame move lock prevents overlapping row-key/rebuild operations.
+
+Expected behavior:
+
+```text
+normal/fast repeated taps
+→ participant can move repeatedly
+→ no Flutter assertion
+
+ultra-fast overlapping taps
+→ some taps may be intentionally dropped
+```
+
+This is presentation logic only and must not alter domain/business semantics.
+
+---
+
+# 27. Deleted Auth user cleanup
+
+Dedicated Cloud Function handles ordinary single-user Auth deletion.
+
+Cleanup targets:
+
+```text
+users/{uid}
+→ including device-token documents
+
+spaces/substitution/participants/{uid}
+
+spaces_access/{uid}
+```
+
+Preserved:
+
+```text
+confirmedCalls
+statistics
+chats
+messages
+historical business data
+```
+
+Ordinary single Auth deletion was manually verified in production.
+
+Important caveat:
+
+```text
+Admin SDK bulk deleteUsers([...])
+may not fire per-user Auth onDelete handlers
+```
+
+Do not assume bulk-delete parity without a dedicated verified path.
+
+Auth deletion and substitution soft removal are intentionally different semantics.
+
+Current hidden-anchor behavior does not provide stable business identity across delete/recreate with a new UID.
+
+---
+
+# 28. Android launcher icon / gull assets
 
 Runtime:
 
@@ -825,89 +1394,35 @@ assets/images/epistola_app_icon.png
 assets/images/epistola_seagull_stencil.png
 ```
 
-Master artwork in repository root:
+Master artwork:
 
 ```text
 Аватар Чайки.png
 Аватар Чайки трафарет.png
 ```
 
-Current usage:
+Android launcher icon is now replaced in:
 
 ```text
-epistola_app_icon.png → technical chat avatar
-epistola_seagull_stencil.png → empty SpacesBar
+mipmap-mdpi
+mipmap-hdpi
+mipmap-xhdpi
+mipmap-xxhdpi
+mipmap-xxxhdpi
 ```
 
-Important:
+Commit:
 
 ```text
-Android launcher icon was NOT replaced in checkpoint 9ebf9ab.
+544fcaf
+chore(android): update launcher icon
 ```
+
+Fresh release APK was verified on physical phone.
 
 ---
 
-# 17. "Список" flow after current checkpoint
-
-Existing foundation:
-
-```text
-participants
-rotation queue
-availability
-vacation / sick
-participant management
-work display name
-call participant
-Undo
-pending call persistence
-recovery
-exactly-once finalization
-monthly/yearly statistics
-confirmedCall
-personal SpacesBar
-technical history
-confirmed-call push
-Rules
-```
-
-Expected call flow:
-
-```text
-manager calls participant
-→ pendingCall
-→ 6-second Undo window
-```
-
-Undo:
-
-```text
-pending cancelled
-→ no confirmedCall
-→ no personal SpacesBar
-→ no technical history entry
-→ no confirmed-call push
-```
-
-No Undo:
-
-```text
-finalization transaction
-→ statistics
-→ confirmedCall
-→ pending deleted
-→ personal SpacesBar
-→ technical history
-→ substitution push
-```
-
-All downstream surfaces project the same canonical event rather than creating duplicate authoritative records.
-
-Owner protections remain highest priority.
-
----
-
-# 18. Existing Messenger foundations
+# 29. Existing Messenger foundations
 
 Private chats:
 
@@ -951,7 +1466,35 @@ image-aware scroll behavior
 
 ---
 
-# 19. Do not regress
+# 30. Known queued notification issue
+
+Observed separately from the rotation editor:
+
+```text
+owner may receive a copy of a substitution notification
+that was intended for the called user
+```
+
+Current suspicion:
+
+```text
+stale FCM device token after account switching
+```
+
+This is NOT yet verified.
+
+Later investigation should inspect logout/device token lifecycle, including occurrences of:
+
+```text
+unregisterCurrentDevice
+signOut
+```
+
+Do not modify substitution rotation/call semantics to fix this before proving the root cause.
+
+---
+
+# 31. Do not regress
 
 Do not:
 
@@ -959,39 +1502,86 @@ Do not:
 weaken owner priority/protections
 move transaction invariants into UI
 use UI role visibility as only security
+physically delete participant for normal "Удалить из списка"
+give restored participant repeated new-user top priority
+destroy hidden vacation/sick/removed anchors
+write Firestore on every editor arrow tap
+overwrite concurrent availability/status during reorder
+normalize nextRotationOrder to participant count
+allow stale edit session to silently overwrite concurrent list change
 store Flutter Color/presentation state in Firestore
-turn local hide into server writes
+turn SpacesBar local hide into server writes
 count personal calls against general 3/3
 create generic systemMessages backend
 turn Epistola history into fake normal chat
-generate second push from technical chat
+generate a second push from technical history
 break legacy chat deep links
 break legacy general spacesBarMessageId payload
-let newer realtime state override explicit valid push target
 add per-widget Firestore queries
 ```
 
 ---
 
-# 20. Deferred / next chat
+# 32. Deferred / next development
 
-Completed in `9ebf9ab`:
+Completed in the current functional block:
+
+```text
+removed hidden membership state
+new participant one-time top priority
+restore removed participant at hidden anchor
+transactional membership gateway
+participant state gateway naming split
+rotation draft
+rotation edit service
+atomic reorder gateway
+manager-only editor UI
+active-arrow scroll stabilization
+rapid-tap frame lock
+membership/editor Rules
+deleted Auth user cleanup
+Android launcher icon replacement
+phone production verification
+```
+
+Previously completed foundation remains active:
 
 ```text
 confirmedCall canonical event
 personal substitution SpacesBar
 local personal hide
-local shift-start expiry
+shift-start expiry
 Epistola read-only technical history
-gull runtime assets
 unified SpacesBar presentation IDs
 substitution confirmed-call push
 exact target support
-production Rules / Function deploys
-manual physical-device verification
 ```
 
-Deferred:
+Queued follow-up:
+
+```text
+investigate possible stale FCM token / duplicate recipient behavior
+```
+
+Planned new Spaces application work:
+
+```text
+Календарь смен
+Автобусы
+```
+
+For both new applications:
+
+```text
+first audit current placeholder/source
+define product/domain/data/security boundary
+then implement as separate foundations
+keep UI replaceable
+minimize Firebase usage
+do not couple them to Substitution internals unless a real shared contract is identified
+```
+
+Other deferred work:
 
 ```text
 stationary SpacesBar frame
@@ -1001,34 +1591,20 @@ Spaces tile configuration
 regular/compact tile modes
 >8 continuation
 legacy "*MessageId" naming cleanup
-actual Android launcher icon replacement
 ```
-
-Do not silently mix these into unrelated work.
 
 ---
 
-# 21. New-chat startup checklist
+# 33. New-chat startup checklist
 
-Run:
+At the beginning of the next chat run:
 
 ```powershell
-git.exe branch --show-current
-git.exe status --short
-git.exe rev-parse --short HEAD
-git.exe rev-parse --short origin/feat/v0.8.0-spaces-substitution-foundation
+git branch --show-current
+git status --short
+git rev-parse --short HEAD
+git rev-parse --short origin/feat/v0.8.0-spaces-substitution-foundation
 ```
-
-Expected functional point before a later docs commit:
-
-```text
-branch = feat/v0.8.0-spaces-substitution-foundation
-HEAD = 9ebf9ab
-origin = 9ebf9ab
-working tree = CLEAN
-```
-
-After a docs-only commit HEAD may be newer, but `9ebf9ab` remains the last functional checkpoint.
 
 Then read from CURRENT FEATURE BRANCH:
 
@@ -1039,8 +1615,25 @@ ARCHITECTURE.md
 README.md
 ```
 
+Priority:
+
+```text
+source
+→ PROJECT_CONTEXT.md
+→ ARCHITECTURE.md
+→ README.md
+```
+
+Last functional checkpoint documented here:
+
+```text
+544fcaf
+```
+
+A later docs-only commit may make HEAD newer.
+
 Do not start from `main`.
 
-Do not treat old temporary handoff files as canonical after these docs are installed.
+Do not treat historical temporary handoff files as canonical after these docs are installed.
 
 No commit / push / deploy without explicit user approval.
