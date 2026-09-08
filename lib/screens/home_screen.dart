@@ -9,6 +9,7 @@ import 'contacts_screen.dart';
 import 'profile_page.dart';
 import 'spaces_page.dart';
 import 'welcome_screen.dart';
+import '../platform/epistola_platform_capabilities.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({
@@ -75,6 +76,9 @@ class _HomeScreenState extends State<HomeScreen> {
     final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
     final isSpacesSelected = selectedIndex == _spacesIndex;
     final colorScheme = Theme.of(context).colorScheme;
+    final appTitle = EpistolaPlatformCapabilities.isWebLite
+        ? 'EpiLite'
+        : 'Epistola';
 
     return AvatarLostDataRecoveryHost(
       uid: uid,
@@ -104,7 +108,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Epistola',
+                        appTitle,
                         style: Theme.of(context).textTheme.titleLarge,
                       ),
                       Text(
@@ -115,7 +119,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ],
                   )
-                : const Text('Epistola'),
+                : Text(appTitle),
             actions: isSpacesSelected
                 ? [
                     IconButton(

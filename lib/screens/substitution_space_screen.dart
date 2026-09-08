@@ -1392,7 +1392,7 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
             appBar: AppBar(
               leading: BackButton(onPressed: _handleAppBarBack),
               title: Text(
-                _isRotationEditing ? 'Редактирование списка' : '"Список"',
+                _isRotationEditing ? 'Редактирование списка' : 'Список',
               ),
               actions: [
                 IconButton(

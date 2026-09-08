@@ -12,6 +12,7 @@ import 'screens/welcome_screen.dart';
 import 'services/app_settings.dart';
 import 'services/notification_service.dart';
 import 'services/push/push_deep_link_navigation.dart';
+import 'platform/epistola_platform_capabilities.dart';
 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -35,19 +36,25 @@ Future<void> main() async {
 
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
-  FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+  if (EpistolaPlatformCapabilities.supportsPushNotifications) {
+    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+  }
 
   final pushDeepLinkNavigation = PushDeepLinkNavigation();
 
-  await NotificationService.initialize(
-    deepLinkCoordinator: pushDeepLinkNavigation.coordinator,
-  );
+  if (EpistolaPlatformCapabilities.supportsPushNotifications) {
+    await NotificationService.initialize(
+      deepLinkCoordinator: pushDeepLinkNavigation.coordinator,
+    );
+  }
 
   await AppSettings.loadThemeMode();
 
   runApp(EpistolaApp(pushDeepLinkNavigation: pushDeepLinkNavigation));
 
-  unawaited(NotificationService.startMessaging());
+  if (EpistolaPlatformCapabilities.supportsPushNotifications) {
+    unawaited(NotificationService.startMessaging());
+  }
 }
 
 class EpistolaApp extends StatefulWidget {
@@ -86,7 +93,9 @@ class _EpistolaAppState extends State<EpistolaApp> {
       builder: (context, themeMode, _) {
         return MaterialApp(
           navigatorKey: widget.pushDeepLinkNavigation.navigatorKey,
-          title: 'Epistola',
+          title: EpistolaPlatformCapabilities.isWebLite
+              ? 'EpiLite'
+              : 'Epistola',
           debugShowCheckedModeBanner: false,
           themeMode: themeMode,
           theme: ThemeData(

@@ -45,18 +45,46 @@ class SubstitutionParticipantRow extends StatelessWidget {
         ? const CircleAvatar(radius: 22, child: Icon(Icons.person_outline))
         : UserAvatarView(user: resolvedUser, radius: 22);
 
-    return ListTile(
-      leading: SubstitutionQueueBadge(
-        avatar: avatar,
-        queuePosition: queuePosition,
-        availability: participant.availability,
-        displayMode: queueDisplayMode,
+    final subtitle = _buildSubtitle();
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 56),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            SubstitutionQueueBadge(
+              avatar: avatar,
+              queuePosition: queuePosition,
+              availability: participant.availability,
+              displayMode: queueDisplayMode,
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    displayName,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (subtitle != null) ...[
+                    const SizedBox(height: 2),
+                    subtitle,
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            showRotationControls
+                ? _buildRotationControls()
+                : _buildNormalControls(),
+          ],
+        ),
       ),
-      title: Text(displayName, maxLines: 2, overflow: TextOverflow.ellipsis),
-      subtitle: _buildSubtitle(),
-      trailing: showRotationControls
-          ? _buildRotationControls()
-          : _buildNormalControls(),
     );
   }
 

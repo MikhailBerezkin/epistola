@@ -13,6 +13,7 @@ import '../widgets/spaces/spaces_bar/spaces_bar_editor_sheet.dart';
 import '../widgets/spaces/spaces_bar/spaces_bar_panel.dart';
 import 'chats_space_screen.dart';
 import 'substitution_space_screen.dart';
+import '../platform/epistola_platform_capabilities.dart';
 
 class SpacesPage extends StatefulWidget {
   const SpacesPage({super.key, this.spacesBarTargetMessageId});
@@ -26,7 +27,7 @@ class SpacesPage extends StatefulWidget {
 class _SpacesPageState extends State<SpacesPage> with WidgetsBindingObserver {
   late final SpacesBarPresentationService _spacesBarService;
   late final SpacesBarManagementService _spacesBarManagementService;
-  late final ChatUnreadSummaryController _chatUnreadController;
+  ChatUnreadSummaryController? _chatUnreadController;
 
   StreamSubscription<SpacesBarPresentationState>? _spacesBarSubscription;
   Timer? _spacesBarExpiryTimer;
@@ -50,7 +51,9 @@ class _SpacesPageState extends State<SpacesPage> with WidgetsBindingObserver {
 
     _spacesBarService = createSpacesBarPresentationService();
     _spacesBarManagementService = createSpacesBarManagementService();
-    _chatUnreadController = ChatUnreadSummaryController()..start();
+    if (EpistolaPlatformCapabilities.supportsChats) {
+      _chatUnreadController = ChatUnreadSummaryController()..start();
+    }
 
     unawaited(_loadSpacesAccessRole());
     unawaited(_startSpacesBarWatch());
@@ -215,7 +218,7 @@ class _SpacesPageState extends State<SpacesPage> with WidgetsBindingObserver {
     _spacesBarExpiryTimer = null;
 
     unawaited(_spacesBarSubscription?.cancel());
-    _chatUnreadController.dispose();
+    _chatUnreadController?.dispose();
 
     super.dispose();
   }
@@ -394,6 +397,12 @@ class _SpacesPageState extends State<SpacesPage> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final presentationItems = _spacesBarState?.presentationItems ?? const [];
+    final chatUnreadController = _chatUnreadController;
+
+    final canManageSpacesBar =
+        EpistolaPlatformCapabilities.supportsSpacesBarManagement &&
+        !_isAccessRoleLoading &&
+        _accessRole.canManageSpacesBar;
 
     return Scaffold(
       body: RefreshIndicator(
@@ -414,12 +423,8 @@ class _SpacesPageState extends State<SpacesPage> with WidgetsBindingObserver {
                   },
                   onHideMessage: _hideSpacesBarMessage,
                   onHideSubstitutionCall: _hideSpacesBarSubstitutionCall,
-                  canManage:
-                      !_isAccessRoleLoading && _accessRole.canManageSpacesBar,
-                  onEdit:
-                      !_isAccessRoleLoading && _accessRole.canManageSpacesBar
-                      ? _openSpacesBarEditor
-                      : null,
+                  canManage: canManageSpacesBar,
+                  onEdit: canManageSpacesBar ? _openSpacesBarEditor : null,
                 ),
               ),
             ),
@@ -433,28 +438,38 @@ class _SpacesPageState extends State<SpacesPage> with WidgetsBindingObserver {
                   childAspectRatio: 1.15,
                 ),
                 delegate: SliverChildListDelegate([
-                  AnimatedBuilder(
-                    animation: _chatUnreadController,
-                    builder: (context, _) {
-                      return _SpaceTile(
-                        title: 'Чаты',
-                        subtitle: 'Личные и групповые чаты',
-                        icon: Icons.forum_outlined,
-                        badgeCount: _chatUnreadController.totalUnreadCount,
-                        onTap: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute<void>(
-                              builder: (_) => ChatsSpaceScreen(
-                                unreadController: _chatUnreadController,
+                  if (chatUnreadController != null)
+                    AnimatedBuilder(
+                      animation: chatUnreadController,
+                      builder: (context, _) {
+                        return _SpaceTile(
+                          title: 'Чаты',
+                          subtitle: 'Личные и групповые чаты',
+                          icon: Icons.forum_outlined,
+                          badgeCount: chatUnreadController.totalUnreadCount,
+                          onTap: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute<void>(
+                                builder: (_) => ChatsSpaceScreen(
+                                  unreadController: chatUnreadController,
+                                ),
                               ),
-                            ),
-                          );
-                        },
-                      );
-                    },
-                  ),
+                            );
+                          },
+                        );
+                      },
+                    )
+                  else
+                    _SpaceTile(
+                      title: 'Чаты',
+                      subtitle: 'Доступно в Android',
+                      icon: Icons.forum_outlined,
+                      onTap: () {
+                        _showAndroidOnly(context, 'Чаты');
+                      },
+                    ),
                   _SpaceTile(
-                    title: '"Список"',
+                    title: 'Список',
                     icon: Icons.groups_2_outlined,
                     onTap: () {
                       Navigator.of(context).push(
@@ -502,6 +517,28 @@ class _SpacesPageState extends State<SpacesPage> with WidgetsBindingObserver {
           ],
         ),
       ),
+    );
+  }
+
+  Future<void> _showAndroidOnly(BuildContext context, String title) {
+    return showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: Text(title),
+          content: const Text(
+            'Этот раздел пока доступен только в Android-приложении Epistola.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop();
+              },
+              child: const Text('ОК'),
+            ),
+          ],
+        );
+      },
     );
   }
 
