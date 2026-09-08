@@ -2,14 +2,14 @@
 
 Корпоративная Flutter/Firebase платформа для коммуникации и внутренних приложений компании.
 
-Epistola развивается из messenger-first приложения в единый Android workspace:
+Проект сейчас имеет два клиентских представления одной платформы:
 
 ```text
-communication
-+
-internal Spaces
-+
-work services
+Epistola
+→ полноценное Android-приложение
+
+EpiLite
+→ облегчённая Flutter Web / PWA версия
 ```
 
 Pilot target:
@@ -25,21 +25,24 @@ Pilot target:
 | Параметр | Значение |
 |---|---|
 | Target | `v0.8.0` |
-| Stage | `Spaces / Substitution / SpacesBar` |
+| Stage | `Spaces / Substitution / SpacesBar / EpiLite Web Lite` |
 | Branch | `feat/v0.8.0-spaces-substitution-foundation` |
-| Last functional checkpoint | `544fcaf` |
+| Last functional checkpoint | `a488c3b` |
+| EpiLite Web Lite | `a488c3b` |
+| Chats unread summary | `f0a2084` |
 | Substitution list editor | `85238a2` |
 | Deleted-user cleanup | `e7ac582` |
 | Android launcher icon | `544fcaf` |
-| Previous confirmed-call checkpoint | `9ebf9ab` |
 | Stable baseline before v0.8.0 | `v0.7.4` |
 | Firebase project | `epistola-434b7` |
 | Android package | `com.epistola.app` |
-| Platform | Android |
+| Android product | `Epistola` |
+| Web/PWA product | `EpiLite` |
+| Hosting | `https://epistola-434b7.web.app` |
 
 `v0.8.0` is still a feature-branch target and has not yet been declared merged/released.
 
-A later docs-only commit may make HEAD newer than `544fcaf`.
+A later docs-only commit may make `HEAD` newer than `a488c3b`.
 
 ---
 
@@ -50,7 +53,7 @@ Core layering:
 ```text
 Flutter UI
 → presentation / screen orchestration
-→ application services
+→ controllers / application services
 → domain
 → Firebase gateways / adapters
 ```
@@ -61,11 +64,81 @@ UI role visibility is not the security boundary.
 
 Presentation-only state should not be persisted as authoritative backend data.
 
+Platform availability is centralized through:
+
+```text
+lib/platform/epistola_platform_capabilities.dart
+```
+
 ---
 
-# Root navigation
+# Products
 
-Current root:
+## Epistola
+
+Full Android application.
+
+Current Android scope includes:
+
+```text
+Contacts
+Spaces
+Chats
+Profile
+push notifications
+avatars/media
+Substitution
+SpacesBar
+technical history
+```
+
+Android branding remains:
+
+```text
+Epistola
+```
+
+## EpiLite
+
+Lightweight Web/PWA client built from the same Flutter/Firebase codebase.
+
+Public URL:
+
+```text
+https://epistola-434b7.web.app
+```
+
+Current verified Web Lite scope:
+
+```text
+Firebase Auth
+Spaces root
+SpacesBar
+Список
+Profile/logout path
+PWA install
+```
+
+Current intentional limitations:
+
+```text
+Chats
+→ Android only
+
+Web push
+→ not implemented yet
+```
+
+The installed PWA name and branding are:
+
+```text
+EpiLite
+light-blue gull icon
+```
+
+---
+
+# Current root navigation
 
 ```text
 Контакты | Пространства | Профиль
@@ -77,7 +150,7 @@ Default:
 Пространства
 ```
 
-Chats are an internal Space:
+Android Chats remain an internal Space:
 
 ```text
 Пространства
@@ -85,7 +158,14 @@ Chats are an internal Space:
 → existing Messenger
 ```
 
-Messenger internals remain chat/Messenger architecture.
+In EpiLite:
+
+```text
+Чаты
+→ Доступно в Android
+```
+
+The Web client does not start the chat unread stream while Chats are disabled.
 
 ---
 
@@ -95,18 +175,24 @@ Tiles:
 
 ```text
 Чаты
-"Список"
+Список
 Судозаходы
 Календарь смен
 Автобусы
 ОТ и ТБ
 ```
 
-Working applications:
+Working Android applications:
 
 ```text
 Чаты
-"Список"
+Список
+```
+
+Working EpiLite application:
+
+```text
+Список
 ```
 
 Current placeholders:
@@ -125,7 +211,34 @@ Planned next application foundations include:
 Автобусы
 ```
 
-Their product/data contracts must be defined before implementation rather than inferred from the placeholder tiles.
+Their product/data contracts must be defined before implementation rather than inferred from placeholder tiles.
+
+---
+
+# Chats unread badge
+
+Checkpoint:
+
+```text
+f0a2084
+feat(spaces): add chats unread badge
+```
+
+Unread state is centralized in:
+
+```text
+ChatUnreadSummaryController
+```
+
+It owns a shared user-chat stream and avoids one Firestore unread query per tile.
+
+Manual scenario:
+
+```text
+0 → 1 → 2 → 1 → 0
+```
+
+Web does not create this controller while Chats are disabled.
 
 ---
 
@@ -158,6 +271,8 @@ Firestore Rules
 ```
 
 Owner remains highest priority.
+
+EpiLite uses the same domain/service/Rules authorization as Android.
 
 ---
 
@@ -208,7 +323,7 @@ owner
 Entry:
 
 ```text
-"Список"
+Список
 → Настройки
 → Режим редактирования списка
 ```
@@ -229,11 +344,9 @@ Apply:
 atomic Firestore transaction
 normalize canonical participant rotationOrder to 0..N-1
 write only changed rotationOrder fields
-preserve unrelated concurrent availability/status
+preserve unrelated concurrent state where allowed
 advance monotonic mutation marker
 ```
-
-Conflict protection checks the source order/composition and module baseline.
 
 Conflict UI:
 
@@ -243,13 +356,31 @@ Conflict UI:
 
 Cancel discards the draft without writes.
 
-The list preserves the moved row near the same finger position. A frame lock prevents rapid overlapping taps from crashing Flutter; ultra-fast overlapping taps may be dropped.
+---
+
+# Responsive Substitution rows
+
+The participant row was adjusted for narrow Web widths.
+
+Current shared row keeps:
+
+```text
+queue badge
+participant text
+Вызвать
+⋮
+statistics
+```
+
+without relying on a `ListTile.trailing` layout that overflowed in Web.
+
+Manual Android regression was verified after the change.
 
 ---
 
 # Substitution gateway split
 
-Participant writes are now intentionally separated:
+Participant writes are intentionally separated:
 
 ```text
 SubstitutionParticipantStateFirestoreGateway
@@ -268,7 +399,7 @@ The separation keeps transaction invariants below UI and independently testable.
 
 # Deleted Auth user cleanup
 
-A backend Auth-delete cleanup removes:
+Backend Auth-delete cleanup removes:
 
 ```text
 users/{uid}
@@ -288,7 +419,7 @@ messages
 
 Ordinary single-user deletion was verified in production.
 
-Bulk Admin SDK `deleteUsers([...])` may not trigger identical per-user cleanup and needs a separately verified path if used.
+Bulk Admin SDK `deleteUsers([...])` may require a separately verified cleanup path.
 
 ---
 
@@ -330,6 +461,8 @@ spaces_bar.hidden_message_ids.v1.<uid>
 ```
 
 No Firestore write is performed for local hide.
+
+SpacesBar works in both Android Epistola and current EpiLite, with the same role rules.
 
 ---
 
@@ -400,219 +533,269 @@ substitution:<callId>
 Backward compatibility remains for:
 
 ```text
-legacy chatId
+chatId
 legacy spacesBarMessageId
 ```
 
-Some internal routing APIs still use `*MessageId` names while carrying presentation IDs. This remains deferred naming debt.
+Some old internal `*MessageId` names still carry presentation IDs. They remain compatibility debt and should be cleaned in a dedicated technical block.
 
 ---
 
-# Push functions
+# Push
 
-General SpacesBar:
+Android push infrastructure remains active.
 
-```text
-sendSpacesBarNotification
-```
-
-Substitution call:
-
-```text
-sendSubstitutionCallNotification
-```
-
-Substitution recipient lookup:
-
-```text
-users/{calledUserId}/devices
-```
-
-Payload:
-
-```text
-deepLinkType = spacesBar
-spacesBarPresentationId = substitution:<callId>
-notificationMode = sound
-```
-
-Channel:
+SpacesBar Android channel:
 
 ```text
 epistola_spaces_bar_v1
 ```
 
-Sound:
+Substitution confirmed call push is generated from the canonical `confirmedCalls` event.
+
+Current EpiLite policy:
 
 ```text
-seagull_notification
+Web push disabled
 ```
 
-No separate push is generated by technical history.
+Web does not initialize Android/local notification infrastructure.
+
+A business action performed in EpiLite can still cause an Android device to receive an existing FCM push.
 
 ---
 
-# Epistola technical chat
+# EpiLite PWA / Hosting
 
-Private chats include read-only technical row:
-
-```text
-Epistola
-Технические сообщения
-```
-
-This is not a normal chat.
-
-There is no fake `chats` record and no generic `systemMessages` collection.
-
-Source:
+Hosting config:
 
 ```text
-confirmedCalls
-→ system message mapper/source/service
-→ EpistolaSystemChatScreen
+firebase.json
+public = build/web
+SPA rewrite → /index.html
 ```
 
-Current boundary:
+Build:
+
+```powershell
+flutter.bat build web
+```
+
+Deploy:
+
+```powershell
+firebase.cmd deploy --only hosting
+```
+
+Always build Web before deploy.
+
+PWA identity:
 
 ```text
-no composer
-no send
-no delete/clear
-no reactions
-no typing
-no read receipts
-no unread badge
+name = EpiLite
+short_name = EpiLite
+id = /epilite
+start_url = /
+scope = /
 ```
-
----
-
-# Gull artwork / Android launcher icon
 
 Runtime assets:
 
 ```text
-assets/images/epistola_app_icon.png
-assets/images/epistola_seagull_stencil.png
+web/favicon.png
+web/icons/Icon-192.png
+web/icons/Icon-512.png
+web/icons/Icon-maskable-192.png
+web/icons/Icon-maskable-512.png
 ```
 
-Master artwork:
+Branding source artwork:
 
 ```text
-Аватар Чайки.png
-Аватар Чайки трафарет.png
+design/branding/
 ```
-
-The Android launcher icon is now replaced with approved gull artwork in all five mipmap density folders.
-
-Physical-device verification passed.
 
 ---
 
-# Verification
+# Development / test commands
 
-Current functional commits:
+Flutter:
 
-```text
-85238a2
-feat(spaces): add substitution list editing
-
-e7ac582
-feat(auth): clean deleted users from spaces
-
-544fcaf
-chore(android): update launcher icon
+```powershell
+dart.bat format <files>
+flutter.bat analyze
+flutter.bat test
+flutter.bat build apk --release
+flutter.bat build web
 ```
 
-Checks:
+Local Web:
+
+```powershell
+flutter.bat run -d chrome --web-port 57097
+```
+
+Hosting:
+
+```powershell
+firebase.cmd deploy --only hosting
+```
+
+Git:
+
+```powershell
+git status --short
+git diff --check
+```
+
+Generated plugin files should be restored once after the final Flutter command in a series.
+
+---
+
+# Latest verification
+
+Checkpoint:
 
 ```text
-flutter.bat test
-→ 978 passed
+a488c3b
+feat(web): add EpiLite web client
+```
 
+Flutter:
+
+```text
 flutter.bat analyze
 → No issues found
 
-release APK
+flutter.bat test
+→ 978 tests passed
+
+flutter.bat build web
+→ SUCCESS
+
+flutter.bat build apk --release
 → SUCCESS
 → 58.4 MB
-
-rotation/editor targeted tests
-→ 38/38
-
-substitution Firestore Rules
-→ 56/56
-
-deleted-user cleanup tests
-→ 4/4
-
-Functions lint
-→ no errors
-
-Functions build
-→ SUCCESS
 ```
 
-Production/manual:
+Manual:
 
 ```text
-latest substitution Rules deployed
-deleted-user cleanup deployed
-phone Apply persistence test passed
-Cancel test passed
-vacation hidden-slot behavior passed
-rapid-tap crash regression passed
-Android launcher icon passed
+EpiLite PWA installed
+→ name correct
+→ icon correct
+→ Web title correct
+→ authentication works
+→ member and privileged accounts checked
+→ SpacesBar works
+→ Список works
+→ Chats blocked as Android-only
+
+Android regression
+→ Epistola branding preserved
+→ Spaces works
+→ Chats works
+→ Список works
+→ participant controls render correctly
+→ SpacesBar role management preserved
 ```
 
 ---
 
-# Known queued issue
+# Branding assets
 
-Observed separately:
+Source files are kept out of the project root:
 
 ```text
-owner may receive a copy of a substitution notification
-intended for the called user
+design/branding/Аватар EpiLite.png
+design/branding/Аватар Чайки.png
+design/branding/Аватар Чайки трафарет.png
 ```
 
-Current suspicion is stale FCM token state after account switching, but this is not verified.
-
-Investigate device-token unregister/logout lifecycle separately; do not modify rotation/call business logic until root cause is proven.
+Runtime application assets remain in their platform/feature paths.
 
 ---
 
-# Planned next work
+# Roadmap
 
-After the current checkpoint and new-chat handoff:
+Completed:
 
 ```text
-1. verify branch / status / HEAD / origin
-2. read current source and canonical docs
-3. continue remaining agreed roadmap work without reconstructing old decisions
-4. develop dedicated foundation for Календарь смен
-5. develop dedicated foundation for Автобусы
+Chats unread summary
+EpiLite Web Lite / PWA foundation
 ```
 
-For `Календарь смен` and `Автобусы`, the current repository only establishes placeholder Spaces tiles. The next chat should first define the intended product/domain/storage/security contract from the current source and user requirements, then implement each foundation in small verifiable steps.
-
-Other deferred work:
+Next priority unless reprioritized:
 
 ```text
-stationary SpacesBar frame
-true cyclic/infinite swipe
-glow tuning
-Spaces tile configuration
-regular/compact layout
->8 continuation
-legacy SpacesBar "*MessageId" naming cleanup
+1. SpacesBar UI
+   stationary outer frame
+   true cyclic/infinite swipe
+   glow tuning
+
+2. Spaces Hub UI/settings
+   ⋮
+   show/hide Spaces
+   regular/compact layout
+   7–8
+   >8
+   odd final tile
+
+3. legacy *MessageId → presentationId cleanup
+
+4. FCM token lifecycle investigation
+
+5. Calendar foundation
+
+6. Buses foundation
+```
+
+Possible later EpiLite phases:
+
+```text
+Web push
+Chats on Web
+explicit Contacts support
+full responsive parity
 ```
 
 ---
 
-# Source of truth for new chats
+# Documentation workflow
 
-Before new work:
+Current source of truth priority:
+
+```text
+source code
+→ PROJECT_CONTEXT.md
+→ ARCHITECTURE.md
+→ README.md
+```
+
+For the three root docs:
+
+```text
+PROJECT_CONTEXT.md
+ARCHITECTURE.md
+README.md
+```
+
+the preferred replacement workflow is:
+
+```text
+assistant prepares all three full files
+→ packs them into one ZIP
+→ user extracts ZIP
+→ root copies replace the three current files
+```
+
+This avoids manual section-by-section patching.
+
+---
+
+# New-chat checklist
+
+Before continuing work:
 
 ```powershell
 git branch --show-current
@@ -621,30 +804,19 @@ git rev-parse --short HEAD
 git rev-parse --short origin/feat/v0.8.0-spaces-substitution-foundation
 ```
 
-Then read from the current feature branch:
+Then read:
 
 ```text
-current source
 PROJECT_CONTEXT.md
 ARCHITECTURE.md
 README.md
 ```
 
-Priority:
+Expected latest functional checkpoint for this block:
 
 ```text
-source
-→ PROJECT_CONTEXT.md
-→ ARCHITECTURE.md
-→ README.md
+a488c3b
+feat(web): add EpiLite web client
 ```
 
-Last functional checkpoint documented here:
-
-```text
-544fcaf
-```
-
-A docs-only commit may make HEAD newer.
-
-Do not use `main` as the source of current `v0.8.0` state until release/merge is explicitly completed.
+Do not use `main` as the current `v0.8.0` state until merge/release is explicitly verified.

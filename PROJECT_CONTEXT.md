@@ -29,14 +29,21 @@ Feature branch:
 feat/v0.8.0-spaces-substitution-foundation
 ```
 
-Текущий локальный functional checkpoint:
+Текущий functional checkpoint:
 
 ```text
-544fcaf
-chore(android): update launcher icon
+a488c3b
+feat(web): add EpiLite web client
 ```
 
-Функциональные commits последнего завершённого блока:
+Предыдущий functional checkpoint:
+
+```text
+f0a2084
+feat(spaces): add chats unread badge
+```
+
+Выбранные предыдущие checkpoints:
 
 ```text
 85238a2
@@ -47,18 +54,10 @@ feat(auth): clean deleted users from spaces
 
 544fcaf
 chore(android): update launcher icon
-```
 
-Предыдущий крупный Spaces/Substitution checkpoint:
-
-```text
 9ebf9ab
 feat(spaces): add confirmed substitution call delivery
-```
 
-Предыдущий SpacesBar realtime checkpoint:
-
-```text
 123cda1
 feat(spaces): add realtime spaces bar notifications
 ```
@@ -79,7 +78,18 @@ release declaration
 release tag
 ```
 
-На момент подготовки этого документа новые functional commits ещё не были финально запушены после документационного обновления. В новом чате обязательно проверять фактические `HEAD` и `origin`, а не выводить их из текста документа.
+Документационный commit может сделать `HEAD` новее `a488c3b`.
+
+В новом чате обязательно сначала проверять фактические:
+
+```powershell
+git branch --show-current
+git status --short
+git rev-parse --short HEAD
+git rev-parse --short origin/feat/v0.8.0-spaces-substitution-foundation
+```
+
+Не выводить состояние `origin` из этого документа.
 
 ---
 
@@ -88,11 +98,19 @@ release tag
 Flutter:
 
 ```text
-flutter.bat test
-→ 978 tests passed
+dart.bat format
+→ 6 files
+→ 0 changed
 
 flutter.bat analyze
 → No issues found
+
+flutter.bat test
+→ 978 tests passed
+
+flutter.bat build web
+→ SUCCESS
+→ build/web
 
 flutter.bat build apk --release
 → SUCCESS
@@ -115,33 +133,7 @@ All tests passed!
 
 это не падение suite.
 
-Targeted rotation/editor suite:
-
-```text
-38/38 passed
-```
-
-Firestore Rules — последний targeted substitution suite:
-
-```text
-56/56 passed
-0 failed
-```
-
-Cloud Functions — deleted-user cleanup:
-
-```text
-node --test functions/test/deleted_user_cleanup.test.cjs
-→ 4/4 passed
-
-npm.cmd --prefix functions run lint
-→ no errors
-→ остаётся известное предупреждение TypeScript 6.0.3 /
-   @typescript-eslint supported range
-
-npm.cmd --prefix functions run build
-→ SUCCESS
-```
+Release APK может показывать предупреждение о будущей миграции Flutter plugins с Kotlin Gradle Plugin на Built-in Kotlin. На checkpoint `a488c3b` это предупреждение не ломает release build.
 
 Git:
 
@@ -150,45 +142,87 @@ git diff --check
 → clean
 
 git diff --cached --check
-→ clean перед functional commits
+→ clean перед functional commit
 
 generated Flutter plugin files
 → восстановлены после последней Flutter-команды
-→ в functional commits не попали
+→ в functional commit не попали
+
+.firebase/
+→ удалена перед functional commit
 ```
 
-Production/manual verification:
+Manual verification — EpiLite:
 
 ```text
-latest substitution Firestore Rules
-→ deployed
+Firebase Hosting deployed
+→ https://epistola-434b7.web.app
 
-deleted-user cleanup Function
-→ deployed и проверен ранее в этом блоке
+PWA install on Android
+→ works
 
-fresh release APK 58.4 MB
-→ проверен на физическом Android-телефоне
+installed app name
+→ EpiLite
 
-Android launcher gull icon
-→ отображается
+installed launcher icon
+→ new light-blue gull icon
 
-Substitution list editor:
-→ открыть режим редактирования
-→ переместить участника
-→ Применить
-→ закрыть/повторно открыть "Список"
-→ новый порядок сохраняется
+browser tab title
+→ EpiLite
 
-Отмена:
-→ локальный draft отбрасывается
-→ сохранённый порядок не меняется
+Web app header
+→ EpiLite
 
-vacation participant:
-→ hidden canonical slot behavior проверен
+existing Firebase account authentication
+→ works
 
-rapid arrow taps:
-→ Flutter assertion/crash больше не воспроизводится
-→ сверхбыстрые overlapping taps могут безопасно отбрасываться frame-lock'ом
+member account
+→ manually checked
+
+privileged account
+→ manually checked
+
+SpacesBar
+→ loads
+→ role-based management preserved
+
+"Список"
+→ opens
+→ role-based actions preserved
+
+narrow Web participant rows
+→ no trailing overflow / RenderFlex spam
+
+Chats
+→ intentionally unavailable on Web
+→ tile shows "Доступно в Android"
+
+Web push
+→ intentionally disabled in current Web Lite scope
+```
+
+Manual verification — Android regression:
+
+```text
+Android app remains Epistola
+
+Пространства
+→ opens
+
+Чаты
+→ opens
+
+Список
+→ opens
+
+participant row
+→ renders correctly
+
+Вызвать / ⋮ / statistics controls
+→ render correctly where applicable
+
+SpacesBar manager controls
+→ remain available by existing role rules
 ```
 
 ---
@@ -198,12 +232,23 @@ rapid arrow taps:
 ```text
 Firebase project: epistola-434b7
 Android package: com.epistola.app
+
 Firestore region: eur3
 Realtime Database region: europe-west1
 Cloud Functions region: europe-west1
 Cloud Functions runtime: Node.js 22
-Primary platform: Android
-Pilot target: 40–50 users
+
+Full application:
+Android / Epistola
+
+Lightweight Web/PWA:
+EpiLite
+
+Firebase Hosting:
+https://epistola-434b7.web.app
+
+Pilot target:
+40–50 users
 ```
 
 Cost principles:
@@ -215,7 +260,29 @@ reuse UID-keyed caches
 keep presentation state local when server authority is unnecessary
 list reorder writes only once on Apply
 avoid duplicate authoritative business records
+reuse existing Firebase backend for EpiLite where safe
 ```
+
+Hosting configuration:
+
+```text
+firebase.json
+
+hosting.public
+→ build/web
+
+SPA rewrite
+→ ** → /index.html
+```
+
+Deploy:
+
+```powershell
+flutter.bat build web
+firebase.cmd deploy --only hosting
+```
+
+Do not deploy without explicit approval.
 
 ---
 
@@ -254,11 +321,216 @@ large edit → full file
 small edit → precise replacement
 ```
 
-Generated plugin files restore once after the final Flutter command in a series.
+Special docs workflow:
+
+```text
+PROJECT_CONTEXT.md
+ARCHITECTURE.md
+README.md
+```
+
+For these three files, prefer:
+
+```text
+assistant prepares full replacement files
+→ packs exactly these three files into ZIP
+→ user downloads ZIP
+→ PowerShell extracts to temp
+→ root files are replaced with Copy-Item -Force
+```
+
+Do not make the user manually patch these three docs section-by-section unless explicitly requested.
+
+Generated Flutter plugin files restore once after the final Flutter command in a series.
 
 ---
 
-# 5. Spaces root and Hub
+# 5. Platform split: Epistola / EpiLite
+
+The same Flutter/Firebase codebase now has an explicit lightweight Web boundary.
+
+Capability file:
+
+```text
+lib/platform/epistola_platform_capabilities.dart
+```
+
+Current policy:
+
+```text
+isWebLite
+→ true on Web
+
+supportsPushNotifications
+→ Android = true
+→ Web = false
+
+supportsChats
+→ Android = true
+→ Web = false
+
+supportsContacts
+→ reserved capability flag
+→ current root navigation still exposes Contacts
+→ Contacts are not part of the guaranteed EpiLite MVP scope
+
+supportsSpacesBarManagement
+→ true
+→ actual permission still determined by Spaces role
+
+supportsSubstitutionManagement
+→ true
+→ actual permission still determined by existing role/domain/security rules
+
+supportsSubstitutionAvailabilityChanges
+→ true
+```
+
+Important:
+
+```text
+capability flag
+≠ authorization
+```
+
+Platform capability answers whether a feature is enabled for the platform.
+
+Business/security permission still comes from:
+
+```text
+role/domain logic
++
+Firestore Rules
+```
+
+---
+
+# 6. EpiLite Web Lite foundation
+
+Brand:
+
+```text
+Web/PWA
+→ EpiLite
+
+Android/full app
+→ Epistola
+```
+
+Current PWA identity:
+
+```text
+name = EpiLite
+short_name = EpiLite
+id = /epilite
+start_url = /
+scope = /
+display = standalone
+```
+
+PWA files:
+
+```text
+web/index.html
+web/manifest.json
+web/favicon.png
+web/icons/Icon-192.png
+web/icons/Icon-512.png
+web/icons/Icon-maskable-192.png
+web/icons/Icon-maskable-512.png
+```
+
+Icon URLs use cache-busting query suffixes in the manifest.
+
+Source branding artwork:
+
+```text
+design/branding/Аватар EpiLite.png
+design/branding/Аватар Чайки.png
+design/branding/Аватар Чайки трафарет.png
+```
+
+Runtime SpacesBar stencil remains separate and must not be moved just because branding sources were moved:
+
+```text
+assets/images/epistola_seagull_stencil.png
+```
+
+Web title:
+
+```text
+MaterialApp title
+→ EpiLite on Web
+→ Epistola on Android
+
+Home screen header
+→ EpiLite on Web
+→ Epistola on Android
+```
+
+---
+
+# 7. EpiLite current supported scope
+
+Current Web Lite MVP verified manually:
+
+```text
+Firebase Auth
+Spaces root
+SpacesBar
+"Список"
+Profile/logout path
+PWA installation
+Firebase Hosting
+```
+
+Current explicit limitations:
+
+```text
+Chats
+→ disabled on Web
+→ Android-only dialog
+
+Web push
+→ disabled
+
+FCM/local Android notification initialization
+→ skipped on Web
+```
+
+Do not interpret an Android push arriving while a Web action is performed as Web push support. Android may receive the push through its existing device token.
+
+Contacts currently remain visible through root navigation, but they are not part of the intentionally guaranteed MVP contract yet.
+
+Future Web work may expand EpiLite toward full Epistola, but this must happen feature-by-feature through platform capabilities rather than by scattering `kIsWeb` checks throughout unrelated UI.
+
+---
+
+# 8. Web Firebase/Storage notes
+
+Firebase Auth and Firestore are shared with Android.
+
+Web avatar/image loading required Storage CORS work during bring-up.
+
+If hosted Web images fail again, verify the active Storage bucket CORS instead of changing avatar widgets to add new Firestore/Storage reads.
+
+Known bucket:
+
+```text
+gs://epistola-434b7.firebasestorage.app
+```
+
+Web bring-up used fixed localhost port for reproducible CORS testing:
+
+```powershell
+flutter.bat run -d chrome --web-port 57097
+```
+
+Do not hard-code this localhost origin into application logic.
+
+---
+
+# 9. Spaces root and Hub
 
 Root:
 
@@ -280,7 +552,7 @@ Back:
 Пространства → exit
 ```
 
-Messenger remains internal:
+Android Messenger remains internal:
 
 ```text
 Пространства
@@ -295,21 +567,35 @@ Current tiles:
 
 ```text
 Чаты
-"Список"
+Список
 Судозаходы
 Календарь смен
 Автобусы
 ОТ и ТБ
 ```
 
-Currently implemented/working Spaces applications:
+Android working Spaces:
 
 ```text
 Чаты
-"Список"
+Список
 ```
 
-Currently unimplemented/placeholders:
+EpiLite working Spaces:
+
+```text
+Список
+```
+
+EpiLite Chats tile:
+
+```text
+title = Чаты
+subtitle = Доступно в Android
+tap → Android-only dialog
+```
+
+Placeholders/unimplemented:
 
 ```text
 Судозаходы
@@ -318,28 +604,69 @@ Currently unimplemented/placeholders:
 ОТ и ТБ
 ```
 
-Planned next product work after the current checkpoint includes dedicated foundations for:
+Deferred Hub UX:
 
 ```text
-Календарь смен
-Автобусы
-```
-
-Do not invent their backend/domain contract from the placeholder UI. In the next chat first audit current source and then define each foundation deliberately before implementation.
-
-Deferred tile UX:
-
-```text
-<=6 → regular
-7–8 → compact, no subtitles
-odd final tile → full width
->8 → vertical scroll
-⋮ → future show/hide/reorder
+⋮ settings
+show/hide Spaces
+regular/compact layout
+7–8 compact
+>8 behavior
+odd final tile behavior
 ```
 
 ---
 
-# 6. Spaces roles
+# 10. Chats unread summary
+
+Functional checkpoint:
+
+```text
+f0a2084
+feat(spaces): add chats unread badge
+```
+
+Architecture:
+
+```text
+ChatUnreadSummaryController
+```
+
+owns one:
+
+```text
+getUserChats()
+```
+
+stream and derives centralized unread counts.
+
+Important:
+
+```text
+ChatTile
+→ no per-tile Firestore unread query
+```
+
+Hub badge:
+
+```text
+Чаты tile
+→ upper-right unread badge
+```
+
+Manual verified:
+
+```text
+0 → 1 → 2 → 1 → 0
+```
+
+EpiLite does not create the chat unread controller because Chats are disabled on Web.
+
+This avoids unnecessary Web chat reads for a disabled feature.
+
+---
+
+# 11. Spaces roles
 
 ```text
 member
@@ -366,18 +693,18 @@ owner
 SpacesBar capability:
 
 ```text
-canManageSpacesBar
-
 member = false
 brigadier = true
 owner = true
 ```
 
+EpiLite preserves the same role semantics.
+
 UI visibility is not the security boundary. Firestore Rules independently protect authoritative writes.
 
 ---
 
-# 7. General SpacesBar
+# 12. General SpacesBar
 
 Authoritative document:
 
@@ -449,9 +776,51 @@ No Firestore write for local hide.
 
 Manager editor counts only active general announcements for `3/3`.
 
+EpiLite uses the same backend and same role rules for SpacesBar.
+
 ---
 
-# 8. Personal substitution SpacesBar
+# 13. Current SpacesBar UI
+
+Main widget:
+
+```text
+SpacesBarPanel
+```
+
+Current:
+
+```text
+height = 141 px
+message font = 18 px
+1 item → no dots/chevrons
+>1 → chevrons + dots + PageView
+auto rotation = 15 sec
+manual navigation resets timer
+```
+
+Empty state:
+
+```text
+assets/images/epistola_seagull_stencil.png
+Нет новых закреплённых сообщений
+```
+
+Current implementation still uses finite PageView boundaries.
+
+Deferred presentation-only:
+
+```text
+stationary outer frame
+true cyclic/infinite swipe
+glow tuning
+```
+
+These remain next UI work after the Web Lite diversion unless reprioritized.
+
+---
+
+# 14. Personal substitution SpacesBar
 
 Unified presentation model:
 
@@ -505,7 +874,7 @@ Personal calls do NOT consume general `3/3` capacity.
 
 ---
 
-# 9. Personal call expiry and local hide
+# 15. Personal call expiry and local hide
 
 A personal call is active only while:
 
@@ -547,144 +916,7 @@ no Firestore write
 
 ---
 
-# 10. Current SpacesBar UI
-
-Main widget:
-
-```text
-SpacesBarPanel
-```
-
-Current:
-
-```text
-height = 141 px
-message font = 18 px
-1 item → no dots/chevrons
->1 → chevrons + dots + PageView
-auto rotation = 15 sec
-manual navigation resets timer
-```
-
-Empty state:
-
-```text
-assets/images/epistola_seagull_stencil.png
-Нет новых закреплённых сообщений
-```
-
-Current implementation still uses finite PageView boundaries.
-
-Deferred presentation-only:
-
-```text
-stationary outer frame
-true cyclic/infinite swipe
-glow tuning
-```
-
----
-
-# 11. Unified SpacesBar push target
-
-`PushDeepLinkRequest` supports:
-
-```text
-chat
-spacesBar
-```
-
-Current unified field:
-
-```text
-spacesBarPresentationId
-```
-
-Valid IDs:
-
-```text
-general:<messageId>
-substitution:<callId>
-```
-
-Backward compatibility:
-
-```text
-legacy chatId
-legacy general spacesBarMessageId
-```
-
-Legacy:
-
-```text
-spacesBarMessageId = 42
-→ internally general:42
-```
-
-Deduplication:
-
-```text
-chat:<id>
-spacesBar:<presentationId>
-```
-
-Important naming debt:
-
-```text
-resolveSpacesBarMessageId
-spacesBarTargetMessageId
-targetMessageId
-```
-
-These old names can now carry a unified presentation ID. Do not rename them during unrelated work.
-
-Explicit valid push target stays stronger than newer realtime state until user navigation releases the target.
-
-Local hide remains stronger than push-target forcing.
-
----
-
-# 12. General SpacesBar push
-
-Function:
-
-```text
-sendSpacesBarNotification
-```
-
-Trigger:
-
-```text
-onDocumentWritten("spaces/spacesBar")
-```
-
-Push only for exactly one valid new general announcement.
-
-Recipients:
-
-```text
-collectionGroup("devices")
-→ dedupe
-→ exclude publisher tokens
-→ multicast <=500
-→ cleanup invalid token docs
-```
-
-Channel:
-
-```text
-epistola_spaces_bar_v1
-```
-
-Sound:
-
-```text
-seagull_notification
-```
-
----
-
-# 13. Canonical confirmed substitution call
+# 16. Canonical confirmed substitution call
 
 Successful finalization transaction:
 
@@ -758,7 +990,7 @@ update/delete → denied
 
 ---
 
-# 14. Substitution confirmed-call push
+# 17. Substitution confirmed-call push
 
 Function:
 
@@ -799,9 +1031,72 @@ Uses the same SpacesBar Android channel.
 
 No second FCM push is generated by the technical chat.
 
+EpiLite does not initialize the Web push pipeline yet.
+
 ---
 
-# 15. Epistola technical chat
+# 18. Unified SpacesBar push target
+
+`PushDeepLinkRequest` supports:
+
+```text
+chat
+spacesBar
+```
+
+Current unified field:
+
+```text
+spacesBarPresentationId
+```
+
+Valid IDs:
+
+```text
+general:<messageId>
+substitution:<callId>
+```
+
+Backward compatibility:
+
+```text
+legacy chatId
+legacy general spacesBarMessageId
+```
+
+Legacy:
+
+```text
+spacesBarMessageId = 42
+→ internally general:42
+```
+
+Deduplication:
+
+```text
+chat:<id>
+spacesBar:<presentationId>
+```
+
+Important naming debt:
+
+```text
+resolveSpacesBarMessageId
+spacesBarTargetMessageId
+targetMessageId
+```
+
+These old names can carry a unified presentation ID.
+
+Do not rename them during unrelated work.
+
+Explicit valid push target stays stronger than newer realtime state until user navigation releases the target.
+
+Local hide remains stronger than push-target forcing.
+
+---
+
+# 19. Epistola technical chat
 
 Private chats include a read-only technical row:
 
@@ -849,7 +1144,7 @@ createdAt = call.calledAt
 
 History is ordered old → new.
 
-Listener exists only while technical screen is open. `ChatsPage` does not keep a confirmedCalls preview listener; subtitle stays static.
+Listener exists only while technical screen is open.
 
 Read-only boundary:
 
@@ -865,9 +1160,11 @@ no read receipts
 no unread badge
 ```
 
+This technical chat is Android Messenger functionality, not part of current EpiLite Chats scope.
+
 ---
 
-# 16. Participant statuses and membership semantics
+# 20. Participant statuses and membership semantics
 
 Canonical participant path:
 
@@ -875,7 +1172,7 @@ Canonical participant path:
 spaces/substitution/participants/{userId}
 ```
 
-Current statuses:
+Statuses:
 
 ```text
 active
@@ -900,34 +1197,50 @@ sick
 → retains canonical rotation slot
 
 removed
-→ hidden from List/Vacation/Sick tabs
-→ retains canonical rotation slot
-→ can later be restored
+→ hidden from active queue
+→ retains canonical membership anchor
 ```
 
-Normal substitution action:
+Normal:
 
 ```text
 Удалить из списка
 ```
 
-is a soft removal:
+means soft removal:
 
 ```text
 status = removed
 ```
 
-It is NOT a client physical document delete.
+not physical participant-document deletion.
 
-Client Rules deny physical participant delete.
+A never-before-added participant receives one-time priority at top.
 
-Auth-user deletion is a separate privileged backend cleanup path.
+A previously removed participant restores at its current hidden canonical anchor and does not regain top priority.
+
+This prevents remove/re-add from gaming queue priority.
 
 ---
 
-# 17. Hidden canonical slot invariant
+# 21. Hidden canonical slot invariant
 
-Vacation, sick and removed participants remain in the canonical rotation.
+Inactive statuses:
+
+```text
+vacation
+sick
+removed
+```
+
+retain:
+
+```text
+rotationOrder
+canonical queue membership/anchor
+```
+
+Active participants can rotate or be manually reordered around hidden anchors.
 
 Example:
 
@@ -938,7 +1251,7 @@ C
 D
 ```
 
-Move active participant `C` one visible place up:
+Move `C` one visible active place up:
 
 ```text
 C
@@ -947,52 +1260,13 @@ A
 D
 ```
 
-`B` keeps the hidden canonical slot.
+The inactive slot remains fixed.
 
-Calls and list reorders operate active participants around hidden participants.
-
-When vacation/sick participant becomes active again, or removed participant is restored, that participant returns at the canonical position reached while hidden.
-
-This invariant is required to prevent invisible participants from losing queue history.
+On return/restore, the inactive participant reappears at the current canonical anchor.
 
 ---
 
-# 18. New participant and restore semantics
-
-Truly new, never-before-added participant:
-
-```text
-→ one-time priority at top
-```
-
-After normal calls the participant follows ordinary rotation.
-
-Previously removed participant:
-
-```text
-remove
-→ status = removed
-→ document and anchor remain
-
-restore
-→ status = active
-→ restore at current hidden canonical anchor
-→ NOT at top
-```
-
-Repeat remove/add cannot grant repeated new-user priority.
-
-The system distinguishes:
-
-```text
-never participated before
-vs
-participated before but currently removed
-```
-
----
-
-# 19. Gateway responsibility split
+# 22. Gateway separation
 
 State-only participant gateway:
 
@@ -1000,7 +1274,7 @@ State-only participant gateway:
 SubstitutionParticipantStateFirestoreGateway
 ```
 
-Transactional membership gateway:
+Membership gateway:
 
 ```text
 SubstitutionRotationMembershipFirestoreGateway
@@ -1012,21 +1286,19 @@ Rotation editor gateway:
 SubstitutionRotationEditFirestoreGateway
 ```
 
-Reason for separation:
+These represent distinct write contracts:
 
 ```text
-ordinary participant state mutation
-≠ membership mutation
-≠ whole-list reorder
+state mutation
+membership mutation
+whole-list reorder
 ```
 
-These operations have different Firestore transaction invariants and must remain independently testable.
-
-Former file/class naming was cleaned up accordingly.
+Do not collapse them into one generic participant gateway.
 
 ---
 
-# 20. Substitution rotation draft
+# 23. Rotation draft and editor
 
 Domain:
 
@@ -1037,567 +1309,201 @@ SubstitutionRotationDraft
 Stores:
 
 ```text
-original canonical participants
-current local participants
+original participants
+current participants
 ```
 
-Entry into editor:
+Active move API:
 
 ```text
-load authoritative edit baseline
-→ snapshot current canonical participants
-→ local draft
+canMoveActiveUp
+canMoveActiveDown
+moveActiveUp
+moveActiveDown
 ```
 
-Before Apply:
+Inactive slots are preserved while active participants swap visible active positions.
+
+Normalization before persistence:
 
 ```text
-0 Firestore writes
+rotationOrder = 0..N-1
 ```
 
-Arrow semantics:
+across the complete canonical participant list.
 
-```text
-↑ → one visible active place up
-↓ → one visible active place down
-```
-
-Inactive vacation/sick/removed slots are skipped as visible move targets but retain their canonical positions.
-
-Before persistence:
-
-```text
-normalizedParticipants()
-→ full canonical rotationOrder = 0..N-1
-```
-
----
-
-# 21. Rotation edit service and baseline
-
-Application service:
-
-```text
-SubstitutionRotationEditService
-```
-
-Baseline:
-
-```text
-SubstitutionRotationEditBaseline
-```
-
-Fields:
-
-```text
-nextRotationOrder
-revision
-```
-
-Apply result:
-
-```text
-noChanges
-applied
-conflict
-```
-
-No changes:
-
-```text
-→ exit editor
-→ no reorder write
-```
-
-Applied:
-
-```text
-→ atomic transaction committed
-→ exit editor
-→ realtime canonical list becomes authoritative
-```
-
-Conflict:
-
-```text
-→ discard stale edit session
-→ show:
-Список изменился. Откройте режим редактирования заново.
-```
-
----
-
-# 22. Atomic rotation Apply
-
-`SubstitutionRotationEditFirestoreGateway` validates within the transaction:
-
-```text
-module nextRotationOrder marker
-module revision
-pending call absence
-participant composition
-participant existence
-original rotationOrder of each participant
-```
-
-It writes only changed:
-
-```text
-rotationOrder
-```
-
-Concurrent fields that are not the editor's responsibility must not be overwritten, including:
-
-```text
-availability
-status
-```
-
-Successful Apply normalizes participant `rotationOrder`:
-
-```text
-0..N-1
-```
-
-but does NOT normalize module `nextRotationOrder` to N.
-
-Editor Apply advances:
-
-```text
-nextRotationOrder = previous nextRotationOrder + 1
-```
-
-`nextRotationOrder` therefore also acts as a monotonic mutation/edit marker.
-
-Do not reinterpret it as always equal to participant count.
-
----
-
-# 23. Membership transaction behavior
-
-`SubstitutionRotationMembershipFirestoreGateway` baseline includes:
-
-```text
-moduleExists
-nextRotationOrder
-revision
-ordered participants
-pending-call state
-```
-
-Add/restore:
-
-```text
-pending call → reject
-verify baseline
-new participant → create with new-participant priority
-removed participant → restore existing hidden anchor
-existing non-removed participant → no duplicate
-```
-
-Soft remove:
-
-```text
-pending call → reject
-missing target → error
-already removed → idempotent
-verify module/order/status baseline
-status = removed
-preserve rotationOrder
-preserve availability
-advance mutation marker
-```
-
-First-create case can create/initialize the substitution module as required by the existing gateway contract.
-
----
-
-# 24. Firestore Rules for membership/editor
-
-Rules now recognize:
-
-```text
-active
-vacation
-sick
-removed
-```
-
-Ordinary participant state updates must not bypass membership semantics involving `removed`.
-
-Manager-only membership/reorder authorization:
-
-```text
-brigadier
-owner
-```
-
-Rules validate required transaction shape, including applicable:
-
-```text
-module mutation marker
-pending-call absence
-new participant creation
-restore
-soft remove
-rotationOrder updates
-```
-
-Client physical participant delete:
-
-```text
-denied
-```
-
-Current targeted suite:
-
-```text
-56/56 passed
-```
-
-Latest Rules were deployed before physical-device Apply verification.
-
----
-
-# 25. Rotation editor UI
+Editing is local until Apply.
 
 Entry:
 
 ```text
-"Список"
+Список
 → Настройки
 → Режим редактирования списка
 ```
 
-Available only to:
+Available to:
 
 ```text
 brigadier
 owner
 ```
 
-Entering editor:
+Apply performs an atomic transaction.
+
+Conflict text is exact:
 
 ```text
-beginEditing()
-→ server baseline
-→ local draft
-→ switch to active List tab
+Список изменился. Откройте режим редактирования заново.
 ```
 
-While editing:
+Do not casually reword this string.
 
-```text
-title = Редактирование списка
-normal "Вызвать" hidden
-participant ⋮ / card hidden
-statistics hidden
-settings disabled
-active rows show ↑ / ↓
-bottom actions = Отмена / Применить
-```
-
-`Применить` active only when draft has real changes.
-
-During Apply:
-
-```text
-Отмена disabled
-arrows ignored
-Применить shows Применение...
-```
-
-Back/system Back cancels local edit session when Apply is not in progress.
+Cancel discards local draft without writes.
 
 ---
 
-# 26. Editor scroll / rapid-tap stabilization
+# 24. Substitution narrow-layout adaptation
 
-The active list keeps the moved participant approximately under the same physical finger position.
+`SubstitutionParticipantRow` was refactored away from a `ListTile` trailing layout that produced narrow Web overflows.
 
-Implementation concept:
-
-```text
-measure row global Y before move
-→ mutate local draft
-→ post-frame measure same row after rebuild
-→ compensate ScrollController offset
-```
-
-Edit-only scroll reserve allows movement to continue near the first/last active position.
-
-A one-frame move lock prevents overlapping row-key/rebuild operations.
-
-Expected behavior:
+Current row uses explicit:
 
 ```text
-normal/fast repeated taps
-→ participant can move repeatedly
-→ no Flutter assertion
-
-ultra-fast overlapping taps
-→ some taps may be intentionally dropped
+Row
+Expanded text column
+compact control row
 ```
 
-This is presentation logic only and must not alter domain/business semantics.
+This fixed Web console/runtime issues such as:
+
+```text
+Trailing widget consumes the entire tile width
+RenderFlex overflowed on the right
+Text layout not available
+```
+
+Android regression was manually checked after the refactor.
+
+When changing this row later, test both:
+
+```text
+narrow Web/mobile width
+Android
+```
 
 ---
 
-# 27. Deleted Auth user cleanup
+# 25. Deleted Auth user cleanup
 
-Dedicated Cloud Function handles ordinary single-user Auth deletion.
-
-Cleanup targets:
+Backend Auth-delete cleanup removes:
 
 ```text
 users/{uid}
-→ including device-token documents
-
+device token documents
 spaces/substitution/participants/{uid}
-
 spaces_access/{uid}
 ```
 
-Preserved:
+Historical/business data remains:
 
 ```text
 confirmedCalls
 statistics
 chats
 messages
-historical business data
 ```
 
-Ordinary single Auth deletion was manually verified in production.
+Ordinary single-user deletion was verified in production.
 
-Important caveat:
-
-```text
-Admin SDK bulk deleteUsers([...])
-may not fire per-user Auth onDelete handlers
-```
-
-Do not assume bulk-delete parity without a dedicated verified path.
-
-Auth deletion and substitution soft removal are intentionally different semantics.
-
-Current hidden-anchor behavior does not provide stable business identity across delete/recreate with a new UID.
+Bulk Admin SDK `deleteUsers([...])` may not trigger identical per-user cleanup and needs a separately verified path if used.
 
 ---
 
-# 28. Android launcher icon / gull assets
+# 26. Cost/read discipline
 
-Runtime:
-
-```text
-assets/images/epistola_app_icon.png
-assets/images/epistola_seagull_stencil.png
-```
-
-Master artwork:
+Pilot target:
 
 ```text
-Аватар Чайки.png
-Аватар Чайки трафарет.png
+40–50 users
 ```
 
-Android launcher icon is now replaced in:
+Rules:
 
 ```text
-mipmap-mdpi
-mipmap-hdpi
-mipmap-xhdpi
-mipmap-xxhdpi
-mipmap-xxxhdpi
+avoid per-widget Firestore queries
+avoid hidden Web reads for disabled features
+centralize chat unread streams
+reuse UID-keyed user/avatar caches
+do not duplicate canonical business events
+local visual hide stays local
+rotation draft stays local until Apply
+write reorder only once on Apply
 ```
 
-Commit:
+EpiLite should reuse existing services/gateways where behavior is truly shared.
 
-```text
-544fcaf
-chore(android): update launcher icon
-```
-
-Fresh release APK was verified on physical phone.
+Do not create parallel Web-specific Firestore collections merely because presentation differs.
 
 ---
 
-# 29. Existing Messenger foundations
+# 27. Current deferred / next work
 
-Private chats:
-
-```text
-text
-images
-pagination
-logical delete
-push deep links
-read receipts ✓ / ✓✓
-typing
-active-chat push suppression
-avatar/user card
-notification controls
-```
-
-Group chats:
+Original priority before EpiLite diversion:
 
 ```text
-roles
-owner/admin protections
-ownership transfer
-avatars
-push deep links
-👍 / 👎 reactions
-identity/member cards
-notification controls
+1. Chats unread counter
+   → DONE
+   → f0a2084
+
+2. SpacesBar UI
+   → stationary outer frame
+   → true cyclic/infinite swipe
+   → glow tuning
+
+3. Spaces Hub UI/settings
+   → ⋮
+   → show/hide Spaces
+   → regular/compact
+   → 7–8
+   → >8
+   → odd final tile
+
+4. technical cleanup
+   → old *MessageId names toward presentationId
+
+5. FCM token lifecycle investigation
+   → unregisterCurrentDevice / signOut
+
+6. Calendar foundation
+
+7. Buses foundation
 ```
 
-Message history:
+EpiLite Web Lite foundation:
 
 ```text
-pagination 20
-older-page loading
-scroll preservation
-realtime merge
-date separators
-floating date indicator
-image-aware scroll behavior
+DONE
+→ a488c3b
 ```
+
+Possible future EpiLite phases:
+
+```text
+Web push foundation
+full Chats on Web
+explicit Contacts support policy
+responsive desktop/tablet layout
+full Web feature parity
+```
+
+Do not expand these by accident during unrelated Android work.
 
 ---
 
-# 30. Known queued notification issue
+# 28. New-chat startup checklist
 
-Observed separately from the rotation editor:
-
-```text
-owner may receive a copy of a substitution notification
-that was intended for the called user
-```
-
-Current suspicion:
-
-```text
-stale FCM device token after account switching
-```
-
-This is NOT yet verified.
-
-Later investigation should inspect logout/device token lifecycle, including occurrences of:
-
-```text
-unregisterCurrentDevice
-signOut
-```
-
-Do not modify substitution rotation/call semantics to fix this before proving the root cause.
-
----
-
-# 31. Do not regress
-
-Do not:
-
-```text
-weaken owner priority/protections
-move transaction invariants into UI
-use UI role visibility as only security
-physically delete participant for normal "Удалить из списка"
-give restored participant repeated new-user top priority
-destroy hidden vacation/sick/removed anchors
-write Firestore on every editor arrow tap
-overwrite concurrent availability/status during reorder
-normalize nextRotationOrder to participant count
-allow stale edit session to silently overwrite concurrent list change
-store Flutter Color/presentation state in Firestore
-turn SpacesBar local hide into server writes
-count personal calls against general 3/3
-create generic systemMessages backend
-turn Epistola history into fake normal chat
-generate a second push from technical history
-break legacy chat deep links
-break legacy general spacesBarMessageId payload
-add per-widget Firestore queries
-```
-
----
-
-# 32. Deferred / next development
-
-Completed in the current functional block:
-
-```text
-removed hidden membership state
-new participant one-time top priority
-restore removed participant at hidden anchor
-transactional membership gateway
-participant state gateway naming split
-rotation draft
-rotation edit service
-atomic reorder gateway
-manager-only editor UI
-active-arrow scroll stabilization
-rapid-tap frame lock
-membership/editor Rules
-deleted Auth user cleanup
-Android launcher icon replacement
-phone production verification
-```
-
-Previously completed foundation remains active:
-
-```text
-confirmedCall canonical event
-personal substitution SpacesBar
-local personal hide
-shift-start expiry
-Epistola read-only technical history
-unified SpacesBar presentation IDs
-substitution confirmed-call push
-exact target support
-```
-
-Queued follow-up:
-
-```text
-investigate possible stale FCM token / duplicate recipient behavior
-```
-
-Planned new Spaces application work:
-
-```text
-Календарь смен
-Автобусы
-```
-
-For both new applications:
-
-```text
-first audit current placeholder/source
-define product/domain/data/security boundary
-then implement as separate foundations
-keep UI replaceable
-minimize Firebase usage
-do not couple them to Substitution internals unless a real shared contract is identified
-```
-
-Other deferred work:
-
-```text
-stationary SpacesBar frame
-true infinite/cyclic swipe
-glow tuning
-Spaces tile configuration
-regular/compact tile modes
->8 continuation
-legacy "*MessageId" naming cleanup
-```
-
----
-
-# 33. New-chat startup checklist
-
-At the beginning of the next chat run:
+At the beginning of a new Epistola development chat, first verify:
 
 ```powershell
 git branch --show-current
@@ -1606,10 +1512,9 @@ git rev-parse --short HEAD
 git rev-parse --short origin/feat/v0.8.0-spaces-substitution-foundation
 ```
 
-Then read from CURRENT FEATURE BRANCH:
+Then read from the current feature branch:
 
 ```text
-current source
 PROJECT_CONTEXT.md
 ARCHITECTURE.md
 README.md
@@ -1618,22 +1523,21 @@ README.md
 Priority:
 
 ```text
-source
+current source code
 → PROJECT_CONTEXT.md
 → ARCHITECTURE.md
 → README.md
 ```
 
-Last functional checkpoint documented here:
+Expected functional checkpoint after this block:
 
 ```text
-544fcaf
+a488c3b
+feat(web): add EpiLite web client
 ```
 
-A later docs-only commit may make HEAD newer.
+A later docs-only commit may make `HEAD` newer.
 
-Do not start from `main`.
+Before proposing code, audit the source files relevant to the requested block.
 
-Do not treat historical temporary handoff files as canonical after these docs are installed.
-
-No commit / push / deploy without explicit user approval.
+Do not use `main` as the current `v0.8.0` source until release/merge is explicitly verified.
