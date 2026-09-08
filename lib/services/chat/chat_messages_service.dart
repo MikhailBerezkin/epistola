@@ -291,19 +291,29 @@ class ChatMessagesService extends ChatBaseService {
     final lastReadMap = (data['lastRead'] as Map<String, dynamic>?) ?? {};
     final lastRead = lastReadMap[user.uid];
 
-    Query query = firestore
+    return getUnreadCountAfter(
+      chatId,
+      after: lastRead is Timestamp ? lastRead : null,
+    );
+  }
+
+  Future<int> getUnreadCountAfter(String chatId, {Timestamp? after}) async {
+    final user = auth.currentUser;
+    if (user == null) return 0;
+
+    Query<Map<String, dynamic>> query = firestore
         .collection('chats')
         .doc(chatId)
         .collection('messages');
 
-    if (lastRead is Timestamp) {
-      query = query.where('createdAt', isGreaterThan: lastRead);
+    if (after != null) {
+      query = query.where('createdAt', isGreaterThan: after);
     }
 
     final snapshot = await query.get();
 
     return snapshot.docs.where((doc) {
-      final senderId = doc['senderId'];
+      final senderId = doc.data()['senderId'];
       return senderId != user.uid;
     }).length;
   }

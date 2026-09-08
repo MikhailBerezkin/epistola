@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../domain/models/spaces_access_role.dart';
+import '../services/chat/chat_unread_summary_controller.dart';
 import '../services/spaces/spaces_bar/spaces_bar_dependencies.dart';
 import '../services/spaces/spaces_bar/spaces_bar_management_service.dart';
 import '../services/spaces/spaces_bar/spaces_bar_presentation_service.dart';
@@ -25,6 +26,7 @@ class SpacesPage extends StatefulWidget {
 class _SpacesPageState extends State<SpacesPage> with WidgetsBindingObserver {
   late final SpacesBarPresentationService _spacesBarService;
   late final SpacesBarManagementService _spacesBarManagementService;
+  late final ChatUnreadSummaryController _chatUnreadController;
 
   StreamSubscription<SpacesBarPresentationState>? _spacesBarSubscription;
   Timer? _spacesBarExpiryTimer;
@@ -48,6 +50,7 @@ class _SpacesPageState extends State<SpacesPage> with WidgetsBindingObserver {
 
     _spacesBarService = createSpacesBarPresentationService();
     _spacesBarManagementService = createSpacesBarManagementService();
+    _chatUnreadController = ChatUnreadSummaryController()..start();
 
     unawaited(_loadSpacesAccessRole());
     unawaited(_startSpacesBarWatch());
@@ -212,6 +215,7 @@ class _SpacesPageState extends State<SpacesPage> with WidgetsBindingObserver {
     _spacesBarExpiryTimer = null;
 
     unawaited(_spacesBarSubscription?.cancel());
+    _chatUnreadController.dispose();
 
     super.dispose();
   }
@@ -429,15 +433,23 @@ class _SpacesPageState extends State<SpacesPage> with WidgetsBindingObserver {
                   childAspectRatio: 1.15,
                 ),
                 delegate: SliverChildListDelegate([
-                  _SpaceTile(
-                    title: 'Чаты',
-                    subtitle: 'Личные и групповые чаты',
-                    icon: Icons.forum_outlined,
-                    onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (_) => const ChatsSpaceScreen(),
-                        ),
+                  AnimatedBuilder(
+                    animation: _chatUnreadController,
+                    builder: (context, _) {
+                      return _SpaceTile(
+                        title: 'Чаты',
+                        subtitle: 'Личные и групповые чаты',
+                        icon: Icons.forum_outlined,
+                        badgeCount: _chatUnreadController.totalUnreadCount,
+                        onTap: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => ChatsSpaceScreen(
+                                unreadController: _chatUnreadController,
+                              ),
+                            ),
+                          );
+                        },
                       );
                     },
                   ),
@@ -520,12 +532,14 @@ class _SpaceTile extends StatelessWidget {
     this.subtitle,
     required this.icon,
     required this.onTap,
+    this.badgeCount = 0,
   });
 
   final String title;
   final String? subtitle;
   final IconData icon;
   final VoidCallback onTap;
+  final int badgeCount;
 
   @override
   Widget build(BuildContext context) {
@@ -535,32 +549,61 @@ class _SpaceTile extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(icon, size: 32, color: colorScheme.primary),
-              const Spacer(),
-              Text(
-                title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.titleMedium,
+        child: Stack(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(icon, size: 32, color: colorScheme.primary),
+                  const Spacer(),
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  if (subtitle != null) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle!,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ],
               ),
-              if (subtitle != null) ...[
-                const SizedBox(height: 4),
-                Text(
-                  subtitle!,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
+            ),
+            if (badgeCount > 0)
+              Positioned(
+                top: 12,
+                right: 12,
+                child: Container(
+                  constraints: const BoxConstraints(
+                    minWidth: 24,
+                    minHeight: 24,
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 7),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: colorScheme.primary,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    badgeCount > 99 ? '99+' : badgeCount.toString(),
+                    style: TextStyle(
+                      color: colorScheme.onPrimary,
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
-              ],
-            ],
-          ),
+              ),
+          ],
         ),
       ),
     );

@@ -1,9 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
-import '../models/app_user.dart';
-import '../services/chat_service.dart';
 import '../domain/models/group_avatar.dart';
+import '../models/app_user.dart';
 import 'avatar/chat_avatar_view.dart';
 
 class ChatTile extends StatelessWidget {
@@ -17,7 +16,7 @@ class ChatTile extends StatelessWidget {
   final bool showLastMessagePreview;
   final VoidCallback onTap;
   final VoidCallback? onLongPress;
-  final Future<int>? unreadCountFuture;
+  final int unreadCount;
 
   const ChatTile({
     super.key,
@@ -31,7 +30,7 @@ class ChatTile extends StatelessWidget {
     this.showLastMessagePreview = true,
     required this.onTap,
     this.onLongPress,
-    this.unreadCountFuture,
+    this.unreadCount = 0,
   });
 
   String formatChatTime(dynamic value) {
@@ -104,36 +103,23 @@ class ChatTile extends StatelessWidget {
                     )
                   : const SizedBox.shrink(),
             ),
-            FutureBuilder<int>(
-              future: unreadCountFuture ?? ChatService().getUnreadCount(chatId),
-              builder: (context, snapshot) {
-                final unreadCount = snapshot.data ?? 0;
-
-                if (unreadCount == 0) {
-                  return const SizedBox.shrink();
-                }
-
-                return Container(
-                  margin: const EdgeInsets.only(left: 8),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 3,
+            if (unreadCount > 0)
+              Container(
+                margin: const EdgeInsets.only(left: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.primary,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  unreadCount > 99 ? '99+' : unreadCount.toString(),
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onPrimary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
                   ),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.primary,
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Text(
-                    unreadCount > 99 ? '99+' : unreadCount.toString(),
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.onPrimary,
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                );
-              },
-            ),
+                ),
+              ),
           ],
         ),
       ),

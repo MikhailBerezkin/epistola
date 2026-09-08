@@ -7,6 +7,7 @@ import '../models/app_user.dart';
 import '../services/avatar/group_avatar_metadata_mapper.dart';
 import '../services/chat/chat_peer_resolver.dart';
 import '../services/chat/chat_peer_user_cache.dart';
+import '../services/chat/chat_unread_summary_controller.dart';
 import '../services/chat_service.dart';
 import '../widgets/chat_tile.dart';
 import '../widgets/system_chat/epistola_system_chat_tile.dart';
@@ -16,7 +17,9 @@ import 'epistola_system_chat_screen.dart';
 enum ChatFilter { private, group }
 
 class ChatsPage extends StatefulWidget {
-  const ChatsPage({super.key});
+  const ChatsPage({super.key, required this.unreadController});
+
+  final ChatUnreadSummaryController unreadController;
 
   @override
   State<ChatsPage> createState() => _ChatsPageState();
@@ -43,7 +46,7 @@ class _ChatsPageState extends State<ChatsPage> {
           }
         })
         .catchError((Object _) {
-          // The chat list keeps its name-based fallback. A later stream
+          // The chat list keeps its name-based fallback. A later controller
           // rebuild can retry a transient user-profile read failure.
         });
   }
@@ -167,18 +170,21 @@ class _ChatsPageState extends State<ChatsPage> {
           ),
           const SizedBox(height: 16),
           Expanded(
-            child: StreamBuilder<QuerySnapshot>(
-              stream: _chatService.getUserChats(),
-              builder: (context, snapshot) {
-                if (snapshot.hasError) {
-                  return Center(child: Text('Ошибка: ${snapshot.error}'));
+            child: AnimatedBuilder(
+              animation: widget.unreadController,
+              builder: (context, _) {
+                if (widget.unreadController.error != null) {
+                  return Center(
+                    child: Text('Ошибка: ${widget.unreadController.error}'),
+                  );
                 }
 
-                if (snapshot.connectionState == ConnectionState.waiting) {
+                final chats = widget.unreadController.chats;
+
+                if (widget.unreadController.isLoading && chats.isEmpty) {
                   return const Center(child: CircularProgressIndicator());
                 }
 
-                final chats = snapshot.data?.docs ?? [];
                 final currentUserId =
                     FirebaseAuth.instance.currentUser?.uid ?? '';
 
@@ -303,6 +309,7 @@ class _ChatsPageState extends State<ChatsPage> {
                     );
 
                     final chatName = _getDisplayChatName(data, peerUser);
+
                     final groupAvatar = data['type'] == 'group'
                         ? GroupAvatarMetadataMapper.fromMap(
                             data: data,
@@ -340,6 +347,9 @@ class _ChatsPageState extends State<ChatsPage> {
                           lastMessage: effectiveLastMessage,
                           lastMessageAt: effectiveLastMessageAt,
                           showLastMessagePreview: hasEffectivePreview,
+                          unreadCount: widget.unreadController.unreadCountFor(
+                            chat.id,
+                          ),
                           onTap: () {
                             HapticFeedback.lightImpact();
 

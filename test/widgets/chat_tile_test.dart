@@ -24,7 +24,7 @@ void main() {
             peerUser: peerUser,
             lastMessage: 'Привет',
             lastMessageAt: null,
-            unreadCountFuture: Future.value(0),
+            unreadCount: 0,
             onTap: () {},
           ),
         ),
@@ -50,7 +50,7 @@ void main() {
             isPrivateChat: true,
             lastMessage: '',
             lastMessageAt: null,
-            unreadCountFuture: Future.value(0),
+            unreadCount: 0,
             onTap: () {},
           ),
         ),
@@ -76,7 +76,7 @@ void main() {
             chatName: 'Команда',
             lastMessage: 'Сообщение',
             lastMessageAt: null,
-            unreadCountFuture: Future.value(0),
+            unreadCount: 0,
             onTap: () {
               tapped = true;
             },

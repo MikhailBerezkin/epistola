@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../services/chat/chat_unread_summary_controller.dart';
 import 'chat_search_screen.dart';
 import 'chats_page.dart';
 import 'new_message_screen.dart';
 
 class ChatsSpaceScreen extends StatelessWidget {
-  const ChatsSpaceScreen({super.key});
+  const ChatsSpaceScreen({super.key, required this.unreadController});
+
+  final ChatUnreadSummaryController unreadController;
 
   void _openSearch(BuildContext context) {
     HapticFeedback.selectionClick();
@@ -37,7 +40,7 @@ class ChatsSpaceScreen extends StatelessWidget {
           ),
         ],
       ),
-      body: const ChatsPage(),
+      body: ChatsPage(unreadController: unreadController),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _openNewMessage(context),
         child: const Icon(Icons.add),

@@ -233,4 +233,8 @@ class ChatService {
   Future<int> getUnreadCount(String chatId) {
     return messages.getUnreadCount(chatId);
   }
+
+  Future<int> getUnreadCountAfter(String chatId, {Timestamp? after}) {
+    return messages.getUnreadCountAfter(chatId, after: after);
+  }
 }
