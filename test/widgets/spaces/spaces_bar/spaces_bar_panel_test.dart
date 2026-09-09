@@ -176,7 +176,7 @@ void main() {
     expect(find.text('1 час'), findsNothing);
   });
 
-  testWidgets('personal call uses purple accent', (tester) async {
+  testWidgets('personal call uses purple inner glow', (tester) async {
     await tester.pumpWidget(
       _app(
         SpacesBarPanel(
@@ -185,13 +185,99 @@ void main() {
       ),
     );
 
-    final card = tester.widget<Card>(
-      find.byKey(const ValueKey('spaces-bar-substitution-call-7')),
+    final customPaint = tester.widget<CustomPaint>(
+      find.byKey(const ValueKey('spaces-bar-inner-glow')),
     );
 
-    final shape = card.shape as RoundedRectangleBorder;
+    final dynamic painter = customPaint.painter;
 
-    expect(shape.side.color, Colors.purple);
+    expect(painter.color, Colors.purple);
+  });
+
+  testWidgets('keeps stationary frame outside PageView', (tester) async {
+    await tester.pumpWidget(
+      _app(
+        SpacesBarPanel(
+          items: <SpacesBarPresentationItem>[
+            _generalItem(id: '1'),
+            _generalItem(id: '2'),
+          ],
+        ),
+      ),
+    );
+
+    final frame = find.byKey(const ValueKey('spaces-bar-stationary-frame'));
+
+    final pageView = find.byType(PageView);
+
+    expect(frame, findsOneWidget);
+    expect(pageView, findsOneWidget);
+
+    expect(find.ancestor(of: pageView, matching: frame), findsOneWidget);
+
+    expect(
+      find.descendant(of: pageView, matching: find.byType(Card)),
+      findsNothing,
+    );
+  });
+
+  testWidgets('swipes from last item forward to first item', (tester) async {
+    await tester.pumpWidget(
+      _app(
+        SpacesBarPanel(
+          targetMessageId: '3',
+          autoRotationInterval: const Duration(hours: 1),
+          items: <SpacesBarPresentationItem>[
+            _generalItem(id: '1'),
+            _generalItem(id: '2'),
+            _generalItem(id: '3'),
+          ],
+        ),
+      ),
+    );
+
+    expect(
+      find.bySemanticsLabel('spaces-bar-current-message-3'),
+      findsOneWidget,
+    );
+
+    await tester.fling(find.byType(PageView), const Offset(-600, 0), 1200);
+
+    await tester.pumpAndSettle();
+
+    expect(
+      find.bySemanticsLabel('spaces-bar-current-message-1'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('swipes from first item backward to last item', (tester) async {
+    await tester.pumpWidget(
+      _app(
+        SpacesBarPanel(
+          autoRotationInterval: const Duration(hours: 1),
+          items: <SpacesBarPresentationItem>[
+            _generalItem(id: '1'),
+            _generalItem(id: '2'),
+            _generalItem(id: '3'),
+          ],
+        ),
+      ),
+    );
+
+    expect(
+      find.bySemanticsLabel('spaces-bar-current-message-1'),
+      findsOneWidget,
+    );
+
+    await tester.fling(find.byType(PageView), const Offset(600, 0), 1200);
+
+    await tester.pumpAndSettle();
+
+    expect(
+      find.bySemanticsLabel('spaces-bar-current-message-3'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('shows dots for mixed items', (tester) async {

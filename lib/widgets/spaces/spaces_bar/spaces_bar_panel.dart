@@ -17,7 +17,7 @@ class SpacesBarPanel extends StatefulWidget {
     this.canManage = false,
     this.onEdit,
     this.targetMessageId,
-    this.autoRotationInterval = const Duration(seconds: 15),
+    this.autoRotationInterval = const Duration(seconds: 10),
   });
 
   /// Временный legacy-вход только для плавного перехода SpacesPage.
@@ -50,10 +50,13 @@ class SpacesBarPanel extends StatefulWidget {
 }
 
 class _SpacesBarPanelState extends State<SpacesBarPanel> {
+  static const int _pageAnchor = 1 << 20;
+
   late final PageController _pageController;
 
   Timer? _rotationTimer;
   int _currentIndex = 0;
+  int _currentPhysicalPage = _pageAnchor;
 
   List<SpacesBarPresentationItem> get _items {
     if (widget.items.isNotEmpty) {
@@ -105,7 +108,12 @@ class _SpacesBarPanelState extends State<SpacesBarPanel> {
       targetMessageId: widget.targetMessageId,
     );
 
-    _pageController = PageController(initialPage: _currentIndex);
+    _currentPhysicalPage = _physicalPageForLogicalIndex(
+      logicalIndex: _currentIndex,
+      itemCount: items.length,
+    );
+
+    _pageController = PageController(initialPage: _currentPhysicalPage);
 
     _scheduleRotation();
   }
@@ -176,12 +184,17 @@ class _SpacesBarPanelState extends State<SpacesBarPanel> {
         ? 0
         : nextIndex.clamp(0, newItems.length - 1);
 
+    _currentPhysicalPage = _physicalPageForLogicalIndex(
+      logicalIndex: _currentIndex,
+      itemCount: newItems.length,
+    );
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_pageController.hasClients) {
         return;
       }
 
-      _pageController.jumpToPage(_currentIndex);
+      _pageController.jumpToPage(_currentPhysicalPage);
     });
 
     _scheduleRotation();
@@ -204,6 +217,76 @@ class _SpacesBarPanelState extends State<SpacesBarPanel> {
     );
 
     return targetIndex >= 0 ? targetIndex : 0;
+  }
+
+  int _physicalPageForLogicalIndex({
+    required int logicalIndex,
+    required int itemCount,
+  }) {
+    if (itemCount <= 0) {
+      return _pageAnchor;
+    }
+
+    final cycleStart = _pageAnchor - (_pageAnchor % itemCount);
+
+    return cycleStart + logicalIndex;
+  }
+
+  int _logicalIndexForPhysicalPage({
+    required int physicalPage,
+    required int itemCount,
+  }) {
+    if (itemCount <= 0) {
+      return 0;
+    }
+
+    return physicalPage % itemCount;
+  }
+
+  Color _glowColorForCurrentPosition(List<SpacesBarPresentationItem> items) {
+    if (items.isEmpty) {
+      return Colors.transparent;
+    }
+
+    final fallbackIndex = _currentIndex.clamp(0, items.length - 1);
+
+    final fallbackColor = _accentForItem(items[fallbackIndex]);
+
+    if (!_pageController.hasClients) {
+      return fallbackColor;
+    }
+
+    final page = _pageController.page;
+
+    if (page == null) {
+      return fallbackColor;
+    }
+
+    final lowerPhysicalPage = page.floor();
+    final upperPhysicalPage = page.ceil();
+
+    final lowerIndex = _logicalIndexForPhysicalPage(
+      physicalPage: lowerPhysicalPage,
+      itemCount: items.length,
+    );
+
+    final upperIndex = _logicalIndexForPhysicalPage(
+      physicalPage: upperPhysicalPage,
+      itemCount: items.length,
+    );
+
+    if (lowerPhysicalPage == upperPhysicalPage) {
+      return _accentForItem(items[lowerIndex]);
+    }
+
+    final progress = (page - lowerPhysicalPage).clamp(0.0, 1.0).toDouble();
+
+    return Color.lerp(
+          _accentForItem(items[lowerIndex]),
+          _accentForItem(items[upperIndex]),
+          progress,
+        ) ??
+        fallbackColor;
   }
 
   @override
@@ -253,53 +336,58 @@ class _SpacesBarPanelState extends State<SpacesBarPanel> {
       return;
     }
 
-    _animateToPage((_currentIndex + 1) % items.length);
+    unawaited(_animateToPhysicalPage(_currentPhysicalPage + 1));
   }
 
   void _goToPreviousMessage() {
-    final items = _items;
-
-    if (items.length <= 1) {
+    if (_items.length <= 1) {
       return;
     }
 
-    final previousIndex = (_currentIndex - 1 + items.length) % items.length;
-
     _scheduleRotation();
-    _animateToPage(previousIndex);
+
+    unawaited(_animateToPhysicalPage(_currentPhysicalPage - 1));
   }
 
   void _goToNextMessage() {
-    final items = _items;
-
-    if (items.length <= 1) {
+    if (_items.length <= 1) {
       return;
     }
 
-    final nextIndex = (_currentIndex + 1) % items.length;
-
     _scheduleRotation();
-    _animateToPage(nextIndex);
+
+    unawaited(_animateToPhysicalPage(_currentPhysicalPage + 1));
   }
 
-  void _animateToPage(int index) {
+  Future<void> _animateToPhysicalPage(int physicalPage) async {
     if (!_pageController.hasClients) {
       return;
     }
 
-    unawaited(
-      _pageController.animateToPage(
-        index,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOutCubic,
-      ),
+    await _pageController.animateToPage(
+      physicalPage,
+      duration: const Duration(milliseconds: 1000),
+      curve: Curves.easeOutCubic,
     );
   }
 
-  void _handlePageChanged(int index) {
-    if (_currentIndex != index) {
+  void _handlePageChanged(int physicalPage) {
+    final items = _items;
+
+    if (items.isEmpty) {
+      return;
+    }
+
+    final logicalIndex = _logicalIndexForPhysicalPage(
+      physicalPage: physicalPage,
+      itemCount: items.length,
+    );
+
+    _currentPhysicalPage = physicalPage;
+
+    if (_currentIndex != logicalIndex) {
       setState(() {
-        _currentIndex = index;
+        _currentIndex = logicalIndex;
       });
     }
 
@@ -378,70 +466,107 @@ class _SpacesBarPanelState extends State<SpacesBarPanel> {
     }
 
     final currentItem = items[_currentIndex];
+    final borderRadius = BorderRadius.circular(16);
+
+    final frameBorderColor = Theme.of(context).colorScheme.outlineVariant;
 
     return SizedBox(
       height: 141,
       child: Semantics(
         label: _currentItemSemanticsLabel(currentItem),
         container: true,
-        child: Stack(
-          children: [
-            Positioned.fill(
-              child: PageView.builder(
-                controller: _pageController,
-                itemCount: items.length,
-                onPageChanged: _handlePageChanged,
-                itemBuilder: (context, index) {
-                  return _SpacesBarItemCard(
-                    item: items[index],
-                    onHideMessage: widget.onHideMessage,
-                    onHideSubstitutionCall: widget.onHideSubstitutionCall,
-                    hasNavigation: _hasMultipleMessages,
-                    reserveBottomSpace: _hasMultipleMessages || _canEdit,
-                  );
-                },
-              ),
-            ),
-            if (_hasMultipleMessages) ...[
-              Positioned(
-                left: 5,
-                top: 4,
-                child: _SpacesBarNavigationButton(
-                  key: const ValueKey('spaces-bar-chevron-left'),
-                  icon: Icons.chevron_left,
-                  tooltip: 'Предыдущее сообщение',
-                  onPressed: _goToPreviousMessage,
-                ),
-              ),
-              Positioned(
-                right: 5,
-                top: 4,
-                child: _SpacesBarNavigationButton(
-                  key: const ValueKey('spaces-bar-chevron-right'),
-                  icon: Icons.chevron_right,
-                  tooltip: 'Следующее сообщение',
-                  onPressed: _goToNextMessage,
-                ),
-              ),
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 7,
-                child: Center(
-                  child: _SpacesBarDots(
-                    count: items.length,
-                    currentIndex: _currentIndex,
+        child: Card(
+          key: const ValueKey('spaces-bar-stationary-frame'),
+          margin: const EdgeInsets.symmetric(horizontal: 1),
+          clipBehavior: Clip.antiAlias,
+          shape: RoundedRectangleBorder(
+            borderRadius: borderRadius,
+            side: BorderSide(color: frameBorderColor, width: 1),
+          ),
+          child: ClipRRect(
+            borderRadius: borderRadius,
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: AnimatedBuilder(
+                      animation: _pageController,
+                      builder: (context, _) {
+                        return CustomPaint(
+                          key: const ValueKey('spaces-bar-inner-glow'),
+                          painter: _SpacesBarInnerGlowPainter(
+                            color: _glowColorForCurrentPosition(items),
+                          ),
+                        );
+                      },
+                    ),
                   ),
                 ),
-              ),
-            ],
-            if (_canEdit)
-              Positioned(
-                right: 7,
-                bottom: 4,
-                child: _SpacesBarEditButton(onPressed: widget.onEdit!),
-              ),
-          ],
+                Positioned.fill(
+                  child: PageView.builder(
+                    controller: _pageController,
+                    physics: _hasMultipleMessages
+                        ? const PageScrollPhysics()
+                        : const NeverScrollableScrollPhysics(),
+                    onPageChanged: _handlePageChanged,
+                    itemBuilder: (context, physicalPage) {
+                      final logicalIndex = _logicalIndexForPhysicalPage(
+                        physicalPage: physicalPage,
+                        itemCount: items.length,
+                      );
+
+                      return _SpacesBarItemContent(
+                        item: items[logicalIndex],
+                        onHideMessage: widget.onHideMessage,
+                        onHideSubstitutionCall: widget.onHideSubstitutionCall,
+                        hasNavigation: _hasMultipleMessages,
+                        reserveBottomSpace: _hasMultipleMessages || _canEdit,
+                      );
+                    },
+                  ),
+                ),
+                if (_hasMultipleMessages) ...[
+                  Positioned(
+                    left: 5,
+                    top: 4,
+                    child: _SpacesBarNavigationButton(
+                      key: const ValueKey('spaces-bar-chevron-left'),
+                      icon: Icons.chevron_left,
+                      tooltip: 'Предыдущее сообщение',
+                      onPressed: _goToPreviousMessage,
+                    ),
+                  ),
+                  Positioned(
+                    right: 5,
+                    top: 4,
+                    child: _SpacesBarNavigationButton(
+                      key: const ValueKey('spaces-bar-chevron-right'),
+                      icon: Icons.chevron_right,
+                      tooltip: 'Следующее сообщение',
+                      onPressed: _goToNextMessage,
+                    ),
+                  ),
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 7,
+                    child: Center(
+                      child: _SpacesBarDots(
+                        count: items.length,
+                        currentIndex: _currentIndex,
+                      ),
+                    ),
+                  ),
+                ],
+                if (_canEdit)
+                  Positioned(
+                    right: 7,
+                    bottom: 4,
+                    child: _SpacesBarEditButton(onPressed: widget.onEdit!),
+                  ),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -478,8 +603,8 @@ class _SpacesBarFrame extends StatelessWidget {
   }
 }
 
-class _SpacesBarItemCard extends StatelessWidget {
-  const _SpacesBarItemCard({
+class _SpacesBarItemContent extends StatelessWidget {
+  const _SpacesBarItemContent({
     required this.item,
     required this.onHideMessage,
     required this.onHideSubstitutionCall,
@@ -498,49 +623,21 @@ class _SpacesBarItemCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent = _accentForItem(item);
-
-    final borderRadius = BorderRadius.circular(16);
-
-    return Card(
+    return InkWell(
       key: ValueKey<String>(_cardKey(item)),
-      margin: const EdgeInsets.symmetric(horizontal: 1),
-      clipBehavior: Clip.antiAlias,
-      shape: RoundedRectangleBorder(
-        borderRadius: borderRadius,
-        side: BorderSide(color: accent, width: 1.6),
-      ),
-      child: ClipRRect(
-        borderRadius: borderRadius,
-        child: Stack(
-          children: [
-            Positioned.fill(
-              child: IgnorePointer(
-                child: CustomPaint(
-                  painter: _SpacesBarInnerGlowPainter(color: accent),
-                ),
-              ),
-            ),
-            Positioned.fill(
-              child: InkWell(
-                onLongPress: _canHideItem
-                    ? () {
-                        unawaited(_showMessageActions(context));
-                      }
-                    : null,
-                child: Padding(
-                  padding: EdgeInsets.fromLTRB(
-                    hasNavigation ? 40 : 16,
-                    12,
-                    hasNavigation ? 40 : 16,
-                    reserveBottomSpace ? 26 : 12,
-                  ),
-                  child: _OverflowAwareMessageText(item: item),
-                ),
-              ),
-            ),
-          ],
+      onLongPress: _canHideItem
+          ? () {
+              unawaited(_showMessageActions(context));
+            }
+          : null,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          hasNavigation ? 40 : 16,
+          12,
+          hasNavigation ? 40 : 16,
+          reserveBottomSpace ? 26 : 12,
         ),
+        child: _OverflowAwareMessageText(item: item),
       ),
     );
   }
@@ -616,22 +713,81 @@ class _SpacesBarInnerGlowPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (size.width <= 10 || size.height <= 10) {
+    if (size.width <= 0 || size.height <= 0) {
       return;
     }
 
-    final glowRect = Rect.fromLTWH(4, 4, size.width - 8, size.height - 8);
+    final depth = size.shortestSide * 0.30;
 
-    final glow = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 5
-      ..color = color.withAlpha(42)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5);
+    final strongColor = color.withAlpha(45);
+    final middleColor = color.withAlpha(10);
+    final transparentColor = color.withAlpha(0);
 
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(glowRect, const Radius.circular(13)),
-      glow,
+    final colors = <Color>[strongColor, middleColor, transparentColor];
+
+    const stops = <double>[0, 0.45, 1];
+
+    final clip = RRect.fromRectAndRadius(
+      Offset.zero & size,
+      const Radius.circular(15),
     );
+
+    canvas.save();
+    canvas.clipRRect(clip);
+
+    final topRect = Rect.fromLTWH(0, 0, size.width, depth);
+
+    canvas.drawRect(
+      topRect,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: colors,
+          stops: stops,
+        ).createShader(topRect),
+    );
+
+    final bottomRect = Rect.fromLTWH(0, size.height - depth, size.width, depth);
+
+    canvas.drawRect(
+      bottomRect,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.bottomCenter,
+          end: Alignment.topCenter,
+          colors: colors,
+          stops: stops,
+        ).createShader(bottomRect),
+    );
+
+    final leftRect = Rect.fromLTWH(0, 0, depth, size.height);
+
+    canvas.drawRect(
+      leftRect,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+          colors: colors,
+          stops: stops,
+        ).createShader(leftRect),
+    );
+
+    final rightRect = Rect.fromLTWH(size.width - depth, 0, depth, size.height);
+
+    canvas.drawRect(
+      rightRect,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.centerRight,
+          end: Alignment.centerLeft,
+          colors: colors,
+          stops: stops,
+        ).createShader(rightRect),
+    );
+
+    canvas.restore();
   }
 
   @override

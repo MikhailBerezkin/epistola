@@ -28,7 +28,8 @@ class _ProfilePageState extends State<ProfilePage> {
     super.initState();
     _ownsAvatarController = widget.avatarController == null;
     _avatarController =
-        widget.avatarController ?? createAvatarReplacementController();
+        widget.avatarController ??
+        createAvatarReplacementController(webContextProvider: () => context);
   }
 
   @override

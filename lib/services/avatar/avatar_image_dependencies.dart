@@ -1,3 +1,6 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+
 import 'atomic_avatar_replacement_service.dart';
 import 'atomic_group_avatar_replacement_service.dart';
 import 'avatar_image_cache.dart';
@@ -12,6 +15,7 @@ import 'firebase_group_avatar_metadata_gateway.dart';
 import 'firebase_user_avatar_metadata_gateway.dart';
 import 'group_avatar_replacement_controller.dart';
 import 'group_avatar_storage_upload_service.dart';
+import 'web_avatar_replacement_service.dart';
 
 AvatarImageLoader? _defaultAvatarImageLoader;
 
@@ -24,7 +28,34 @@ AvatarImageLoader get defaultAvatarImageLoader {
 final AvatarLostDataRecoveryCoordinator
 defaultAvatarLostDataRecoveryCoordinator = AvatarLostDataRecoveryCoordinator();
 
-AvatarReplacementController createAvatarReplacementController() {
+AvatarReplacementController createAvatarReplacementController({
+  BuildContext Function()? webContextProvider,
+}) {
+  if (kIsWeb) {
+    final contextProvider = webContextProvider;
+
+    if (contextProvider == null) {
+      throw ArgumentError.notNull('webContextProvider');
+    }
+
+    final replacement = WebAvatarReplacementService(
+      contextProvider: contextProvider,
+    );
+
+    return AvatarReplacementController.withDirectReplacement(
+      replaceDirect: ({required uid, required source}) {
+        return switch (source) {
+          AvatarReplacementSource.gallery => replacement.replaceFromGallery(
+            uid: uid,
+          ),
+          AvatarReplacementSource.camera => replacement.replaceWithCamera(
+            uid: uid,
+          ),
+        };
+      },
+    );
+  }
+
   return AvatarReplacementController(
     preparation: AvatarImagePreparationService(),
     replacement: AtomicAvatarReplacementService(

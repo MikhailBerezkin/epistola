@@ -1,9 +1,12 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 
 import '../../domain/models/user_avatar.dart';
 import 'atomic_avatar_replacement_service.dart';
+import 'avatar_image_compressor_gateway.dart';
+import 'avatar_image_crop_gateway.dart';
 import 'avatar_image_preparation_service.dart';
 import 'avatar_image_processor.dart';
 
@@ -23,6 +26,12 @@ typedef AtomicAvatarReplacementInvoker =
     Future<UserAvatar> Function({
       required String uid,
       required PreparedAvatarImages images,
+    });
+
+typedef AvatarDirectReplacementInvoker =
+    Future<UserAvatar?> Function({
+      required String uid,
+      required AvatarReplacementSource source,
     });
 
 final class AvatarReplacementResult {
@@ -86,15 +95,28 @@ final class AvatarReplacementController extends ChangeNotifier {
     );
   }
 
+  factory AvatarReplacementController.withDirectReplacement({
+    required AvatarDirectReplacementInvoker replaceDirect,
+  }) {
+    return AvatarReplacementController._(
+      _noPreparedImage,
+      _noRecoveredImage,
+      _unsupportedPreparedReplacement,
+      replaceDirect: replaceDirect,
+    );
+  }
+
   AvatarReplacementController._(
     this._prepare,
     this._prepareRecovered,
-    this._replace,
-  );
+    this._replace, {
+    this._replaceDirect,
+  });
 
   final AvatarImagePreparationInvoker _prepare;
   final RecoveredAvatarImagePreparationInvoker _prepareRecovered;
   final AtomicAvatarReplacementInvoker _replace;
+  final AvatarDirectReplacementInvoker? _replaceDirect;
 
   bool _isLoading = false;
   bool _isDisposed = false;
@@ -107,7 +129,13 @@ final class AvatarReplacementController extends ChangeNotifier {
   Future<AvatarReplacementResult> replace({
     required String uid,
     required AvatarReplacementSource source,
-  }) async {
+  }) {
+    final replaceDirect = _replaceDirect;
+
+    if (replaceDirect != null) {
+      return _runDirect(uid: uid, source: source, replaceDirect: replaceDirect);
+    }
+
     return _run(uid: uid, prepare: () => _prepare(source));
   }
 
@@ -122,6 +150,36 @@ final class AvatarReplacementController extends ChangeNotifier {
   Future<AvatarReplacementResult> _recoverWhenIdle(String uid) async {
     await _waitUntilIdle();
     return _run(uid: uid, prepare: _prepareRecovered);
+  }
+
+  Future<AvatarReplacementResult> _runDirect({
+    required String uid,
+    required AvatarReplacementSource source,
+    required AvatarDirectReplacementInvoker replaceDirect,
+  }) async {
+    if (_isLoading) {
+      return const AvatarReplacementResult.alreadyRunning();
+    }
+
+    _setLoading(true);
+
+    try {
+      final avatar = await replaceDirect(uid: uid, source: source);
+
+      if (avatar == null) {
+        return const AvatarReplacementResult.cancelled();
+      }
+
+      _latestAvatar = avatar;
+      return AvatarReplacementResult.success(avatar);
+    } catch (error) {
+      return AvatarReplacementResult.failure(
+        error: error,
+        stage: _directFailureStage(error),
+      );
+    } finally {
+      _setLoading(false);
+    }
   }
 
   Future<AvatarReplacementResult> _run({
@@ -165,7 +223,34 @@ final class AvatarReplacementController extends ChangeNotifier {
     }
   }
 
+  static AvatarReplacementFailureStage _directFailureStage(Object error) {
+    if (error is AvatarImageCropException ||
+        error is AvatarImageCompressorException ||
+        error is AvatarImageProcessorException ||
+        error is AvatarImageHardLimitExceededException ||
+        error is PlatformException) {
+      return AvatarReplacementFailureStage.preparation;
+    }
+
+    return AvatarReplacementFailureStage.replacement;
+  }
+
+  static Future<PreparedAvatarImages?> _noPreparedImage(
+    AvatarReplacementSource source,
+  ) async {
+    return null;
+  }
+
   static Future<PreparedAvatarImages?> _noRecoveredImage() async => null;
+
+  static Future<UserAvatar> _unsupportedPreparedReplacement({
+    required String uid,
+    required PreparedAvatarImages images,
+  }) {
+    throw UnsupportedError(
+      'Prepared avatar replacement is unavailable for this controller.',
+    );
+  }
 
   Future<void> _waitUntilIdle() async {
     while (_isLoading) {

@@ -8,12 +8,15 @@ import '../services/chat/chat_unread_summary_controller.dart';
 import '../services/spaces/spaces_bar/spaces_bar_dependencies.dart';
 import '../services/spaces/spaces_bar/spaces_bar_management_service.dart';
 import '../services/spaces/spaces_bar/spaces_bar_presentation_service.dart';
+import '../services/spaces/spaces_bar/spaces_bar_presentation_item.dart';
 import '../services/spaces/spaces_dependencies.dart';
 import '../widgets/spaces/spaces_bar/spaces_bar_editor_sheet.dart';
 import '../widgets/spaces/spaces_bar/spaces_bar_panel.dart';
 import 'chats_space_screen.dart';
 import 'substitution_space_screen.dart';
 import '../platform/epistola_platform_capabilities.dart';
+import '../domain/models/spaces_bar_message.dart';
+import '../platform/epistola_runtime_mode.dart';
 
 class SpacesPage extends StatefulWidget {
   const SpacesPage({super.key, this.spacesBarTargetMessageId});
@@ -55,8 +58,13 @@ class _SpacesPageState extends State<SpacesPage> with WidgetsBindingObserver {
       _chatUnreadController = ChatUnreadSummaryController()..start();
     }
 
-    unawaited(_loadSpacesAccessRole());
-    unawaited(_startSpacesBarWatch());
+    if (EpistolaRuntimeMode.isTest) {
+      _isSpacesBarLoading = false;
+      _isAccessRoleLoading = false;
+    } else {
+      unawaited(_loadSpacesAccessRole());
+      unawaited(_startSpacesBarWatch());
+    }
   }
 
   Future<void> _loadSpacesAccessRole() async {
@@ -394,19 +402,69 @@ class _SpacesPageState extends State<SpacesPage> with WidgetsBindingObserver {
       ..showSnackBar(SnackBar(content: Text(message)));
   }
 
+  List<SpacesBarPresentationItem> _buildSpacesBarTestItems() {
+    final createdAt = DateTime.now();
+
+    SpacesBarPresentationItem item({
+      required String id,
+      required String text,
+      required SpacesBarMessageLifetime lifetime,
+    }) {
+      final message = SpacesBarMessage.tryCreate(
+        id: id,
+        text: text,
+        lifetime: lifetime,
+        createdByUserId: 'spaces-bar-test',
+        createdAt: createdAt,
+      );
+
+      assert(message != null);
+
+      return SpacesBarPresentationItem.general(message: message!);
+    }
+
+    return <SpacesBarPresentationItem>[
+      item(
+        id: '9001',
+        text: 'Всем доброго утра — пора просыпаться',
+        lifetime: SpacesBarMessageLifetime.oneHour,
+      ),
+      item(
+        id: '9002',
+        text: 'Через час состоится общее собрание',
+        lifetime: SpacesBarMessageLifetime.twelveHours,
+      ),
+      item(
+        id: '9003',
+        text: 'Внимание: изменено расписание автобуса',
+        lifetime: SpacesBarMessageLifetime.twentyFourHours,
+      ),
+      item(
+        id: '9004',
+        text: 'Срочное сообщение — ознакомьтесь с информацией',
+        lifetime: SpacesBarMessageLifetime.untilCancelled,
+      ),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
-    final presentationItems = _spacesBarState?.presentationItems ?? const [];
+    final presentationItems = EpistolaRuntimeMode.isTest
+        ? _buildSpacesBarTestItems()
+        : (_spacesBarState?.presentationItems ?? const []);
     final chatUnreadController = _chatUnreadController;
 
     final canManageSpacesBar =
+        !EpistolaRuntimeMode.isTest &&
         EpistolaPlatformCapabilities.supportsSpacesBarManagement &&
         !_isAccessRoleLoading &&
         _accessRole.canManageSpacesBar;
 
     return Scaffold(
       body: RefreshIndicator(
-        onRefresh: _startSpacesBarWatch,
+        onRefresh: EpistolaRuntimeMode.isTest
+            ? () async {}
+            : _startSpacesBarWatch,
         child: CustomScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [

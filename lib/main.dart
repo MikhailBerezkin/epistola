@@ -13,6 +13,7 @@ import 'services/app_settings.dart';
 import 'services/notification_service.dart';
 import 'services/push/push_deep_link_navigation.dart';
 import 'platform/epistola_platform_capabilities.dart';
+import 'platform/epistola_runtime_mode.dart';
 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -93,9 +94,7 @@ class _EpistolaAppState extends State<EpistolaApp> {
       builder: (context, themeMode, _) {
         return MaterialApp(
           navigatorKey: widget.pushDeepLinkNavigation.navigatorKey,
-          title: EpistolaPlatformCapabilities.isWebLite
-              ? 'EpiLite'
-              : 'Epistola',
+          title: EpistolaRuntimeMode.appTitle,
           debugShowCheckedModeBanner: false,
           themeMode: themeMode,
           theme: ThemeData(
