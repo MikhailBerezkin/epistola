@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
@@ -9,6 +9,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class PushTokenService {
   static const _installationIdKey = 'push_installation_id';
+  static const _functionsRegion = 'europe-west1';
+
+  static final FirebaseFunctions _functions = FirebaseFunctions.instanceFor(
+    region: _functionsRegion,
+  );
 
   static bool _initialized = false;
 
@@ -18,47 +23,47 @@ class PushTokenService {
 
     FirebaseAuth.instance.authStateChanges().listen((user) {
       if (user == null) return;
-      unawaited(_registerCurrentToken(user));
+
+      unawaited(_registerCurrentToken());
     });
 
     FirebaseMessaging.instance.onTokenRefresh.listen((token) {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) return;
-      unawaited(_saveToken(user: user, token: token));
+      if (FirebaseAuth.instance.currentUser == null) return;
+
+      unawaited(_claimToken(token));
     });
   }
 
   static Future<void> unregisterCurrentDevice() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
+    if (FirebaseAuth.instance.currentUser == null) return;
 
     try {
       final installationId = await _getInstallationId();
 
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .collection('devices')
-          .doc(installationId)
-          .delete();
+      await _functions.httpsCallable('releasePushInstallation').call({
+        'installationId': installationId,
+      });
 
       if (kDebugMode) {
-        debugPrint('Push device unregistered');
+        debugPrint('Push installation released');
       }
     } catch (error, stackTrace) {
       if (kDebugMode) {
-        debugPrint('Push device unregister error: $error');
+        debugPrint('Push installation release error: $error');
         debugPrintStack(stackTrace: stackTrace);
       }
     }
   }
 
-  static Future<void> _registerCurrentToken(User user) async {
+  static Future<void> _registerCurrentToken() async {
     try {
       final token = await FirebaseMessaging.instance.getToken();
-      if (token == null || token.isEmpty) return;
 
-      await _saveToken(user: user, token: token);
+      if (token == null || token.isEmpty) {
+        return;
+      }
+
+      await _claimToken(token);
     } catch (error, stackTrace) {
       if (kDebugMode) {
         debugPrint('Push token registration error: $error');
@@ -67,30 +72,26 @@ class PushTokenService {
     }
   }
 
-  static Future<void> _saveToken({
-    required User user,
-    required String token,
-  }) async {
+  static Future<void> _claimToken(String token) async {
     try {
+      if (FirebaseAuth.instance.currentUser == null) {
+        return;
+      }
+
       final installationId = await _getInstallationId();
 
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .collection('devices')
-          .doc(installationId)
-          .set({
-            'token': token,
-            'platform': defaultTargetPlatform.name,
-            'updatedAt': FieldValue.serverTimestamp(),
-          });
+      await _functions.httpsCallable('claimPushInstallation').call({
+        'installationId': installationId,
+        'token': token,
+        'platform': defaultTargetPlatform.name,
+      });
 
       if (kDebugMode) {
-        debugPrint('Push token registered');
+        debugPrint('Push installation claimed');
       }
     } catch (error, stackTrace) {
       if (kDebugMode) {
-        debugPrint('Push token save error: $error');
+        debugPrint('Push installation claim error: $error');
         debugPrintStack(stackTrace: stackTrace);
       }
     }
@@ -111,6 +112,7 @@ class PushTokenService {
         .join();
 
     await preferences.setString(_installationIdKey, installationId);
+
     return installationId;
   }
 }

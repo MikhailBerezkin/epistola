@@ -6,6 +6,10 @@ import {logger} from "firebase-functions";
 import * as functionsV1 from "firebase-functions/v1";
 import {setGlobalOptions} from "firebase-functions/v2";
 import {
+  claimPushInstallationOwnership,
+  releasePushInstallationOwnership,
+} from "./push_installation_ownership_service";
+import {
   detectSpacesBarPublication,
 } from "./spaces_bar_notification";
 import {
@@ -360,6 +364,102 @@ function readPrivateTypingMemberIds(
 
   return validatedMemberIds;
 }
+
+export const claimPushInstallation = onCall<unknown>(
+  async (callableRequest) => {
+    const authenticatedUser = callableRequest.auth;
+
+    if (authenticatedUser == null) {
+      throw new HttpsError(
+        "unauthenticated",
+        "Authentication is required.",
+      );
+    }
+
+    try {
+      const result =
+        await claimPushInstallationOwnership(
+          getFirestore(),
+          authenticatedUser.uid,
+          callableRequest.data,
+        );
+
+      logger.info(
+        "Push installation claimed",
+        {
+          userId: authenticatedUser.uid,
+        },
+      );
+
+      return result;
+    } catch (error) {
+      if (error instanceof HttpsError) {
+        throw error;
+      }
+
+      logger.error(
+        "Failed to claim push installation",
+        {
+          error,
+          userId: authenticatedUser.uid,
+        },
+      );
+
+      throw new HttpsError(
+        "internal",
+        "Unable to claim push installation.",
+      );
+    }
+  },
+);
+
+export const releasePushInstallation = onCall<unknown>(
+  async (callableRequest) => {
+    const authenticatedUser = callableRequest.auth;
+
+    if (authenticatedUser == null) {
+      throw new HttpsError(
+        "unauthenticated",
+        "Authentication is required.",
+      );
+    }
+
+    try {
+      const result =
+        await releasePushInstallationOwnership(
+          getFirestore(),
+          authenticatedUser.uid,
+          callableRequest.data,
+        );
+
+      logger.info(
+        "Push installation released",
+        {
+          userId: authenticatedUser.uid,
+        },
+      );
+
+      return result;
+    } catch (error) {
+      if (error instanceof HttpsError) {
+        throw error;
+      }
+
+      logger.error(
+        "Failed to release push installation",
+        {
+          error,
+          userId: authenticatedUser.uid,
+        },
+      );
+
+      throw new HttpsError(
+        "internal",
+        "Unable to release push installation.",
+      );
+    }
+  },
+);
 
 export const ensurePrivateTypingAccess = onCall<unknown>(
   async (callableRequest) => {
