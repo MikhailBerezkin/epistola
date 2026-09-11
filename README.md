@@ -2,7 +2,7 @@
 
 Корпоративная Flutter/Firebase платформа для коммуникации и внутренних приложений компании.
 
-Проект сейчас имеет два клиентских представления одной платформы:
+Проект имеет два клиентских представления одной платформы:
 
 ```text
 Epistola
@@ -25,14 +25,14 @@ Pilot target:
 | Параметр | Значение |
 |---|---|
 | Target | `v0.8.0` |
-| Stage | `Spaces / Substitution / SpacesBar / EpiLite Web Lite` |
+| Stage | `Spaces / Substitution / EpiLite / Push Ownership` |
 | Branch | `feat/v0.8.0-spaces-substitution-foundation` |
-| Last functional checkpoint | `a488c3b` |
-| EpiLite Web Lite | `a488c3b` |
+| Last functional checkpoint | `67800f0` |
+| Push installation ownership | `67800f0` |
+| Test Mode + Web avatars + final SpacesBar UI | `1ca3bcf` |
+| EpiLite Web Lite foundation | `a488c3b` |
 | Chats unread summary | `f0a2084` |
 | Substitution list editor | `85238a2` |
-| Deleted-user cleanup | `e7ac582` |
-| Android launcher icon | `544fcaf` |
 | Stable baseline before v0.8.0 | `v0.7.4` |
 | Firebase project | `epistola-434b7` |
 | Android package | `com.epistola.app` |
@@ -42,7 +42,7 @@ Pilot target:
 
 `v0.8.0` is still a feature-branch target and has not yet been declared merged/released.
 
-A later docs-only commit may make `HEAD` newer than `a488c3b`.
+A later docs-only commit may make `HEAD` newer than `67800f0`.
 
 ---
 
@@ -70,6 +70,12 @@ Platform availability is centralized through:
 lib/platform/epistola_platform_capabilities.dart
 ```
 
+Runtime Test Mode is centralized through:
+
+```text
+lib/platform/epistola_runtime_mode.dart
+```
+
 ---
 
 # Products
@@ -92,12 +98,6 @@ SpacesBar
 technical history
 ```
 
-Android branding remains:
-
-```text
-Epistola
-```
-
 ## EpiLite
 
 Lightweight Web/PWA client built from the same Flutter/Firebase codebase.
@@ -108,7 +108,7 @@ Public URL:
 https://epistola-434b7.web.app
 ```
 
-Current verified Web Lite scope:
+Verified Web scope includes:
 
 ```text
 Firebase Auth
@@ -117,24 +117,22 @@ SpacesBar
 Список
 Profile/logout path
 PWA install
+Web avatar replacement
 ```
 
-Current intentional limitations:
+Web avatar replacement is manually verified on iPhone.
+
+Web push remains intentionally disabled.
+
+Private chats were found to work through:
 
 ```text
-Chats
-→ Android only
-
-Web push
-→ not implemented yet
+Contacts → user card → Написать
 ```
 
-The installed PWA name and branding are:
+so Web chats are currently presentation-gated rather than backend-blocked.
 
-```text
-EpiLite
-light-blue gull icon
-```
+They are not yet declared an official fully supported Web feature.
 
 ---
 
@@ -158,15 +156,6 @@ Android Chats remain an internal Space:
 → existing Messenger
 ```
 
-In EpiLite:
-
-```text
-Чаты
-→ Доступно в Android
-```
-
-The Web client does not start the chat unread stream while Chats are disabled.
-
 ---
 
 # Current Spaces Hub
@@ -189,40 +178,20 @@ Working Android applications:
 Список
 ```
 
-Working EpiLite application:
+Current Hub backlog:
 
 ```text
-Список
+⋮ settings
+show/hide Spaces
+regular/compact layout
+7–8 compact behavior
+>8 behavior
+odd final tile behavior
 ```
-
-Current placeholders:
-
-```text
-Судозаходы
-Календарь смен
-Автобусы
-ОТ и ТБ
-```
-
-Planned next application foundations include:
-
-```text
-Календарь смен
-Автобусы
-```
-
-Their product/data contracts must be defined before implementation rather than inferred from placeholder tiles.
 
 ---
 
 # Chats unread badge
-
-Checkpoint:
-
-```text
-f0a2084
-feat(spaces): add chats unread badge
-```
 
 Unread state is centralized in:
 
@@ -232,13 +201,11 @@ ChatUnreadSummaryController
 
 It owns a shared user-chat stream and avoids one Firestore unread query per tile.
 
-Manual scenario:
+Manual scenario previously verified:
 
 ```text
 0 → 1 → 2 → 1 → 0
 ```
-
-Web does not create this controller while Chats are disabled.
 
 ---
 
@@ -272,13 +239,11 @@ Firestore Rules
 
 Owner remains highest priority.
 
-EpiLite uses the same domain/service/Rules authorization as Android.
-
 ---
 
 # Participant membership semantics
 
-Participant statuses:
+Statuses:
 
 ```text
 active
@@ -305,9 +270,7 @@ not physical participant-document deletion.
 
 A truly new participant receives one-time priority at the top.
 
-A previously removed participant is restored at the current hidden canonical anchor and does not regain top priority.
-
-This prevents remove/re-add from gaming the queue.
+A previously removed participant restores at the current hidden canonical anchor and does not regain top priority.
 
 ---
 
@@ -328,98 +291,15 @@ Entry:
 → Режим редактирования списка
 ```
 
-Editing is local until Apply:
+Editing is local until Apply.
 
-```text
-↑ / ↓
-→ local draft only
-→ 0 Firestore reorder writes
-```
+Apply performs an atomic Firestore transaction and normalizes canonical `rotationOrder`.
 
-Inactive vacation/sick/removed slots stay fixed while active participants move around them.
-
-Apply:
-
-```text
-atomic Firestore transaction
-normalize canonical participant rotationOrder to 0..N-1
-write only changed rotationOrder fields
-preserve unrelated concurrent state where allowed
-advance monotonic mutation marker
-```
-
-Conflict UI:
+Exact conflict UI:
 
 ```text
 Список изменился. Откройте режим редактирования заново.
 ```
-
-Cancel discards the draft without writes.
-
----
-
-# Responsive Substitution rows
-
-The participant row was adjusted for narrow Web widths.
-
-Current shared row keeps:
-
-```text
-queue badge
-participant text
-Вызвать
-⋮
-statistics
-```
-
-without relying on a `ListTile.trailing` layout that overflowed in Web.
-
-Manual Android regression was verified after the change.
-
----
-
-# Substitution gateway split
-
-Participant writes are intentionally separated:
-
-```text
-SubstitutionParticipantStateFirestoreGateway
-→ ordinary state operations
-
-SubstitutionRotationMembershipFirestoreGateway
-→ add / restore / soft remove
-
-SubstitutionRotationEditFirestoreGateway
-→ atomic whole-list reorder
-```
-
-The separation keeps transaction invariants below UI and independently testable.
-
----
-
-# Deleted Auth user cleanup
-
-Backend Auth-delete cleanup removes:
-
-```text
-users/{uid}
-device token documents
-spaces/substitution/participants/{uid}
-spaces_access/{uid}
-```
-
-Historical/business data remains:
-
-```text
-confirmedCalls
-statistics
-chats
-messages
-```
-
-Ordinary single-user deletion was verified in production.
-
-Bulk Admin SDK `deleteUsers([...])` may require a separately verified cleanup path.
 
 ---
 
@@ -438,7 +318,7 @@ brigadier
 owner
 ```
 
-General announcement capacity:
+General capacity:
 
 ```text
 3 active messages
@@ -453,16 +333,66 @@ Lifetimes / accents:
 until cancelled → red
 ```
 
-General local hide:
+Local hide:
 
 ```text
-SharedPreferences
 spaces_bar.hidden_message_ids.v1.<uid>
 ```
 
 No Firestore write is performed for local hide.
 
-SpacesBar works in both Android Epistola and current EpiLite, with the same role rules.
+---
+
+# Final SpacesBar UI
+
+Current SpacesBar presentation is completed:
+
+```text
+stationary neutral outer frame
+colored inner glow near frame
+neutral center
+true cyclic/infinite swipe in both directions
+manual drag interpolates glow continuously
+auto rotation uses same PageController motion
+no fade-to-dark transition
+```
+
+Timing:
+
+```text
+auto dwell = 10 sec
+slide = 1000 ms
+```
+
+Current glow checkpoint:
+
+```text
+edge alpha ≈ 45
+inner alpha ≈ 10
+```
+
+---
+
+# Test Mode
+
+For SpacesBar visual/animation testing:
+
+```powershell
+flutter.bat run --dart-define=EPISTOLA_TEST_MODE=true
+```
+
+Titles:
+
+```text
+Epistola Test
+EpiLite Test
+```
+
+Current Test Mode protects SpacesBar publication/watch/management only.
+
+It is NOT a complete Firebase sandbox.
+
+Android Test Mode may still initialize unrelated production FCM/Firebase paths.
 
 ---
 
@@ -474,14 +404,6 @@ Successful call finalization creates:
 spaces/substitution/confirmedCalls/{callId}
 ```
 
-Finalization:
-
-```text
-update statistics
-create confirmedCall
-delete pendingCall
-```
-
 Presentation IDs:
 
 ```text
@@ -491,24 +413,18 @@ substitution:<callId>
 
 Personal calls do not consume general `3/3` capacity.
 
-A personal call remains active until shift start:
+Personal call expires visually at shift start:
 
 ```text
 day → 08:00 local
 night → 20:00 local
 ```
 
-Personal local hide:
-
-```text
-spaces_bar.hidden_substitution_call_ids.v1.<uid>
-```
-
-Confirmed-call history remains after the SpacesBar item expires.
+Confirmed-call history remains.
 
 ---
 
-# Unified SpacesBar push target
+# Push deep-link
 
 Typed push model supports:
 
@@ -530,90 +446,223 @@ general:<messageId>
 substitution:<callId>
 ```
 
-Backward compatibility remains for:
-
-```text
-chatId
-legacy spacesBarMessageId
-```
-
-Some old internal `*MessageId` names still carry presentation IDs. They remain compatibility debt and should be cleaned in a dedicated technical block.
+Some legacy internal `*MessageId` names remain and should be cleaned in a dedicated technical block.
 
 ---
 
-# Push
+# Push installation ownership
 
-Android push infrastructure remains active.
-
-SpacesBar Android channel:
+Checkpoint:
 
 ```text
-epistola_spaces_bar_v1
+67800f0
+feat(push): add installation ownership foundation
 ```
 
-Substitution confirmed call push is generated from the canonical `confirmedCalls` event.
+Root cause of the earlier wrong-recipient push incident was stale duplicated device ownership: the same Poco installation/token had been stored under multiple users.
 
-Current EpiLite policy:
+New invariant:
 
 ```text
-Web push disabled
+one installationId
+→ one current authenticated user
+
+one user
+→ multiple installations allowed
 ```
 
-Web does not initialize Android/local notification infrastructure.
+Canonical registry:
 
-A business action performed in EpiLite can still cause an Android device to receive an existing FCM push.
+```text
+pushInstallations/{installationId}
+```
+
+Schema v2:
+
+```text
+schemaVersion
+userId
+token
+platform
+updatedAt
+```
+
+`userId` means current authenticated account and is unrelated to the application `owner` role.
 
 ---
 
-# EpiLite PWA / Hosting
+# Push ownership callables
 
-Hosting config:
-
-```text
-firebase.json
-public = build/web
-SPA rewrite → /index.html
-```
-
-Build:
-
-```powershell
-flutter.bat build web
-```
-
-Deploy:
-
-```powershell
-firebase.cmd deploy --only hosting
-```
-
-Always build Web before deploy.
-
-PWA identity:
+Cloud Functions:
 
 ```text
-name = EpiLite
-short_name = EpiLite
-id = /epilite
-start_url = /
-scope = /
+claimPushInstallation
+releasePushInstallation
 ```
 
-Runtime assets:
+Region:
 
 ```text
-web/favicon.png
-web/icons/Icon-192.png
-web/icons/Icon-512.png
-web/icons/Icon-maskable-192.png
-web/icons/Icon-maskable-512.png
+europe-west1
 ```
 
-Branding source artwork:
+Client source:
 
 ```text
-design/branding/
+lib/services/push_token_service.dart
 ```
+
+Client behavior:
+
+```text
+auth state → claim current token
+FCM token refresh → claim
+logout/unregister → release
+```
+
+Claim transaction atomically removes the same installation from the previous user and attaches it to the current authenticated user.
+
+Stale old-user release cannot remove the current user's ownership.
+
+Multi-device accounts remain supported.
+
+---
+
+# Push ownership production verification
+
+Real production roundtrip passed:
+
+```text
+Owner
+→ Alex Born
+→ Owner
+```
+
+The Poco installation moved between accounts correctly.
+
+Alex's separate genuine second installation remained intact throughout.
+
+Legacy schema v1 registry using `ownerUserId` successfully migrated to:
+
+```text
+schemaVersion = 2
+userId = ...
+```
+
+---
+
+# Device Firestore Rules rollout
+
+Local Rules now deny direct client writes:
+
+```text
+users/{uid}/devices/{deviceId}
+create/update/delete → false
+```
+
+Own device reads remain allowed.
+
+Targeted Rules tests:
+
+```text
+6/6 passed
+```
+
+Full Firestore Rules suite:
+
+```text
+185/185 passed
+```
+
+Important:
+
+```text
+these restrictive Rules are NOT deployed yet
+```
+
+Reason:
+
+```text
+legacy APKs still use direct device writes
+```
+
+Rollout plan:
+
+```text
+distribute new APK
+→ allow ~5–7 day migration window
+→ verify adoption
+→ deploy restrictive Rules only when safe
+```
+
+If many users remain on old APK, delay Rules deploy.
+
+---
+
+# Deleted-user cleanup follow-up
+
+Existing Auth-delete cleanup predates the new canonical registry.
+
+It already removes:
+
+```text
+users/{uid}
+users/{uid}/devices/*
+spaces/substitution/participants/{uid}
+spaces_access/{uid}
+```
+
+A future hardening task must audit/update cleanup for:
+
+```text
+pushInstallations/{installationId}
+```
+
+Do not assume registry cleanup is already implemented.
+
+---
+
+# Web avatar replacement
+
+Current Web path:
+
+```text
+ImagePicker
+→ ImageCropper Web
+→ bytes
+→ FlutterImageCompress
+→ Firebase Storage putData
+→ avatar metadata
+```
+
+Cropper.js support is integrated in:
+
+```text
+web/index.html
+```
+
+Manual iPhone Web/PWA test passed.
+
+---
+
+# Buses foundation planning
+
+`Автобусы` is still unimplemented.
+
+Known current naming:
+
+```text
+Трамвай → Автово
+Порт → Управление
+Быт блок 1 → Медпункт
+Быт блок 2 → Раздевалка
+```
+
+There are two buses running cyclically between terminal points with intermediate stops.
+
+Weekday/weekend schedule differs.
+
+The old schedule document is not authoritative enough for implementation; obtain a newer schedule first.
 
 ---
 
@@ -629,16 +678,21 @@ flutter.bat build apk --release
 flutter.bat build web
 ```
 
-Local Web:
+Functions:
 
 ```powershell
-flutter.bat run -d chrome --web-port 57097
+cd functions
+npm.cmd run lint
+npm.cmd run build
+node --test <tests>
+cd ..
 ```
 
-Hosting:
+Firestore emulator on Windows may require:
 
 ```powershell
-firebase.cmd deploy --only hosting
+$env:JAVA_HOME = "C:\Program Files\Android\Android Studio\jbr"
+$env:Path = "$env:JAVA_HOME\bin;$env:Path"
 ```
 
 Git:
@@ -657,8 +711,8 @@ Generated plugin files should be restored once after the final Flutter command i
 Checkpoint:
 
 ```text
-a488c3b
-feat(web): add EpiLite web client
+67800f0
+feat(push): add installation ownership foundation
 ```
 
 Flutter:
@@ -668,95 +722,83 @@ flutter.bat analyze
 → No issues found
 
 flutter.bat test
-→ 978 tests passed
-
-flutter.bat build web
-→ SUCCESS
-
-flutter.bat build apk --release
-→ SUCCESS
-→ 58.4 MB
+→ 981 tests passed
 ```
 
-Manual:
+Functions:
 
 ```text
-EpiLite PWA installed
-→ name correct
-→ icon correct
-→ Web title correct
-→ authentication works
-→ member and privileged accounts checked
-→ SpacesBar works
-→ Список works
-→ Chats blocked as Android-only
-
-Android regression
-→ Epistola branding preserved
-→ Spaces works
-→ Chats works
-→ Список works
-→ participant controls render correctly
-→ SpacesBar role management preserved
+ownership tests → 19/19
+lint → passed
+build → passed
 ```
 
----
-
-# Branding assets
-
-Source files are kept out of the project root:
+Rules:
 
 ```text
-design/branding/Аватар EpiLite.png
-design/branding/Аватар Чайки.png
-design/branding/Аватар Чайки трафарет.png
+push device targeted → 6/6
+full Firestore Rules → 185/185
 ```
 
-Runtime application assets remain in their platform/feature paths.
+Git:
+
+```text
+git diff --check → clean
+functional commit pushed to feature branch
+```
 
 ---
 
 # Roadmap
 
-Completed:
+Completed in current sequence:
 
 ```text
 Chats unread summary
 EpiLite Web Lite / PWA foundation
+Web avatar replacement
+SpacesBar stationary frame + true cyclic swipe + glow tuning
+SpacesBar Test Mode foundation
+Push installation ownership foundation
 ```
 
-Next priority unless reprioritized:
+Immediate rollout:
 
 ```text
-1. SpacesBar UI
-   stationary outer frame
-   true cyclic/infinite swipe
-   glow tuning
-
-2. Spaces Hub UI/settings
-   ⋮
-   show/hide Spaces
-   regular/compact layout
-   7–8
-   >8
-   odd final tile
-
-3. legacy *MessageId → presentationId cleanup
-
-4. FCM token lifecycle investigation
-
-5. Calendar foundation
-
-6. Buses foundation
+1. distribute/test new Android APK
+2. wait for user migration
+3. after ~5–7 days evaluate deploy of restrictive device Rules
 ```
 
-Possible later EpiLite phases:
+Security follow-up:
 
 ```text
+pushInstallations cleanup on deleted Auth user
+```
+
+Next UI/product unless reprioritized:
+
+```text
+Spaces Hub ⋮
+show/hide Spaces
+regular/compact layout
+>8 behavior
+odd final tile
+```
+
+Technical cleanup:
+
+```text
+legacy *MessageId → presentationId names
+```
+
+Later foundations:
+
+```text
+official Web Chats
 Web push
-Chats on Web
-explicit Contacts support
-full responsive parity
+Calendar
+Buses
 ```
 
 ---
@@ -780,16 +822,16 @@ ARCHITECTURE.md
 README.md
 ```
 
-the preferred replacement workflow is:
+preferred replacement workflow:
 
 ```text
 assistant prepares all three full files
-→ packs them into one ZIP
+→ packs exactly them into one ZIP
 → user extracts ZIP
-→ root copies replace the three current files
+→ root copies replace existing files
+→ inspect diff
+→ commit docs separately
 ```
-
-This avoids manual section-by-section patching.
 
 ---
 
@@ -812,11 +854,11 @@ ARCHITECTURE.md
 README.md
 ```
 
-Expected latest functional checkpoint for this block:
+Expected latest functional checkpoint:
 
 ```text
-a488c3b
-feat(web): add EpiLite web client
+67800f0
+feat(push): add installation ownership foundation
 ```
 
 Do not use `main` as the current `v0.8.0` state until merge/release is explicitly verified.

@@ -24,15 +24,15 @@
 | Параметр | Значение |
 |---|---|
 | Current development target | `v0.8.0` |
-| Stage | `Spaces / Substitution / SpacesBar / EpiLite Web Lite` |
+| Stage | `Spaces / Substitution / SpacesBar / EpiLite / Push Ownership` |
 | Feature branch | `feat/v0.8.0-spaces-substitution-foundation` |
-| Last functional checkpoint | `a488c3b` |
-| EpiLite Web Lite | `a488c3b` |
+| Last functional checkpoint | `67800f0` |
+| Push installation ownership | `67800f0` |
+| Test Mode + Web avatars + final SpacesBar UI | `1ca3bcf` |
+| EpiLite Web Lite foundation | `a488c3b` |
 | Chats unread summary | `f0a2084` |
 | Substitution list editor | `85238a2` |
-| Deleted-user cleanup | `e7ac582` |
-| Android launcher icon | `544fcaf` |
-| Previous confirmed-call checkpoint | `9ebf9ab` |
+| Deleted-user cleanup baseline | `e7ac582` |
 | Stable baseline before v0.8.0 | `v0.7.4` |
 | Full platform | Android / `Epistola` |
 | Lightweight Web/PWA | `EpiLite` |
@@ -40,7 +40,7 @@
 
 `v0.8.0` is not yet declared merged/released.
 
-A docs-only commit may make HEAD newer than `a488c3b`.
+A docs-only commit may make HEAD newer than `67800f0`.
 
 ---
 
@@ -80,14 +80,15 @@ UI must not own:
 ```text
 Firestore transaction invariants
 authoritative security
+server ownership invariants
 backend schema derived from visual state
 server persistence of presentation-only parameters
 role authorization copied into widgets
 ```
 
-Application services own permission checks, validation and orchestration.
+Application services own validation/orchestration.
 
-Gateways/adapters own Firestore reads/writes, snapshots, transactions, server timestamps, schema mapping and local persistence adapters.
+Gateways/adapters own Firebase reads/writes, transactions, snapshots, mapping and local persistence adapters.
 
 Domain remains independent of Flutter visual state.
 
@@ -95,27 +96,13 @@ Domain remains independent of Flutter visual state.
 
 # 3. Platform capability boundary
 
-Platform split is centralized in:
+Centralized in:
 
 ```text
 lib/platform/epistola_platform_capabilities.dart
 ```
 
-Current semantics:
-
-```text
-isWebLite
-supportsPushNotifications
-supportsChats
-supportsContacts
-supportsSpacesBarManagement
-supportsSubstitutionManagement
-supportsSubstitutionAvailabilityChanges
-```
-
-Use this layer to decide whether a capability exists on a platform.
-
-Do not scatter raw `kIsWeb` checks throughout unrelated feature code when a stable platform capability can express the policy.
+Platform capability means feature availability, not authorization.
 
 Critical separation:
 
@@ -125,26 +112,80 @@ platform capability
 ≠ Firestore security
 ```
 
-Example:
+Current broad policy:
 
 ```text
-supportsSpacesBarManagement = true
+supportsPushNotifications
+→ Android true
+→ Web false
+
+supportsChats
+→ Android true
+→ Web false
 ```
 
-means Web may expose SpacesBar management behavior.
-
-Actual right to publish still depends on:
+But current source has an important presentation gap:
 
 ```text
-SpacesAccessRole
-→ member / brigadier / owner
+Contacts → user card → Написать
 ```
 
-and authoritative writes remain protected by Firestore Rules.
+can open a private chat on Web because that route is not gated by the same capability.
+
+Conclusion:
+
+```text
+Web chats are not fundamentally blocked by backend/rules
+→ current limitation is incomplete presentation exposure/verification
+```
+
+Do not treat this accidental path as official full Web Chat support yet.
 
 ---
 
-# 4. Platform products
+# 4. Runtime Test Mode boundary
+
+File:
+
+```text
+lib/platform/epistola_runtime_mode.dart
+```
+
+Enable:
+
+```powershell
+flutter.bat run --dart-define=EPISTOLA_TEST_MODE=true
+```
+
+Titles:
+
+```text
+Android → Epistola Test
+Web → EpiLite Test
+```
+
+Current safety scope is intentionally narrow:
+
+```text
+SpacesBar production publication avoided
+SpacesBar production watch avoided
+SpacesBar management avoided
+fake SpacesBar messages used for visual testing
+```
+
+Important invariant:
+
+```text
+Test Mode != full Firebase sandbox
+```
+
+Unrelated production Firebase/FCM code may still initialize on Android.
+
+Therefore Test Mode is currently a SpacesBar visual/animation test mechanism, not a global test environment.
+
+---
+
+# 5. Platform products
 
 Full application:
 
@@ -172,201 +213,70 @@ Shared backend:
 ```text
 Firebase Auth
 Firestore
-Firebase Storage where supported/configured
-existing domain/application services
+Firebase Storage where supported
+Cloud Functions where applicable
 ```
 
-Do not fork business collections merely to make a Web presentation.
-
----
-
-# 5. EpiLite Web Lite scope
-
-Verified Web Lite capabilities:
-
-```text
-Firebase Auth
-root navigation
-Spaces
-SpacesBar
-Substitution "Список"
-Profile/logout path
-PWA installation
-Firebase Hosting
-```
-
-Explicit current limitations:
-
-```text
-Chats
-→ unavailable on Web
-
-Push notifications
-→ unavailable on Web
-
-Android/local notification initialization
-→ skipped on Web
-```
-
-The Web app may perform business actions that cause Android devices to receive existing FCM notifications. This is not Web push support.
-
-Contacts remain visible in current root navigation, but they are not part of the guaranteed Web Lite MVP contract yet.
+Do not fork business collections merely to create a Web presentation.
 
 ---
 
 # 6. Web startup / notification boundary
 
-`main.dart` initializes Firebase for all platforms.
+Firebase initializes on all supported platforms.
 
-Push setup is guarded by:
+Android push setup is guarded by platform capability.
 
-```text
-EpistolaPlatformCapabilities.supportsPushNotifications
-```
-
-On Web, do not initialize:
+On Web, do not initialize Android-specific notification flow until dedicated Web push exists:
 
 ```text
 FirebaseMessaging.onBackgroundMessage
-NotificationService.initialize
-NotificationService.startMessaging
+Android local notification setup
+Android notification channels
 ```
 
-until a dedicated Web push foundation is designed.
+Web actions may still cause Android devices to receive backend FCM notifications.
 
-This prevents Android notification assumptions from leaking into Flutter Web.
+That does not imply Web push support.
 
 ---
 
-# 7. Branding / PWA identity
+# 7. EpiLite avatar replacement architecture
 
-Android:
-
-```text
-Epistola
-```
-
-Web/PWA:
+Current Web avatar path:
 
 ```text
-EpiLite
+shared avatar UI/controller
+→ Web avatar replacement dependency
+→ ImagePicker
+→ ImageCropper Web
+→ bytes
+→ FlutterImageCompress
+→ Firebase Storage putData
+→ avatar metadata
 ```
 
-Web MaterialApp title:
-
-```text
-EpiLite
-```
-
-Android MaterialApp title:
-
-```text
-Epistola
-```
-
-Home header follows the same platform split.
-
-PWA manifest:
-
-```text
-name = EpiLite
-short_name = EpiLite
-id = /epilite
-start_url = /
-scope = /
-display = standalone
-```
-
-Runtime Web branding:
+Web crop support is integrated through:
 
 ```text
 web/index.html
-web/manifest.json
-web/favicon.png
-web/icons/
+→ Cropper.js
 ```
 
-Source artwork:
+This was manually verified on iPhone Web/PWA.
+
+Keep:
 
 ```text
-design/branding/
+shared presentation contracts
+platform-specific media adapters
 ```
 
-The runtime SpacesBar stencil remains:
-
-```text
-assets/images/epistola_seagull_stencil.png
-```
-
-and is not a design-source substitute.
+Do not duplicate profile/avatar screens solely for Web.
 
 ---
 
-# 8. Firebase Hosting
-
-`firebase.json` contains Hosting configuration.
-
-Public directory:
-
-```text
-build/web
-```
-
-SPA rewrite:
-
-```text
-** → /index.html
-```
-
-Build:
-
-```powershell
-flutter.bat build web
-```
-
-Deploy:
-
-```powershell
-firebase.cmd deploy --only hosting
-```
-
-Always build Web before Hosting deploy.
-
-Do not assume deploy automatically runs Flutter build.
-
----
-
-# 9. Storage/CORS boundary
-
-Web image/avatar fetches from Firebase Storage are subject to browser CORS.
-
-If images work on Android but fail in Web with CORS console errors:
-
-```text
-do not add duplicate Firestore reads
-do not bypass avatar cache architecture
-do not change domain model first
-```
-
-Check Storage bucket CORS configuration.
-
-Known bucket:
-
-```text
-gs://epistola-434b7.firebasestorage.app
-```
-
-A fixed local Web port can be used for reproducible development:
-
-```powershell
-flutter.bat run -d chrome --web-port 57097
-```
-
-Production origin is Firebase Hosting.
-
----
-
-# 10. Infrastructure / cost model
+# 8. Firebase infrastructure
 
 ```text
 Repository: MikhailBerezkin/epistola
@@ -374,6 +284,7 @@ Firebase project: epistola-434b7
 Firestore: eur3
 Realtime Database: europe-west1
 Cloud Functions: europe-west1
+Functions runtime: Node.js 22
 Android package: com.epistola.app
 ```
 
@@ -392,7 +303,7 @@ avoid disabled-feature Web reads
 
 ---
 
-# 11. Root navigation
+# 9. Root navigation
 
 Root:
 
@@ -422,7 +333,7 @@ Profile → Spaces
 Spaces → exit
 ```
 
-Android Chats remain internal:
+Android Messenger remains internal:
 
 ```text
 Spaces
@@ -432,13 +343,9 @@ Spaces
 
 Do not mass-rename Messenger internals.
 
-Push-created Spaces routes must remain separate from normal root Back semantics.
-
-Web header may say `EpiLite`; this does not rename Android or Messenger domain entities.
-
 ---
 
-# 12. Spaces Hub
+# 10. Spaces Hub
 
 Screen:
 
@@ -457,58 +364,22 @@ Current applications:
 ОТ и ТБ
 ```
 
-Android working:
+Current UI backlog:
 
 ```text
-Чаты
-Список
+⋮ settings
+show/hide Spaces
+regular/compact layout
+7–8 compact behavior
+>8 behavior
+odd last tile behavior
 ```
 
-Web Lite working:
-
-```text
-Список
-```
-
-Web Chats behavior:
-
-```text
-no ChatUnreadSummaryController
-no Messenger navigation
-tile subtitle = Доступно в Android
-tap → Android-only dialog
-```
-
-Placeholders/unimplemented:
-
-```text
-Судозаходы
-Календарь смен
-Автобусы
-ОТ и ТБ
-```
-
-Deferred Spaces Hub layout:
-
-```text
-<=6 → regular
-7–8 → compact without subtitles
-odd last tile → full width
->8 → vertical scroll
-```
-
-`⋮` remains reserved for future show/hide/reorder Spaces configuration.
+These are presentation concerns and should not change domain/security contracts.
 
 ---
 
-# 13. Chat unread architecture
-
-Checkpoint:
-
-```text
-f0a2084
-feat(spaces): add chats unread badge
-```
+# 11. Chat unread architecture
 
 Controller:
 
@@ -516,23 +387,19 @@ Controller:
 ChatUnreadSummaryController
 ```
 
-owns one user-chat stream and derives total unread state centrally.
+owns one user-chat stream and derives centralized unread state.
 
 Avoid:
 
 ```text
-one Firestore unread query per ChatTile
+one Firestore unread query per tile/widget
 ```
 
-The Hub reads the controller state and renders one badge.
-
-Web does not start this controller because Chats are disabled.
-
-This is both a platform-boundary and cost/read optimization.
+This remains a cost/read optimization and a single-source presentation model.
 
 ---
 
-# 14. Spaces roles
+# 12. Spaces roles
 
 Roles:
 
@@ -558,13 +425,13 @@ brigadier
 owner
 ```
 
-UI visibility is not security. Rules independently enforce authoritative writes.
+UI visibility is not security.
 
-Web preserves the same roles; it does not invent a separate Web authorization model.
+Firestore Rules independently protect authoritative client writes.
 
 ---
 
-# 15. General SpacesBar domain/backend
+# 13. General SpacesBar domain/backend
 
 Domain:
 
@@ -610,7 +477,7 @@ twentyFourHours
 untilCancelled
 ```
 
-Lifetime controls expiry and visual accent, not presentation priority.
+Lifetime controls expiry/accent, not presentation priority.
 
 Do not persist presentation-only values such as:
 
@@ -624,7 +491,7 @@ local hide state
 
 ---
 
-# 16. General SpacesBar read/write
+# 14. General SpacesBar read/write
 
 Realtime:
 
@@ -665,13 +532,11 @@ rewrite board
 server timestamps
 ```
 
-Delete is transactional and does not delete the whole board document.
-
-Web uses the same service/gateway chain.
+Delete is transactional and does not delete the board document.
 
 ---
 
-# 17. SpacesBar UI
+# 15. Final SpacesBar presentation architecture
 
 Widget:
 
@@ -679,152 +544,47 @@ Widget:
 SpacesBarPanel
 ```
 
-Current:
+Current visual contract:
 
 ```text
-height = 141 px
-font = 18 px
-1 item → no dots/chevrons
->1 → chevrons + dots + PageView
-auto rotation = 15 sec
-manual navigation resets interval
+stationary neutral outer frame
+colored inner glow near frame
+neutral center
+true cyclic/infinite PageView navigation
+manual drag interpolates glow continuously
+auto rotation uses same controller animation
+no fade-to-dark intermediate state
 ```
 
-Empty state:
+Timing:
 
 ```text
-assets/images/epistola_seagull_stencil.png
+dwell = 10 seconds
+auto slide = 1000 ms
 ```
 
-General accents:
+Glow tuning checkpoint:
 
 ```text
-1h green
-12h blue
-24h orange
-untilCancelled red
+strong edge alpha ≈ 45
+inner alpha ≈ 10
 ```
 
-Substitution accent:
+The cyclic carousel is presentation-only.
+
+It must not alter:
 
 ```text
-purple
-```
-
-Current PageView remains finite at swipe boundaries.
-
-Deferred:
-
-```text
-stationary outer frame
-true cyclic/infinite swipe
-glow tuning
-```
-
-These are presentation-only changes and must not rewrite backend/domain logic.
-
----
-
-# 18. Confirmed substitution call
-
-Domain:
-
-```text
-SubstitutionConfirmedCall
-```
-
-Authoritative path:
-
-```text
-spaces/substitution/confirmedCalls/{callId}
-```
-
-Finalization transaction:
-
-```text
-read pendingCall
-→ validate
-→ calculate statistics
-→ write statistics
-→ write confirmedCall
-→ delete pendingCall
-```
-
-This is the canonical post-Undo business event.
-
-Exactly-once remains based on authoritative pending-call deletion in the same transaction.
-
----
-
-# 19. Confirmed-call schema / Rules
-
-Storage:
-
-```text
-schemaVersion
-callId
-userId
-revision
-calledByUserId
-calledAt
-finalizedAt
-shiftYear
-shiftMonth
-shiftDay
-shiftKind
-```
-
-Rules bind confirmedCall creation to the valid finalization operation that removes pendingCall and updates matching statistics.
-
-Reads:
-
-```text
-called user → own confirmed calls
-```
-
-Update/delete:
-
-```text
-denied
+message lifetime
+message ordering
+server IDs
+hide state
+backend board schema
 ```
 
 ---
 
-# 20. Confirmed-call client gateway
-
-Gateway:
-
-```text
-SubstitutionConfirmedCallFirestoreGateway
-```
-
-Firebase query:
-
-```text
-confirmedCalls.where("userId", isEqualTo: userId)
-```
-
-Supports:
-
-```text
-loadForUser
-watchForUser
-```
-
-Malformed documents and document-id/callId mismatches are rejected.
-
-Returned order:
-
-```text
-finalizedAt descending
-→ revision descending
-```
-
-No cross-user query is required for personal SpacesBar/history.
-
----
-
-# 21. Unified SpacesBar presentation
+# 16. Unified SpacesBar presentation
 
 Model:
 
@@ -846,14 +606,6 @@ general:<messageId>
 substitution:<callId>
 ```
 
-Unified list:
-
-```text
-visible general messages
-+
-visible active personal substitution calls
-```
-
 Combined order:
 
 ```text
@@ -865,7 +617,7 @@ Personal calls do not consume general `3/3` capacity.
 
 ---
 
-# 22. Personal call expiry / hide
+# 17. Personal call expiry / hide
 
 Resolver:
 
@@ -893,48 +645,54 @@ SpacesBarHiddenSubstitutionCallsPreferences
 spaces_bar.hidden_substitution_call_ids.v1.<uid>
 ```
 
-`SpacesPage` schedules a local Timer for nearest visible expiry.
+No server write occurs when the visual item expires.
 
-No server write at shift start.
-
-App resume also recalculates time-dependent visibility.
-
-Confirmed-call history remains after SpacesBar expiry.
+Confirmed-call history remains.
 
 ---
 
-# 23. SpacesBar state separation
+# 18. Confirmed substitution call
 
-`SpacesBarPresentationState` deliberately keeps separate:
-
-```text
-general board
-general hidden IDs
-active general messages
-visible general messages
-
-full confirmed-call history
-hidden substitution IDs
-active substitution calls
-visible substitution calls
-
-unified presentationItems
-nextSubstitutionExpiryAtLocal
-```
-
-Important:
+Authoritative path:
 
 ```text
-manager editor → general activeMessages only
-technical history → full confirmedCalls
-SpacesBar → visible presentationItems
+spaces/substitution/confirmedCalls/{callId}
 ```
 
-Do not collapse these into one authoritative backend structure.
+Finalization transaction:
+
+```text
+read pendingCall
+→ validate
+→ calculate statistics
+→ write statistics
+→ write confirmedCall
+→ delete pendingCall
+```
+
+Exactly-once remains based on pending-call deletion in the same transaction.
+
+Schema:
+
+```text
+schemaVersion
+callId
+userId
+revision
+calledByUserId
+calledAt
+finalizedAt
+shiftYear
+shiftMonth
+shiftDay
+shiftKind
+```
+
+Confirmed calls are immutable business events.
 
 ---
 
-# 24. Unified push deep-link
+# 19. Unified push deep-link
 
 Domain:
 
@@ -956,146 +714,353 @@ Unified field:
 spacesBarPresentationId
 ```
 
-Valid:
+Valid values:
 
 ```text
 general:<messageId>
 substitution:<callId>
 ```
 
-Backward compatibility:
+Backward compatibility remains for legacy `spacesBarMessageId` and chat IDs.
 
-```text
-legacy chatId
-legacy spacesBarMessageId
-```
+Some older internal names still say `*MessageId` even when carrying a unified presentation ID.
 
-Legacy general normalization:
-
-```text
-spacesBarMessageId=42
-→ general:42
-```
-
-Deduplication:
-
-```text
-chat:<id>
-spacesBar:<presentationId>
-```
+This is intentional compatibility debt for a dedicated cleanup phase.
 
 ---
 
-# 25. Legacy routing naming
+# 20. Android push delivery model
 
-Some APIs still use old names:
+Existing recipient documents remain:
 
 ```text
-resolveSpacesBarMessageId
-spacesBarTargetMessageId
-targetMessageId
+users/{uid}/devices/{installationId}
 ```
 
-Current value may be a presentation ID.
+Delivery Functions query these documents to obtain FCM tokens.
 
-This is compatibility debt.
+This storage remains the delivery projection even after canonical ownership registry was introduced.
 
-Do not rename during unrelated work.
+Do not confuse:
+
+```text
+pushInstallations/{installationId}
+→ authoritative current installation ownership
+
+users/{uid}/devices/{installationId}
+→ delivery projection consumed by existing push senders
+```
+
+Both are kept transactionally consistent by the ownership service for new clients.
 
 ---
 
-# 26. Exact target contract
+# 21. Push installation identity
 
-Panel matching:
-
-```text
-item.presentationId == target
-```
-
-or legacy general:
+Stable local key:
 
 ```text
-item.generalMessageId == target
+SharedPreferences
+push_installation_id
 ```
 
-Explicit valid push target remains stronger than newly-added realtime state while the user remains on the target.
+Format:
 
-Manual navigation releases this priority.
+```text
+16 secure random bytes
+→ 32 lowercase hex chars
+```
 
-Local hide remains stronger than push forcing.
+Invariant:
+
+```text
+one installationId
+→ one current authenticated user
+```
+
+Allowed:
+
+```text
+one user
+→ multiple installationIds
+```
+
+FCM token itself is not the installation identity.
 
 ---
 
-# 27. SpacesBar Android notification channel
+# 22. Canonical push ownership registry
+
+Authoritative path:
 
 ```text
-epistola_spaces_bar_v1
+pushInstallations/{installationId}
 ```
+
+Current schema:
+
+```text
+schemaVersion = 2
+userId
+token
+platform
+updatedAt
+```
+
+Legacy schema v1:
+
+```text
+ownerUserId
+```
+
+is read only for migration.
+
+New writes replace it with:
+
+```text
+userId
+```
+
+`userId` means authenticated account assigned to that installation and has no relationship to the application's `owner` role.
+
+---
+
+# 23. Push ownership callable API
+
+Cloud Functions:
+
+```text
+claimPushInstallation
+releasePushInstallation
+```
+
+Region:
+
+```text
+europe-west1
+```
+
+Authentication source:
+
+```text
+callableRequest.auth.uid
+```
+
+Client cannot nominate another user ID.
+
+Claim request exact shape:
+
+```text
+installationId
+token
+platform
+```
+
+Release request exact shape:
+
+```text
+installationId
+```
+
+Validation:
+
+```text
+installationId = 32 lowercase hex
+platform = android
+token trimmed, non-empty, <=4096
+unknown fields rejected
+```
+
+Web is currently excluded because Web push is not supported.
+
+---
+
+# 24. Claim transaction
+
+Pseudo-flow:
+
+```text
+read pushInstallations/{installationId}
+
+if old user != authenticated user:
+  delete users/{oldUid}/devices/{installationId}
+
+set users/{currentUid}/devices/{installationId}
+set pushInstallations/{installationId}
+```
+
+All writes happen in one Firestore Admin transaction.
 
 Properties:
 
 ```text
-importance high
-sound seagull_notification
-vibration enabled
-pattern [0, 250, 100, 250]
+idempotent same-user claim
+token refresh update
+cross-account migration
+multi-device preservation
 ```
-
-Foreground local notifications and background FCM use the same semantic channel.
-
-OS/device settings remain authoritative for actual background vibration.
-
-This is Android-specific until Web push is separately implemented.
 
 ---
 
-# 28. Push Functions
+# 25. Release transaction
 
-General SpacesBar:
-
-```text
-sendSpacesBarNotification
-onDocumentWritten("spaces/spacesBar")
-```
-
-Recipient discovery:
+If registry belongs to caller:
 
 ```text
-collectionGroup("devices")
-→ dedupe
-→ exclude publisher tokens
-→ multicast <=500
-→ cleanup invalid token docs
+delete pushInstallations/{installationId}
+delete users/{callerUid}/devices/{installationId}
 ```
 
-Substitution confirmed call:
+If registry belongs to another user:
 
 ```text
-sendSubstitutionCallNotification
-onDocumentCreated(
-  "spaces/substitution/confirmedCalls/{callId}"
-)
+delete only caller's stale device document
+leave current registry/current user's device intact
 ```
 
-Recipient query:
+If registry does not exist:
 
 ```text
-users/{recipientUserId}/devices
+cleanup caller stale device document
 ```
 
-Payload:
-
-```text
-deepLinkType = spacesBar
-spacesBarPresentationId = substitution:<callId>
-notificationMode = sound
-```
-
-No separate technical-chat push is created.
+This protects against delayed/stale logout races.
 
 ---
 
-# 29. Epistola technical chat
+# 26. PushTokenService client integration
+
+Client:
+
+```text
+lib/services/push_token_service.dart
+```
+
+Behavior:
+
+```text
+FirebaseAuth.authStateChanges
+→ current authenticated user
+→ get FCM token
+→ claimPushInstallation
+
+FirebaseMessaging.onTokenRefresh
+→ claimPushInstallation
+
+unregisterCurrentDevice
+→ releasePushInstallation
+```
+
+The client no longer relies on direct Firestore device ownership writes in the new APK.
+
+---
+
+# 27. Device security Rules
+
+Desired post-migration rule:
+
+```text
+users/{uid}/devices/{deviceId}
+
+read own devices
+→ allowed
+
+create/update/delete by client
+→ denied
+```
+
+Trusted Cloud Functions use Admin SDK and are unaffected by client Rules.
+
+The restrictive Rules are committed and tested but intentionally not deployed yet.
+
+Reason:
+
+```text
+legacy APKs still depend on direct device writes
+```
+
+Rollout must be staged.
+
+---
+
+# 28. Push migration rollout
+
+Safe order:
+
+```text
+1. deploy callables
+2. distribute new APK
+3. wait for adoption
+4. verify active users migrated
+5. deploy restrictive device Rules
+```
+
+Current state:
+
+```text
+step 1 complete
+step 2 planned/current release work
+step 5 deferred ~5–7 days
+```
+
+If many users remain on old APK, postpone step 5.
+
+Do not trade stale-device security for an avoidable outage of push registration on old clients.
+
+---
+
+# 29. Push incident design lesson
+
+A single physical device may authenticate as different users over its lifetime.
+
+Therefore this pattern is unsafe:
+
+```text
+on login:
+  write token under current user
+```
+
+without also removing prior ownership for the same installation.
+
+Canonical installation registry solves that by making account migration explicit and atomic.
+
+The app role `owner` must never be inferred from installation ownership terminology.
+
+---
+
+# 30. Deleted-user cleanup boundary
+
+Current Auth-delete cleanup removes:
+
+```text
+users/{uid}
+users/{uid}/devices/*
+spaces/substitution/participants/{uid}
+spaces_access/{uid}
+```
+
+Historical records are preserved.
+
+New architecture adds:
+
+```text
+pushInstallations/{installationId}
+```
+
+Current cleanup predates this registry.
+
+Required follow-up:
+
+```text
+audit deleted-user cleanup
+→ remove/resolve canonical registry documents whose userId matches deleted UID
+```
+
+Do not assume this is already done.
+
+---
+
+# 31. Epistola technical chat
 
 Purpose:
 
@@ -1103,35 +1068,7 @@ Purpose:
 read-only technical history
 ```
 
-Tile:
-
-```text
-Epistola
-Технические сообщения
-```
-
-Not a normal chat document.
-
-No fake `chats` record and no generic `systemMessages` collection.
-
-Source chain:
-
-```text
-confirmedCalls
-→ SubstitutionConfirmedCallFirestoreGateway
-→ SubstitutionCallSystemMessageSource
-→ SubstitutionCallSystemMessageMapper
-→ EpistolaSystemChatService
-→ EpistolaSystemChatScreen
-```
-
-History order:
-
-```text
-old → new
-```
-
-Listener exists only while screen is open.
+It is a projection of canonical confirmedCalls, not a fake normal chat.
 
 Unsupported by design:
 
@@ -1150,9 +1087,9 @@ normal chat preview persistence
 
 ---
 
-# 30. Substitution participant canonical model
+# 32. Substitution participant canonical model
 
-Canonical path:
+Path:
 
 ```text
 spaces/substitution/participants/{userId}
@@ -1167,15 +1104,15 @@ sick
 removed
 ```
 
-The canonical queue contains both active and inactive participants.
+The canonical queue contains active and inactive participants.
 
-The visible queue is a projection of the canonical ordering.
+The visible queue is a projection.
 
-`removed` is a soft membership state, not a normal client document deletion.
+`removed` is a soft membership state.
 
 ---
 
-# 31. Hidden canonical slot invariant
+# 33. Hidden canonical slot invariant
 
 Inactive statuses:
 
@@ -1192,58 +1129,17 @@ rotationOrder
 canonical queue membership/anchor
 ```
 
-Active participants can rotate or be manually reordered around hidden anchors.
+Active participants can move around hidden anchors.
 
-Example:
+Previously removed participants restore at their canonical anchor.
 
-```text
-A
-B (vacation)
-C
-D
-```
-
-Move `C` one visible active place up:
-
-```text
-C
-B (vacation)
-A
-D
-```
-
-The inactive slot remains fixed.
-
-On return/restore, the inactive participant reappears at the current canonical anchor.
+This prevents remove/re-add priority gaming.
 
 ---
 
-# 32. New participant vs restore
+# 34. Substitution gateway separation
 
-Never-before-added participant:
-
-```text
-one-time priority at top
-```
-
-Previously removed participant:
-
-```text
-restore existing anchor
-no top priority
-```
-
-This prevents repeated remove/re-add from gaming queue priority.
-
-Membership history inside substitution is represented by keeping the participant document with status `removed`.
-
-Auth deletion is a separate lifecycle event and can physically clean the participant document.
-
----
-
-# 33. Gateway separation
-
-State-only participant gateway:
+State-only gateway:
 
 ```text
 SubstitutionParticipantStateFirestoreGateway
@@ -1261,60 +1157,16 @@ Rotation editor gateway:
 SubstitutionRotationEditFirestoreGateway
 ```
 
-These represent distinct write contracts:
-
-```text
-state mutation
-membership mutation
-whole-list reorder
-```
-
-Do not collapse them into one generic participant gateway.
+These are distinct write contracts and should not be collapsed into one generic gateway.
 
 ---
 
-# 34. Rotation draft domain
+# 35. Rotation draft/editor
 
 Domain:
 
 ```text
 SubstitutionRotationDraft
-```
-
-Stores:
-
-```text
-original participants
-current participants
-```
-
-Active move API:
-
-```text
-canMoveActiveUp
-canMoveActiveDown
-moveActiveUp
-moveActiveDown
-```
-
-Inactive slots are preserved while active participants swap visible active positions.
-
-Normalization before persistence:
-
-```text
-rotationOrder = 0..N-1
-```
-
-across the complete canonical participant list.
-
----
-
-# 35. Rotation edit service
-
-Service:
-
-```text
-SubstitutionRotationEditService
 ```
 
 Editing remains local until Apply.
@@ -1323,15 +1175,11 @@ Apply:
 
 ```text
 single authoritative transaction
+normalize complete canonical rotationOrder 0..N-1
+persist only allowed changes
 ```
 
-Only changed `rotationOrder` fields are persisted.
-
-Unrelated concurrent participant state should be preserved where allowed by the transaction contract.
-
-Conflict protection checks the editor baseline.
-
-Exact UI conflict text:
+Exact conflict UI:
 
 ```text
 Список изменился. Откройте режим редактирования заново.
@@ -1339,91 +1187,32 @@ Exact UI conflict text:
 
 ---
 
-# 36. Narrow responsive participant row
+# 36. Buses foundation boundary
 
-`SubstitutionParticipantRow` uses explicit Row/Expanded layout instead of depending on `ListTile.trailing`.
+Current business information is provisional.
 
-Reason:
-
-```text
-narrow Web width
-+
-button / menu / statistics controls
-```
-
-Old layout could produce:
+Known route naming:
 
 ```text
-Trailing widget consumes the entire tile width
-RenderFlex overflow
-Text layout not available
+Управление
+Медпункт
+Раздевалка
+Автово
 ```
 
-The new layout keeps:
+Two buses run cyclically between terminal points with intermediate stops.
 
-```text
-queue badge
-name/subtitle
-compact controls
-```
+Weekday/weekend service differs.
 
-Android regression must remain part of future edits to this shared widget.
+The old schedule document is not authoritative enough for implementation.
+
+Architecture should wait for a newer confirmed schedule before introducing a persistent schedule model.
 
 ---
 
-# 37. Deleted-user cleanup
+# 37. Verification discipline
 
-Auth-delete backend cleanup removes active identity/application records:
-
-```text
-users/{uid}
-device token documents
-spaces/substitution/participants/{uid}
-spaces_access/{uid}
-```
-
-Historical/business records remain:
-
-```text
-confirmedCalls
-statistics
-chats
-messages
-```
-
-Do not treat normal substitution soft removal as Auth deletion.
-
-Bulk Admin SDK deletion requires separate verification if used.
-
----
-
-# 38. Branding asset separation
-
-Design sources:
-
-```text
-design/branding/
-```
-
-Runtime application assets remain in their feature/runtime paths.
-
-Do not point widgets directly at large design-source PNGs merely because they exist in the repository.
-
-PWA icons are generated/runtime Web assets under:
-
-```text
-web/icons/
-```
-
-Android launcher assets remain Android resources.
-
-This keeps product branding sources separate from platform runtime output.
-
----
-
-# 39. Verification discipline
-
-For ordinary Dart/Flutter changes:
+Ordinary Flutter changes:
 
 ```text
 dart.bat format
@@ -1431,73 +1220,91 @@ flutter.bat analyze
 targeted tests
 ```
 
-At checkpoints:
+Checkpoint:
 
 ```text
 flutter.bat test
-flutter.bat build apk --release
+release build when needed
+manual device test
 ```
 
-For Web-affecting checkpoints:
+Functions:
 
 ```text
-flutter.bat build web
-manual browser/PWA verification
+npm.cmd run lint
+npm.cmd run build
+node --test targeted suites
 ```
 
-For rules-only changes:
+Rules:
 
 ```text
-targeted Firebase Emulator rules tests
+targeted emulator tests
+full Firestore Rules suite before deploy
 ```
 
-For Hosting:
+Current checkpoint evidence:
 
 ```text
-fresh flutter build web
-then firebase hosting deploy
+Flutter analyze → clean
+Flutter tests → 981 passed
+Functions ownership tests → 19 passed
+Push device Rules → 6 passed
+Full Firestore Rules → 185 passed
 ```
 
 Restore generated Flutter plugin files once after the final Flutter command in a series.
 
 ---
 
-# 40. Current backlog boundary
+# 38. Current backlog boundary
 
-Completed:
+Completed in current sequence:
 
 ```text
 Chats unread summary
 EpiLite Web Lite/PWA foundation
+Web avatar replacement
+SpacesBar final cyclic/glow UI
+SpacesBar Test Mode foundation
+Push installation ownership foundation
 ```
 
-Next UI backlog unless reprioritized:
+Immediate rollout:
 
 ```text
-SpacesBar stationary outer frame
-true cyclic/infinite swipe
-glow tuning
+new Android APK distribution
+wait for ownership migration
+restrictive device Rules deploy after adoption
+```
 
+Security follow-up:
+
+```text
+deleted-user cleanup for pushInstallations
+```
+
+Next product/UI unless reprioritized:
+
+```text
 Spaces Hub ⋮
 show/hide Spaces
 regular/compact layout
 >8 behavior
-
-legacy *MessageId → presentationId cleanup
+odd final tile
 ```
 
-Later:
+Technical cleanup:
 
 ```text
-FCM token lifecycle investigation
-Calendar foundation
-Buses foundation
+legacy *MessageId → presentationId naming
 ```
 
-EpiLite future phases must remain separate explicit foundations:
+Later explicit foundations:
 
 ```text
+official Web Chats
 Web push
-Chats on Web
-full responsive parity
+Calendar
+Buses
 ```
