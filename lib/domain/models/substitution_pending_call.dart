@@ -10,7 +10,7 @@ final class SubstitutionPendingCall {
     required this.shift,
   });
 
-  static const Duration undoWindow = Duration(seconds: 6);
+  static const Duration undoWindow = Duration(seconds: 3);
 
   final String callId;
   final String userId;

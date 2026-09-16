@@ -3,6 +3,7 @@ import 'package:epistola/domain/models/substitution_call_receipt.dart';
 import 'package:epistola/domain/models/substitution_shift.dart';
 import 'package:epistola/services/spaces/substitution/substitution_call_firestore_gateway.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:epistola/services/spaces/substitution/substitution_shift_call_claim.dart';
 
 void main() {
   group('callParticipant', () {
@@ -71,6 +72,102 @@ void main() {
         expect(context.pendingCallDeletes, isEmpty);
       },
     );
+
+    test(
+      'rejects duplicate call for same participant and same shift',
+      () async {
+        final shift = _testShift();
+
+        final claimId = SubstitutionShiftCallClaim.idFor(
+          userId: 'user-1',
+          shift: shift,
+        );
+
+        final context = _FakeTransactionContext(
+          moduleData: <String, dynamic>{'nextRotationOrder': 41, 'revision': 7},
+          participants: <String, Map<String, dynamic>>{
+            'user-1': <String, dynamic>{
+              'rotationOrder': 15,
+              'availability': 'green',
+              'status': 'active',
+            },
+          },
+          shiftClaims: <String, Map<String, dynamic>>{
+            claimId: <String, dynamic>{
+              'schemaVersion': 1,
+              'userId': 'user-1',
+              'callId': '7',
+            },
+          },
+        );
+
+        final gateway = _gateway(context);
+
+        await expectLater(
+          gateway.callParticipant(
+            userId: 'user-1',
+            calledByUserId: 'brigadier-2',
+            shift: shift,
+          ),
+          throwsA(isA<SubstitutionShiftAlreadyCalledException>()),
+        );
+
+        expect(context.shiftClaimReads, <String>[claimId]);
+
+        // Повторный вызов не должен вообще менять состояние.
+        expect(context.participantUpdates, isEmpty);
+        expect(context.moduleUpdates, isEmpty);
+        expect(context.pendingCallCreates, isEmpty);
+        expect(context.shiftClaimCreates, isEmpty);
+        expect(context.shiftClaimDeletes, isEmpty);
+      },
+    );
+
+    test('allows same participant to be called for another shift', () async {
+      final nightShift = _testShift();
+
+      final dayShift = SubstitutionShift(
+        year: nightShift.year,
+        month: nightShift.month,
+        day: nightShift.day,
+        kind: SubstitutionShiftKind.day,
+      );
+
+      final existingClaimId = SubstitutionShiftCallClaim.idFor(
+        userId: 'user-1',
+        shift: nightShift,
+      );
+
+      final context = _FakeTransactionContext(
+        moduleData: <String, dynamic>{'nextRotationOrder': 41, 'revision': 7},
+        participants: <String, Map<String, dynamic>>{
+          'user-1': <String, dynamic>{
+            'rotationOrder': 15,
+            'availability': 'green',
+            'status': 'active',
+          },
+        },
+        shiftClaims: <String, Map<String, dynamic>>{
+          existingClaimId: <String, dynamic>{
+            'schemaVersion': 1,
+            'userId': 'user-1',
+            'callId': '7',
+          },
+        },
+      );
+
+      final gateway = _gateway(context);
+
+      final receipt = await gateway.callParticipant(
+        userId: 'user-1',
+        calledByUserId: 'brigadier-2',
+        shift: dayShift,
+      );
+
+      expect(receipt.revision, 8);
+      expect(context.pendingCallCreates, hasLength(1));
+      expect(context.shiftClaimCreates, hasLength(1));
+    });
 
     test(
       'existing revision is incremented and stored in pending call',
@@ -298,6 +395,12 @@ void main() {
         expect(context.moduleUpdates, isEmpty);
         expect(context.clearLastCallCount, 1);
         expect(context.pendingCallDeletes, ['8']);
+        final expectedClaimId = SubstitutionShiftCallClaim.idFor(
+          userId: 'user-1',
+          shift: _testShift(),
+        );
+
+        expect(context.shiftClaimDeletes, <String>[expectedClaimId]);
       },
     );
 
@@ -625,6 +728,8 @@ final class _FakeTransactionContext
     required Map<String, Map<String, dynamic>> participants,
     Map<String, Map<String, dynamic>> pendingCalls =
         const <String, Map<String, dynamic>>{},
+    Map<String, Map<String, dynamic>> shiftClaims =
+        const <String, Map<String, dynamic>>{},
   }) : _moduleData = moduleData == null
            ? null
            : Map<String, dynamic>.from(moduleData),
@@ -633,14 +738,23 @@ final class _FakeTransactionContext
        ),
        _pendingCalls = pendingCalls.map(
          (callId, data) => MapEntry(callId, Map<String, dynamic>.from(data)),
+       ),
+       _shiftClaims = shiftClaims.map(
+         (claimId, data) => MapEntry(claimId, Map<String, dynamic>.from(data)),
        );
 
   final Map<String, dynamic>? _moduleData;
   final Map<String, Map<String, dynamic>> _participants;
   final Map<String, Map<String, dynamic>> _pendingCalls;
+  final Map<String, Map<String, dynamic>> _shiftClaims;
 
   final List<String> participantReads = <String>[];
   final List<String> pendingCallReads = <String>[];
+  final List<String> shiftClaimReads = <String>[];
+
+  final List<_ShiftClaimCreate> shiftClaimCreates = <_ShiftClaimCreate>[];
+
+  final List<String> shiftClaimDeletes = <String>[];
 
   final List<Map<String, dynamic>> moduleUpdates = <Map<String, dynamic>>[];
 
@@ -694,6 +808,21 @@ final class _FakeTransactionContext
   }
 
   @override
+  Future<Map<String, dynamic>?> readShiftClaim({
+    required String claimId,
+  }) async {
+    shiftClaimReads.add(claimId);
+
+    final data = _shiftClaims[claimId];
+
+    if (data == null) {
+      return null;
+    }
+
+    return Map<String, dynamic>.from(data);
+  }
+
+  @override
   void updateModule(Map<String, dynamic> data) {
     moduleUpdates.add(Map<String, dynamic>.from(data));
   }
@@ -719,8 +848,26 @@ final class _FakeTransactionContext
   }
 
   @override
+  void createShiftClaim({
+    required String claimId,
+    required Map<String, dynamic> data,
+  }) {
+    shiftClaimCreates.add(
+      _ShiftClaimCreate(
+        claimId: claimId,
+        data: Map<String, dynamic>.from(data),
+      ),
+    );
+  }
+
+  @override
   void deletePendingCall({required String callId}) {
     pendingCallDeletes.add(callId);
+  }
+
+  @override
+  void deleteShiftClaim({required String claimId}) {
+    shiftClaimDeletes.add(claimId);
   }
 
   @override
@@ -755,6 +902,13 @@ final class _PendingCallCreate {
   const _PendingCallCreate({required this.callId, required this.data});
 
   final String callId;
+  final Map<String, dynamic> data;
+}
+
+final class _ShiftClaimCreate {
+  const _ShiftClaimCreate({required this.claimId, required this.data});
+
+  final String claimId;
   final Map<String, dynamic> data;
 }
 

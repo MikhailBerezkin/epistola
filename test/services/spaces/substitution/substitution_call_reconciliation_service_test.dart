@@ -60,14 +60,14 @@ void main() {
     );
 
     final result = await service.reconcileExpiredPendingCalls(
-      now: baseTime.add(const Duration(seconds: 5, milliseconds: 999)),
+      now: baseTime.add(const Duration(seconds: 2, milliseconds: 999)),
     );
 
     expect(result, 0);
     expect(finalizedCallIds, isEmpty);
   });
 
-  test('finalizes call exactly at six second boundary', () async {
+  test('finalizes call exactly at three second boundary', () async {
     final finalizedCallIds = <String>[];
 
     final service = SubstitutionCallReconciliationService(
@@ -83,7 +83,7 @@ void main() {
     );
 
     final result = await service.reconcileExpiredPendingCalls(
-      now: baseTime.add(const Duration(seconds: 6)),
+      now: baseTime.add(const Duration(seconds: 3)),
     );
 
     expect(result, 1);

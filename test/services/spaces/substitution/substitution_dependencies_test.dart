@@ -422,6 +422,13 @@ final class _FakeCallTransactionContext
   }
 
   @override
+  Future<Map<String, dynamic>?> readShiftClaim({
+    required String claimId,
+  }) async {
+    return null;
+  }
+
+  @override
   void updateModule(Map<String, dynamic> data) {
     moduleUpdates.add(Map<String, dynamic>.from(data));
   }
@@ -447,9 +454,18 @@ final class _FakeCallTransactionContext
   }
 
   @override
+  void createShiftClaim({
+    required String claimId,
+    required Map<String, dynamic> data,
+  }) {}
+
+  @override
   void deletePendingCall({required String callId}) {
     pendingCallDeletes.add(callId);
   }
+
+  @override
+  void deleteShiftClaim({required String claimId}) {}
 
   @override
   void clearLastCall() {

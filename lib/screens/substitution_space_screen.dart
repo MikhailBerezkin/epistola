@@ -26,6 +26,7 @@ import '../domain/models/substitution_statistics.dart';
 import '../services/spaces/substitution/substitution_statistics_service.dart';
 import '../domain/models/substitution_shift.dart';
 import '../services/spaces/substitution/substitution_rotation_edit_service.dart';
+import '../services/spaces/substitution/substitution_shift_call_claim.dart';
 
 class SubstitutionSpaceScreen extends StatefulWidget {
   const SubstitutionSpaceScreen({super.key});
@@ -995,7 +996,7 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
         ),
       );
 
-      Timer(const Duration(seconds: 6), () {
+      Timer(const Duration(seconds: 3), () {
         if (!mounted) {
           return;
         }
@@ -1004,6 +1005,14 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
 
         unawaited(_finalizePendingCallAfterUndoWindow(receipt));
       });
+    } on SubstitutionShiftAlreadyCalledException {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$displayName уже вызван на эту смену')),
+      );
     } catch (_) {
       if (!mounted) {
         return;

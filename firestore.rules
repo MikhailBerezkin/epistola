@@ -1823,6 +1823,149 @@ function hasValidSubstitutionPendingCallData(data, callId) {
       ];
 }
 
+function hasValidSubstitutionShiftClaimData(
+  data,
+  claimId
+) {
+  return data.keys().hasAll([
+        'schemaVersion',
+        'userId',
+        'callId',
+        'calledByUserId',
+        'createdAt',
+        'shiftYear',
+        'shiftMonth',
+        'shiftDay',
+        'shiftKind'
+      ])
+
+      && data.keys().hasOnly([
+        'schemaVersion',
+        'userId',
+        'callId',
+        'calledByUserId',
+        'createdAt',
+        'shiftYear',
+        'shiftMonth',
+        'shiftDay',
+        'shiftKind'
+      ])
+
+      && data.schemaVersion is int
+      && data.schemaVersion == 1
+
+      && data.userId is string
+      && data.userId.size() > 0
+      && !data.userId.matches('.*[/].*')
+
+      && data.callId is string
+      && data.callId.size() > 0
+      && !data.callId.matches('.*[/].*')
+
+      && data.calledByUserId is string
+      && data.calledByUserId.size() > 0
+      && !data.calledByUserId.matches('.*[/].*')
+
+      && data.createdAt is timestamp
+
+      && data.shiftYear is int
+      && data.shiftYear > 0
+
+      && data.shiftMonth is int
+      && data.shiftMonth >= 1
+      && data.shiftMonth <= 12
+
+      && data.shiftDay is int
+      && data.shiftDay >= 1
+      && data.shiftDay <= 31
+
+      && data.shiftKind is string
+      && data.shiftKind in [
+        'day',
+        'night'
+      ]
+
+      && claimId
+          == data.userId
+              + '__'
+              + string(data.shiftYear)
+              + '_'
+              + string(data.shiftMonth)
+              + '_'
+              + string(data.shiftDay)
+              + '__'
+              + data.shiftKind;
+}
+
+function substitutionShiftClaimId(data) {
+  return data.userId
+      + '__'
+      + string(data.shiftYear)
+      + '_'
+      + string(data.shiftMonth)
+      + '_'
+      + string(data.shiftDay)
+      + '__'
+      + data.shiftKind;
+}
+
+function isSubstitutionShiftClaimCreatedForPending(
+  pending,
+  callId
+) {
+  let claimId =
+      substitutionShiftClaimId(pending);
+
+  let claimPath =
+      /databases/$(database)/documents/spaces/substitution/shiftClaims/$(claimId);
+
+  return !exists(claimPath)
+
+      && existsAfter(claimPath)
+
+      && hasValidSubstitutionShiftClaimData(
+        getAfter(claimPath).data,
+        claimId
+      )
+
+      && getAfter(claimPath).data.callId
+          == callId
+
+      && getAfter(claimPath).data.userId
+          == pending.userId
+
+      && getAfter(claimPath).data.calledByUserId
+          == pending.calledByUserId
+
+      && getAfter(claimPath).data.createdAt
+          == request.time
+
+      && getAfter(claimPath).data.shiftYear
+          == pending.shiftYear
+
+      && getAfter(claimPath).data.shiftMonth
+          == pending.shiftMonth
+
+      && getAfter(claimPath).data.shiftDay
+          == pending.shiftDay
+
+      && getAfter(claimPath).data.shiftKind
+          == pending.shiftKind;
+}
+
+function isSubstitutionShiftClaimDeletedForPending(
+  pending
+) {
+  let claimId =
+      substitutionShiftClaimId(pending);
+
+  let claimPath =
+      /databases/$(database)/documents/spaces/substitution/shiftClaims/$(claimId);
+
+  return exists(claimPath)
+      && !existsAfter(claimPath);
+}
+
 function hasValidSubstitutionConfirmedCallData(
   data,
   callId
@@ -1971,7 +2114,7 @@ function isSubstitutionConfirmedCallCreate(
 
       && request.time
           >= pending.calledAt
-              + duration.value(6, 's')
+              + duration.value(3, 's')
 
       && existsAfter(statisticsPath)
 
@@ -2242,7 +2385,7 @@ function isSubstitutionUndoModuleUpdate() {
 
       && request.time
           < get(pendingPath).data.calledAt
-              + duration.value(6, 's');
+              + duration.value(3, 's');
 }
 
 function isManagedSubstitutionCallParticipantUpdate(userId) {
@@ -2714,7 +2857,7 @@ function isSubstitutionStatisticsFinalize(
 
       && request.time
           >= get(pendingPath).data.calledAt
-              + duration.value(6, 's')
+              + duration.value(3, 's')
 
       && !exists(confirmedPath)
       && existsAfter(confirmedPath)
@@ -2770,7 +2913,7 @@ function isSubstitutionFinalizationPendingDelete(
 
       && request.time
           >= pending.calledAt
-              + duration.value(6, 's')
+              + duration.value(3, 's')
 
       && existsAfter(statisticsPath)
 
@@ -3017,7 +3160,11 @@ match /spaces/substitution {
         ).data.rotationOrder
             != get(
               /databases/$(database)/documents/spaces/substitution/participants/$(request.resource.data.userId)
-            ).data.rotationOrder;
+            ).data.rotationOrder
+                  && isSubstitutionShiftClaimCreatedForPending(
+        request.resource.data,
+        callId
+      );
 
     allow update: if false;
 
@@ -3033,7 +3180,10 @@ match /spaces/substitution {
 
         && request.time
             < resource.data.calledAt
-                + duration.value(6, 's')
+                + duration.value(3, 's')
+                && isSubstitutionShiftClaimDeletedForPending(
+  resource.data
+)
 
         && get(
           /databases/$(database)/documents/spaces/substitution
@@ -3088,6 +3238,131 @@ match /spaces/substitution {
   callId
 );
   }
+
+  match /shiftClaims/{claimId} {
+  allow get: if isSpacesManager();
+  allow list: if false;
+
+  allow create: if
+      isSpacesManager()
+
+      && hasValidSubstitutionShiftClaimData(
+        request.resource.data,
+        claimId
+      )
+
+      && request.resource.data.calledByUserId
+          == request.auth.uid
+
+      && request.resource.data.createdAt
+          == request.time
+
+      && !exists(
+        /databases/$(database)/documents/spaces/substitution/pendingCalls/$(request.resource.data.callId)
+      )
+
+      && existsAfter(
+        /databases/$(database)/documents/spaces/substitution/pendingCalls/$(request.resource.data.callId)
+      )
+
+      && hasValidSubstitutionPendingCallData(
+        getAfter(
+          /databases/$(database)/documents/spaces/substitution/pendingCalls/$(request.resource.data.callId)
+        ).data,
+        request.resource.data.callId
+      )
+
+      && getAfter(
+        /databases/$(database)/documents/spaces/substitution/pendingCalls/$(request.resource.data.callId)
+      ).data.userId
+          == request.resource.data.userId
+
+      && getAfter(
+  /databases/$(database)/documents/spaces/substitution/pendingCalls/$(request.resource.data.callId)
+).data.callId
+    == request.resource.data.callId
+
+      && getAfter(
+        /databases/$(database)/documents/spaces/substitution/pendingCalls/$(request.resource.data.callId)
+      ).data.calledByUserId
+          == request.resource.data.calledByUserId
+
+      && getAfter(
+        /databases/$(database)/documents/spaces/substitution/pendingCalls/$(request.resource.data.callId)
+      ).data.shiftYear
+          == request.resource.data.shiftYear
+
+      && getAfter(
+        /databases/$(database)/documents/spaces/substitution/pendingCalls/$(request.resource.data.callId)
+      ).data.shiftMonth
+          == request.resource.data.shiftMonth
+
+      && getAfter(
+        /databases/$(database)/documents/spaces/substitution/pendingCalls/$(request.resource.data.callId)
+      ).data.shiftDay
+          == request.resource.data.shiftDay
+
+      && getAfter(
+        /databases/$(database)/documents/spaces/substitution/pendingCalls/$(request.resource.data.callId)
+      ).data.shiftKind
+          == request.resource.data.shiftKind;
+
+  allow update: if false;
+
+  allow delete: if
+      isSpacesManager()
+
+      && hasValidSubstitutionShiftClaimData(
+        resource.data,
+        claimId
+      )
+
+      && exists(
+        /databases/$(database)/documents/spaces/substitution/pendingCalls/$(resource.data.callId)
+      )
+
+      && !existsAfter(
+        /databases/$(database)/documents/spaces/substitution/pendingCalls/$(resource.data.callId)
+      )
+
+      && hasValidSubstitutionPendingCallData(
+        get(
+          /databases/$(database)/documents/spaces/substitution/pendingCalls/$(resource.data.callId)
+        ).data,
+        resource.data.callId
+      )
+
+      && get(
+        /databases/$(database)/documents/spaces/substitution/pendingCalls/$(resource.data.callId)
+      ).data.userId
+          == resource.data.userId
+
+      && get(
+        /databases/$(database)/documents/spaces/substitution/pendingCalls/$(resource.data.callId)
+      ).data.shiftYear
+          == resource.data.shiftYear
+
+      && get(
+        /databases/$(database)/documents/spaces/substitution/pendingCalls/$(resource.data.callId)
+      ).data.shiftMonth
+          == resource.data.shiftMonth
+
+      && get(
+        /databases/$(database)/documents/spaces/substitution/pendingCalls/$(resource.data.callId)
+      ).data.shiftDay
+          == resource.data.shiftDay
+
+      && get(
+        /databases/$(database)/documents/spaces/substitution/pendingCalls/$(resource.data.callId)
+      ).data.shiftKind
+          == resource.data.shiftKind
+
+      && request.time
+          < get(
+            /databases/$(database)/documents/spaces/substitution/pendingCalls/$(resource.data.callId)
+          ).data.calledAt
+              + duration.value(3, 's');
+}
 
   match /confirmedCalls/{callId} {
   allow get: if

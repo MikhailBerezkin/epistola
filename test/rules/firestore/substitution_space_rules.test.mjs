@@ -1135,6 +1135,96 @@ test(
   );
 
   test(
+  'rejects call without shift claim document',
+  async () => {
+    const db = authenticatedFirestore(brigadier);
+    const batch = writeBatch(db);
+
+    batch.update(
+      participantDoc(db, member.uid),
+      {
+        rotationOrder: 2,
+      },
+    );
+
+    batch.update(
+      doc(db, 'spaces', 'substitution'),
+      {
+        nextRotationOrder: 3,
+        revision: 1,
+        lastCall: {
+          userId: member.uid,
+          previousRotationOrder: 0,
+          revision: 1,
+        },
+      },
+    );
+
+    batch.set(
+      pendingCallDoc(db, '1'),
+      {
+        callId: '1',
+        userId: member.uid,
+        revision: 1,
+        calledByUserId: brigadier.uid,
+        calledAt: serverTimestamp(),
+        shiftYear: 2026,
+        shiftMonth: 8,
+        shiftDay: 31,
+        shiftKind: 'night',
+      },
+    );
+
+    // shiftClaim намеренно НЕ создаём.
+
+    await assertFails(batch.commit());
+  },
+);
+
+test(
+  'rejects duplicate call when shift claim already exists',
+  async () => {
+    const claimId = shiftClaimId({
+      participantUserId: member.uid,
+    });
+
+    await testEnvironment.withSecurityRulesDisabled(
+      async (context) => {
+        const db = context.firestore();
+
+        await setDoc(
+          shiftClaimDoc(db, claimId),
+          {
+            schemaVersion: 1,
+            userId: member.uid,
+            callId: 'previous-call',
+            calledByUserId: owner.uid,
+            createdAt: new Date(),
+            shiftYear: 2026,
+            shiftMonth: 8,
+            shiftDay: 31,
+            shiftKind: 'night',
+          },
+        );
+      },
+    );
+
+    const db = authenticatedFirestore(brigadier);
+    const batch = writeBatch(db);
+
+    addCallWrites({
+      batch,
+      db,
+      calledByUserId: brigadier.uid,
+      participantUserId: member.uid,
+      previousRotationOrder: 0,
+    });
+
+    await assertFails(batch.commit());
+  },
+);
+
+  test(
     'rejects call without pending call document',
     async () => {
       const db = authenticatedFirestore(brigadier);
@@ -1329,6 +1419,49 @@ shiftKind: 'night',
   );
 
   test(
+  'rejects undo without deleting shift claim',
+  async () => {
+    const db = authenticatedFirestore(brigadier);
+
+    const callBatch = writeBatch(db);
+
+    addCallWrites({
+      batch: callBatch,
+      db,
+      calledByUserId: brigadier.uid,
+      participantUserId: member.uid,
+      previousRotationOrder: 0,
+    });
+
+    await assertSucceeds(callBatch.commit());
+
+    const undoBatch = writeBatch(db);
+
+    undoBatch.update(
+      participantDoc(db, member.uid),
+      {
+        rotationOrder: 0,
+      },
+    );
+
+    undoBatch.update(
+      doc(db, 'spaces', 'substitution'),
+      {
+        lastCall: deleteField(),
+      },
+    );
+
+    undoBatch.delete(
+      pendingCallDoc(db, '1'),
+    );
+
+    // shiftClaim намеренно НЕ удаляем.
+
+    await assertFails(undoBatch.commit());
+  },
+);
+
+  test(
     'allows brigadier to undo latest call and delete pending atomically',
     async () => {
       const db = authenticatedFirestore(brigadier);
@@ -1507,8 +1640,8 @@ shiftKind: 'night',
   );
 
   test(
-    'rejects undo after six second window has expired',
-    async () => {
+  'rejects undo after three second window has expired',
+  async () => {
       await seedCalledStateWithoutRules({
         calledAt: new Date(
           Date.now() - 10_000,
@@ -1562,6 +1695,26 @@ function pendingCallDoc(db, callId) {
   );
 }
 
+function shiftClaimDoc(db, claimId) {
+  return doc(
+    db,
+    'spaces',
+    'substitution',
+    'shiftClaims',
+    claimId,
+  );
+}
+
+function shiftClaimId({
+  participantUserId,
+  shiftYear = 2026,
+  shiftMonth = 8,
+  shiftDay = 31,
+  shiftKind = 'night',
+}) {
+  return `${participantUserId}__${shiftYear}_${shiftMonth}_${shiftDay}__${shiftKind}`;
+}
+
 function addCallWrites({
   batch,
   db,
@@ -1598,9 +1751,28 @@ function addCallWrites({
       calledByUserId,
       calledAt: serverTimestamp(),
       shiftYear: 2026,
-shiftMonth: 8,
-shiftDay: 31,
-shiftKind: 'night',
+      shiftMonth: 8,
+      shiftDay: 31,
+      shiftKind: 'night',
+    },
+  );
+
+  const claimId = shiftClaimId({
+    participantUserId,
+  });
+
+  batch.set(
+    shiftClaimDoc(db, claimId),
+    {
+      schemaVersion: 1,
+      userId: participantUserId,
+      callId: '1',
+      calledByUserId,
+      createdAt: serverTimestamp(),
+      shiftYear: 2026,
+      shiftMonth: 8,
+      shiftDay: 31,
+      shiftKind: 'night',
     },
   );
 }
@@ -1628,6 +1800,14 @@ function addUndoWrites({
 
   batch.delete(
     pendingCallDoc(db, callId),
+  );
+
+  const claimId = shiftClaimId({
+    participantUserId,
+  });
+
+  batch.delete(
+    shiftClaimDoc(db, claimId),
   );
 }
 

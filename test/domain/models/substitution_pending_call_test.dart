@@ -22,32 +22,32 @@ void main() {
       );
     }
 
-    test('undo deadline is six seconds after call', () {
+    test('undo deadline is three seconds after call', () {
       expect(
         pendingCall().undoDeadline,
-        calledAt.add(const Duration(seconds: 6)),
+        calledAt.add(const Duration(seconds: 3)),
       );
     });
 
-    test('undo window is open before six seconds', () {
+    test('undo window is open before three seconds', () {
       expect(
         pendingCall().isUndoWindowOpenAt(
-          calledAt.add(const Duration(seconds: 5, milliseconds: 999)),
+          calledAt.add(const Duration(seconds: 2, milliseconds: 999)),
         ),
         isTrue,
       );
     });
 
-    test('undo window is closed exactly at six seconds', () {
+    test('undo window is closed exactly at three seconds', () {
       expect(
         pendingCall().isUndoWindowOpenAt(
-          calledAt.add(const Duration(seconds: 6)),
+          calledAt.add(const Duration(seconds: 3)),
         ),
         isFalse,
       );
 
       expect(
-        pendingCall().canFinalizeAt(calledAt.add(const Duration(seconds: 6))),
+        pendingCall().canFinalizeAt(calledAt.add(const Duration(seconds: 3))),
         isTrue,
       );
     });

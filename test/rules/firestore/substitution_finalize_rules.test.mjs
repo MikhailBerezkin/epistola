@@ -182,8 +182,8 @@ const confirmedSnapshot = await assertSucceeds(
   );
 
   test(
-    'rejects finalize before six second window expires',
-    async () => {
+  'rejects finalize before three second window expires',
+  async () => {
       const calledAt =
           new Date(Date.now() - 1_000);
 
