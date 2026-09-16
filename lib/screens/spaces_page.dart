@@ -14,6 +14,7 @@ import '../widgets/spaces/spaces_bar/spaces_bar_editor_sheet.dart';
 import '../widgets/spaces/spaces_bar/spaces_bar_panel.dart';
 import 'chats_space_screen.dart';
 import 'substitution_space_screen.dart';
+import 'shift_calendar_screen.dart';
 import '../platform/epistola_platform_capabilities.dart';
 import '../domain/models/spaces_bar_message.dart';
 import '../platform/epistola_runtime_mode.dart';
@@ -550,7 +551,11 @@ class _SpacesPageState extends State<SpacesPage> with WidgetsBindingObserver {
                     subtitle: 'Смены и рабочие события',
                     icon: Icons.calendar_month_outlined,
                     onTap: () {
-                      _showUnderDevelopment(context, 'Календарь смен');
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const ShiftCalendarScreen(),
+                        ),
+                      );
                     },
                   ),
                   _SpaceTile(
