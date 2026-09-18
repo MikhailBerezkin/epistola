@@ -43,19 +43,26 @@ class ChatMembersService extends ChatBaseService {
   }
 
   Future<List<AppUser>> getUsersByIds(List<String> userIds) async {
-    if (userIds.isEmpty) return [];
+    final uniqueUserIds = userIds
+        .map((userId) => userId.trim())
+        .where((userId) => userId.isNotEmpty)
+        .toSet()
+        .toList();
 
-    final users = <AppUser>[];
-
-    for (final uid in userIds) {
-      final doc = await firestore.collection('users').doc(uid).get();
-
-      if (doc.exists) {
-        users.add(AppUser.fromFirestore(doc));
-      }
+    if (uniqueUserIds.isEmpty) {
+      return [];
     }
 
-    return users;
+    final documents = await Future.wait(
+      uniqueUserIds.map(
+        (userId) => firestore.collection('users').doc(userId).get(),
+      ),
+    );
+
+    return documents
+        .where((document) => document.exists)
+        .map(AppUser.fromFirestore)
+        .toList();
   }
 
   Future<void> updateMemberRole({

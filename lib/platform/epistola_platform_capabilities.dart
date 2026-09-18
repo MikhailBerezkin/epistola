@@ -8,7 +8,7 @@ abstract final class EpistolaPlatformCapabilities {
   static bool get supportsPushNotifications => !kIsWeb;
 
   /// Полноценный Messenger пока оставляем только Android.
-  static bool get supportsChats => !kIsWeb;
+  static bool get supportsChats => true;
 
   /// Контакты пока не считаем частью обязательного Web Lite scope.
   static bool get supportsContacts => !kIsWeb;

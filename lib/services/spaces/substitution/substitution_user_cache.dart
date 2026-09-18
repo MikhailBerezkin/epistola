@@ -12,20 +12,26 @@ final class SubstitutionUserCache {
     final resolvedFirestore = firestore ?? FirebaseFirestore.instance;
 
     return SubstitutionUserCache((userIds) async {
-      final users = <AppUser>[];
+      final uniqueUserIds = userIds
+          .map((userId) => userId.trim())
+          .where((userId) => userId.isNotEmpty)
+          .toSet()
+          .toList();
 
-      for (final userId in userIds) {
-        final snapshot = await resolvedFirestore
-            .collection('users')
-            .doc(userId)
-            .get();
-
-        if (snapshot.exists) {
-          users.add(AppUser.fromFirestore(snapshot));
-        }
+      if (uniqueUserIds.isEmpty) {
+        return [];
       }
 
-      return users;
+      final snapshots = await Future.wait(
+        uniqueUserIds.map(
+          (userId) => resolvedFirestore.collection('users').doc(userId).get(),
+        ),
+      );
+
+      return snapshots
+          .where((snapshot) => snapshot.exists)
+          .map(AppUser.fromFirestore)
+          .toList();
     });
   }
 
