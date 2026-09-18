@@ -4,8 +4,9 @@ import '../domain/models/shift_cycle.dart';
 import '../services/spaces/calendar/shift_schedule_calculator.dart';
 import '../services/spaces/calendar/shift_calendar_settings.dart';
 import 'shift_calendar_settings_screen.dart';
+import 'dart:async';
 
-enum _CalendarViewMode { full, medium, compact }
+enum _CalendarMenuAction { vacations, alarms, themes }
 
 class ShiftCalendarScreen extends StatefulWidget {
   const ShiftCalendarScreen({super.key});
@@ -19,19 +20,21 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
 
   final ShiftScheduleCalculator _calculator = const ShiftScheduleCalculator();
 
-  late final PageController _pageController;
+  late PageController _pageController;
   late final DateTime _baseMonth;
 
   late DateTime _visibleMonth;
   late DateTime _selectedDate;
   late DateTime _compactFocusedDate;
+  int _compactStripRevision = 0;
 
-  _CalendarViewMode _viewMode = _CalendarViewMode.medium;
+  ShiftCalendarViewMode _viewMode = ShiftCalendarViewMode.medium;
 
   // Пока первая версия открывается для 4 звена.
   final ShiftCalendarSettings _settings = const ShiftCalendarSettings();
 
   ShiftCrew _crew = ShiftCrew.crew4;
+  bool _areSettingsLoaded = false;
 
   @override
   void initState() {
@@ -45,19 +48,36 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
     _compactFocusedDate = _selectedDate;
 
     _pageController = PageController(initialPage: _initialPage);
-    _loadCrew();
+    _loadSettings();
   }
 
-  Future<void> _loadCrew() async {
-    final crew = await _settings.loadCrew();
+  Future<void> _loadSettings() async {
+    final results = await Future.wait<Object>([
+      _settings.loadCrew(),
+      _settings.loadViewMode(),
+    ]);
 
     if (!mounted) {
       return;
     }
 
     setState(() {
-      _crew = crew;
+      _crew = results[0] as ShiftCrew;
+      _viewMode = results[1] as ShiftCalendarViewMode;
+      _areSettingsLoaded = true;
     });
+  }
+
+  void _setViewMode(ShiftCalendarViewMode viewMode) {
+    if (_viewMode == viewMode) {
+      return;
+    }
+
+    setState(() {
+      _viewMode = viewMode;
+    });
+
+    unawaited(_settings.saveViewMode(viewMode));
   }
 
   Future<void> _openCalendarSettings() async {
@@ -91,22 +111,60 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
     });
   }
 
+  int _pageForMonth(DateTime month) {
+    final monthOffset =
+        (month.year - _baseMonth.year) * 12 + month.month - _baseMonth.month;
+
+    return _initialPage + monthOffset;
+  }
+
+  void _goToToday() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final todayMonth = DateTime(today.year, today.month);
+    final targetPage = _pageForMonth(todayMonth);
+
+    if (_pageController.hasClients) {
+      setState(() {
+        _visibleMonth = todayMonth;
+        _selectedDate = today;
+        _compactFocusedDate = today;
+      });
+
+      unawaited(
+        _pageController.animateToPage(
+          targetPage,
+          duration: const Duration(milliseconds: 320),
+          curve: Curves.easeOutCubic,
+        ),
+      );
+
+      return;
+    }
+
+    _pageController.dispose();
+    _pageController = PageController(initialPage: targetPage);
+
+    setState(() {
+      _visibleMonth = todayMonth;
+      _selectedDate = today;
+      _compactFocusedDate = today;
+      _compactStripRevision++;
+    });
+  }
+
   void _handleVerticalDragEnd(DragEndDetails details) {
     final velocity = details.primaryVelocity ?? 0;
 
     // Свайп вниз: compact -> medium -> full.
     if (velocity > 250) {
-      if (_viewMode == _CalendarViewMode.compact) {
-        setState(() {
-          _viewMode = _CalendarViewMode.medium;
-        });
+      if (_viewMode == ShiftCalendarViewMode.compact) {
+        _setViewMode(ShiftCalendarViewMode.medium);
         return;
       }
 
-      if (_viewMode == _CalendarViewMode.medium) {
-        setState(() {
-          _viewMode = _CalendarViewMode.full;
-        });
+      if (_viewMode == ShiftCalendarViewMode.medium) {
+        _setViewMode(ShiftCalendarViewMode.full);
       }
 
       return;
@@ -114,24 +172,41 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
 
     // Свайп вверх: full -> medium -> compact.
     if (velocity < -250) {
-      if (_viewMode == _CalendarViewMode.full) {
-        setState(() {
-          _viewMode = _CalendarViewMode.medium;
-        });
+      if (_viewMode == ShiftCalendarViewMode.full) {
+        _setViewMode(ShiftCalendarViewMode.medium);
         return;
       }
 
-      if (_viewMode == _CalendarViewMode.medium) {
-        setState(() {
-          _viewMode = _CalendarViewMode.compact;
-        });
+      if (_viewMode == ShiftCalendarViewMode.medium) {
+        _setViewMode(ShiftCalendarViewMode.compact);
       }
+    }
+  }
+
+  void _handleCalendarMenuAction(_CalendarMenuAction action) {
+    switch (action) {
+      case _CalendarMenuAction.vacations:
+        break;
+      case _CalendarMenuAction.alarms:
+        break;
+      case _CalendarMenuAction.themes:
+        break;
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    if (!_areSettingsLoaded) {
+      return Scaffold(
+        appBar: AppBar(
+          actions: [
+            TextButton(onPressed: _goToToday, child: const Text('Сегодня')),
+          ],
+        ),
+        body: const SafeArea(child: SizedBox.expand()),
+      );
+    }
 
     Widget buildMonthPager() {
       return PageView.builder(
@@ -169,17 +244,19 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
           child: Column(
             children: [
               _CalendarHeader(
-                visibleMonth: _viewMode == _CalendarViewMode.compact
+                visibleMonth: _viewMode == ShiftCalendarViewMode.compact
                     ? DateTime(
                         _compactFocusedDate.year,
                         _compactFocusedDate.month,
                       )
                     : _visibleMonth,
-                selectedDate: _viewMode == _CalendarViewMode.compact
+                selectedDate: _viewMode == ShiftCalendarViewMode.compact
                     ? _compactFocusedDate
                     : _selectedDate,
                 crew: _crew,
                 onCrewTap: _openCalendarSettings,
+                onTodayTap: _goToToday,
+                onMenuSelected: _handleCalendarMenuAction,
               ),
 
               Expanded(
@@ -208,7 +285,7 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
                   child: KeyedSubtree(
                     key: ValueKey(_viewMode),
                     child: switch (_viewMode) {
-                      _CalendarViewMode.full => Column(
+                      ShiftCalendarViewMode.full => Column(
                         children: [
                           const SizedBox(height: 4),
                           const _WeekdayHeader(),
@@ -217,7 +294,7 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
                         ],
                       ),
 
-                      _CalendarViewMode.medium => Column(
+                      ShiftCalendarViewMode.medium => Column(
                         children: [
                           const SizedBox(height: 4),
                           const _WeekdayHeader(),
@@ -233,10 +310,11 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
                         ],
                       ),
 
-                      _CalendarViewMode.compact => Column(
+                      ShiftCalendarViewMode.compact => Column(
                         children: [
                           const SizedBox(height: 8),
                           _CompactDateStrip(
+                            key: ValueKey(_compactStripRevision),
                             selectedDate: _selectedDate,
                             calculator: _calculator,
                             crew: _crew,
@@ -277,12 +355,16 @@ class _CalendarHeader extends StatelessWidget {
     required this.selectedDate,
     required this.crew,
     required this.onCrewTap,
+    required this.onTodayTap,
+    required this.onMenuSelected,
   });
 
   final DateTime visibleMonth;
   final DateTime selectedDate;
   final ShiftCrew crew;
   final VoidCallback onCrewTap;
+  final VoidCallback onTodayTap;
+  final ValueChanged<_CalendarMenuAction> onMenuSelected;
 
   static const _months = <String>[
     'Январь',
@@ -331,12 +413,39 @@ class _CalendarHeader extends StatelessWidget {
                   ),
                 ),
               ),
+              IconButton(
+                onPressed: onTodayTap,
+                tooltip: 'Сегодня',
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(Icons.today_outlined, size: 20),
+              ),
+              const SizedBox(width: 2),
               Text(
                 '${visibleMonth.year}',
                 style: theme.textTheme.titleMedium?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                   fontWeight: FontWeight.w600,
                 ),
+              ),
+              const SizedBox(width: 2),
+              PopupMenuButton<_CalendarMenuAction>(
+                tooltip: 'Настройки календаря',
+                onSelected: onMenuSelected,
+                itemBuilder: (context) => const [
+                  PopupMenuItem(
+                    value: _CalendarMenuAction.vacations,
+                    child: Text('Отпуска'),
+                  ),
+                  PopupMenuItem(
+                    value: _CalendarMenuAction.alarms,
+                    child: Text('Будильники'),
+                  ),
+                  PopupMenuItem(
+                    value: _CalendarMenuAction.themes,
+                    child: Text('Темы календаря'),
+                  ),
+                ],
+                icon: const Icon(Icons.more_vert),
               ),
             ],
           ),
@@ -479,6 +588,7 @@ class _MonthGrid extends StatelessWidget {
 
 class _CompactDateStrip extends StatefulWidget {
   const _CompactDateStrip({
+    super.key,
     required this.selectedDate,
     required this.calculator,
     required this.crew,
@@ -502,7 +612,7 @@ class _CompactDateStripState extends State<_CompactDateStrip> {
   static const _weekdays = <String>['ПН', 'ВТ', 'СР', 'ЧТ', 'ПТ', 'СБ', 'ВС'];
 
   late final DateTime _anchorDate;
-  late final PageController _pageController;
+  late PageController _pageController;
 
   late DateTime _focusedDate;
 
@@ -765,9 +875,7 @@ class _CalendarDayTile extends StatelessWidget {
                     style: theme.textTheme.labelLarge?.copyWith(
                       fontSize: isSelected ? 20 : 14,
                       color: isSelected
-                          ? (theme.brightness == Brightness.dark
-                                ? const Color.fromARGB(255, 196, 8, 39)
-                                : const Color(0xFF2F8F78))
+                          ? const Color.fromARGB(255, 196, 8, 39)
                           : null,
                       fontWeight: isToday || isSelected
                           ? FontWeight.w800

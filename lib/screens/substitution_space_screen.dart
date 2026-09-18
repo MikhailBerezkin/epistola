@@ -1137,8 +1137,13 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
     SubstitutionParticipant participant,
     SubstitutionParticipantStatus status,
   ) async {
+    final isOwnSickReturn =
+        participant.userId == _currentUserId &&
+        participant.status == SubstitutionParticipantStatus.sick &&
+        status == SubstitutionParticipantStatus.active;
+
     if (_isActionInProgress ||
-        !_accessRole.canManageSubstitution ||
+        (!_accessRole.canManageSubstitution && !isOwnSickReturn) ||
         participant.status == status) {
       return;
     }
@@ -1514,10 +1519,11 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
                   }
                 : null,
             onReturnToList:
-                canManageSubstitution &&
-                    selectedParticipant != null &&
-                    !selectedParticipant.isActive &&
-                    !_isActionInProgress
+                selectedParticipant != null &&
+                    !_isActionInProgress &&
+                    ((canManageSubstitution && !selectedParticipant.isActive) ||
+                        (selectedParticipant.userId == _currentUserId &&
+                            selectedParticipant.isSick))
                 ? () {
                     unawaited(
                       _updateParticipantStatus(

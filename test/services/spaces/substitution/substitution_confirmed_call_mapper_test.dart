@@ -140,7 +140,7 @@ void main() {
             'calledByUserId': 'brigadier-1',
             'calledAt': Timestamp.fromDate(calledAt),
             'finalizedAt': Timestamp.fromDate(
-              calledAt.add(const Duration(seconds: 5)),
+              calledAt.add(const Duration(seconds: 2)),
             ),
             'shiftYear': 2026,
             'shiftMonth': 9,
@@ -163,7 +163,7 @@ void main() {
             'calledByUserId': 'brigadier-1',
             'calledAt': Timestamp.fromDate(calledAt),
             'finalizedAt': Timestamp.fromDate(
-              calledAt.add(const Duration(seconds: 6)),
+              calledAt.add(const Duration(seconds: 3)),
             ),
             'shiftYear': 2026,
             'shiftMonth': 9,

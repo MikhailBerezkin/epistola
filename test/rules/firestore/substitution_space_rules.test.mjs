@@ -371,26 +371,89 @@ describe('Substitution space rules', () => {
   );
 
   test(
-    'rejects member returning self to active',
-    async () => {
-      await setParticipantStatusWithoutRules({
-        userId: member.uid,
-        status: 'sick',
-      });
+  'allows member returning self from sick to active',
+  async () => {
+    await setParticipantStatusWithoutRules({
+      userId: member.uid,
+      status: 'sick',
+    });
 
-      const db = authenticatedFirestore(member);
+    const db = authenticatedFirestore(member);
 
-      await assertFails(
-        updateDoc(
-          participantDoc(db, member.uid),
-          {
-            status: 'active',
-          },
-        ),
-      );
-    },
-  );
+    await assertSucceeds(
+      updateDoc(
+        participantDoc(db, member.uid),
+        {
+          status: 'active',
+        },
+      ),
+    );
+  },
+);
 
+test(
+  'rejects member returning self from vacation to active',
+  async () => {
+    await setParticipantStatusWithoutRules({
+      userId: member.uid,
+      status: 'vacation',
+    });
+
+    const db = authenticatedFirestore(member);
+
+    await assertFails(
+      updateDoc(
+        participantDoc(db, member.uid),
+        {
+          status: 'active',
+        },
+      ),
+    );
+  },
+);
+
+test(
+  'rejects member returning another sick participant to active',
+  async () => {
+    await setParticipantStatusWithoutRules({
+      userId: secondMember.uid,
+      status: 'sick',
+    });
+
+    const db = authenticatedFirestore(member);
+
+    await assertFails(
+      updateDoc(
+        participantDoc(db, secondMember.uid),
+        {
+          status: 'active',
+        },
+      ),
+    );
+  },
+);
+
+test(
+  'rejects member changing availability while returning from sick',
+  async () => {
+    await setParticipantStatusWithoutRules({
+      userId: member.uid,
+      status: 'sick',
+    });
+
+    const db = authenticatedFirestore(member);
+
+    await assertFails(
+      updateDoc(
+        participantDoc(db, member.uid),
+        {
+          status: 'active',
+          availability: 'yellow',
+        },
+      ),
+    );
+  },
+);
   test(
     'rejects member changing own rotation order',
     async () => {

@@ -145,7 +145,7 @@ service cloud.firestore {
 
     function messagePreview(message) {
       return message.get('messageType', 'text') == 'image'
-          ? 'Фотография'
+          ? 'Р¤РѕС‚РѕРіСЂР°С„РёСЏ'
           : message.text;
     }
 
@@ -301,8 +301,8 @@ function isValidPrivateChatCreate(chatId) {
       && chat.firstMessageId.size() > 0
       && chat.lastMessageId == chat.firstMessageId
 
-      // Полное содержимое первого сообщения проверяется отдельно
-      // в allow create вложенного документа messages/{messageId}.
+      // РџРѕР»РЅРѕРµ СЃРѕРґРµСЂР¶РёРјРѕРµ РїРµСЂРІРѕРіРѕ СЃРѕРѕР±С‰РµРЅРёСЏ РїСЂРѕРІРµСЂСЏРµС‚СЃСЏ РѕС‚РґРµР»СЊРЅРѕ
+      // РІ allow create РІР»РѕР¶РµРЅРЅРѕРіРѕ РґРѕРєСѓРјРµРЅС‚Р° messages/{messageId}.
       && messagePreview(firstMessage) == chat.lastMessage
       && firstMessage.createdAt is timestamp
       && firstMessage.createdAt == chat.lastMessageAt;
@@ -1195,7 +1195,7 @@ function isDeleteLastMessageForEveryoneUpdate(chatId) {
           ])
           && request.resource.data.memberRoles is map
           && request.resource.data.lastMessage
-              == 'Права администратора переданы'
+              == 'РџСЂР°РІР° Р°РґРјРёРЅРёСЃС‚СЂР°С‚РѕСЂР° РїРµСЂРµРґР°РЅС‹'
           && request.resource.data.lastMessageAt is timestamp
           && request.resource.data.lastMessageAt == request.time
           && !request.resource.data.keys().hasAny(['lastMessageId']);
@@ -1227,7 +1227,7 @@ function isDeleteLastMessageForEveryoneUpdate(chatId) {
           && request.resource.data.dissolvedBy == request.auth.uid
           && request.resource.data.dissolvedAt is timestamp
           && request.resource.data.dissolvedAt == request.time
-          && request.resource.data.lastMessage == 'Группа распущена'
+          && request.resource.data.lastMessage == 'Р“СЂСѓРїРїР° СЂР°СЃРїСѓС‰РµРЅР°'
           && request.resource.data.lastMessageAt is timestamp
           && request.resource.data.lastMessageAt == request.time
           && request.resource.data.memberIds is list
@@ -1479,6 +1479,74 @@ function isManagedSubstitutionWorkDisplayNameUpdate(userId) {
       && request.resource.data.workDisplayName.size() <= 80;
 }
 
+function hasValidVacationPeriodData(
+  data,
+  vacationPeriodId
+) {
+  return data.keys().hasAll([
+        'schemaVersion',
+        'userId',
+        'slot',
+        'startDay',
+        'endDay',
+        'updatedAt'
+      ])
+
+      && data.keys().hasOnly([
+        'schemaVersion',
+        'userId',
+        'slot',
+        'startDay',
+        'endDay',
+        'updatedAt'
+      ])
+
+      && data.schemaVersion is int
+      && data.schemaVersion == 1
+
+      && data.userId is string
+      && data.userId.size() > 0
+      && !data.userId.matches('.*[/].*')
+
+      && data.slot is int
+      && data.slot >= 1
+      && data.slot <= 6
+
+      && data.startDay is int
+      && data.startDay >= 10000101
+      && data.startDay <= 99991231
+
+      && data.endDay is int
+      && data.endDay >= 10000101
+      && data.endDay <= 99991231
+
+      && data.endDay >= data.startDay
+
+      && data.updatedAt is timestamp
+
+&& vacationPeriodId
+    == data.userId
+        + '__'
+        + string(data.slot);
+}
+
+function isOwnVacationPeriodWrite(
+  vacationPeriodId
+) {
+  return signedIn()
+
+      && request.auth.uid
+          == request.resource.data.userId
+
+      && hasValidVacationPeriodData(
+        request.resource.data,
+        vacationPeriodId
+      )
+
+      && request.resource.data.updatedAt
+          == request.time;
+}
+
 function hasValidSubstitutionParticipantData(data) {
   return data.keys().hasAll([
         'rotationOrder',
@@ -1527,12 +1595,30 @@ function isOwnSubstitutionParticipantStateUpdate(userId) {
       && request.resource.data.rotationOrder
           == resource.data.rotationOrder
 
-      && request.resource.data.status
-          == resource.data.status
+      && (
+        (
+          request.resource.data.status
+              == resource.data.status
 
-      && changedKeys().hasOnly([
-        'availability'
-      ]);
+          && changedKeys().hasOnly([
+            'availability'
+          ])
+        )
+
+        ||
+
+        (
+          resource.data.status == 'sick'
+          && request.resource.data.status == 'active'
+
+          && request.resource.data.availability
+              == resource.data.availability
+
+          && changedKeys().hasOnly([
+            'status'
+          ])
+        )
+      );
 }
 
 function isManagedSubstitutionParticipantStatusUpdate() {
@@ -3077,6 +3163,32 @@ function isSubstitutionFinalizationPendingDelete(
       allow delete: if false;
     }
 
+match /spaces/calendar {
+  allow get: if signedIn();
+  allow list: if false;
+
+  allow create, update, delete: if false;
+
+  match /vacationPeriods/{vacationPeriodId} {
+    allow get, list: if signedIn();
+
+    allow create, update: if
+        isOwnVacationPeriodWrite(
+          vacationPeriodId
+        );
+
+    allow delete: if
+        signedIn()
+
+        && request.auth.uid
+            == resource.data.userId
+
+        && hasValidVacationPeriodData(
+          resource.data,
+          vacationPeriodId
+        );
+  }
+}
 
 match /spaces/substitution {
   allow get: if isSpacesManager();
