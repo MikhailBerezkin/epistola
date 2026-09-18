@@ -4,12 +4,10 @@
 >
 > При конфликте источников:
 >
-> ```text
 > исходный код текущей feature-ветки
 > → PROJECT_CONTEXT.md
 > → ARCHITECTURE.md
 > → README.md
-> ```
 >
 > Не использовать `main` как источник текущего состояния `v0.8.0`, пока feature-ветка не merged/released.
 
@@ -19,316 +17,289 @@
 
 Repository:
 
-```text
-MikhailBerezkin/epistola
-```
+`MikhailBerezkin/epistola`
 
 Feature branch:
 
-```text
-feat/v0.8.0-spaces-substitution-foundation
-```
+`feat/v0.8.0-spaces-substitution-foundation`
 
-Текущий functional checkpoint:
+Последний functional checkpoint:
 
-```text
-67800f0
-feat(push): add installation ownership foundation
-```
+`f172ef1 — feat(calendar): add vacation foundation and calendar settings`
 
-Предыдущий крупный checkpoint:
+Предыдущий functional checkpoint текущей сессии:
 
-```text
-1ca3bcf
-feat(app): add test mode and refine web avatars and spaces bar
-```
+`764d3de — feat(web): enable chats and speed up user loading`
 
-Предыдущий Web checkpoint:
+Важный более ранний checkpoint:
 
-```text
-a488c3b
-feat(web): add EpiLite web client
-```
-
-Выбранные более ранние checkpoints:
-
-```text
-f0a2084
-feat(spaces): add chats unread badge
-
-85238a2
-feat(spaces): add substitution list editing
-
-e7ac582
-feat(auth): clean deleted users from spaces
-
-544fcaf
-chore(android): update launcher icon
-
-9ebf9ab
-feat(spaces): add confirmed substitution call delivery
-
-123cda1
-feat(spaces): add realtime spaces bar notifications
-```
+`67800f0 — feat(push): add installation ownership foundation`
 
 Последний стабильный release до `v0.8.0`:
 
-```text
-v0.7.4 — Avatar Interaction/Card + Notification Controls Foundation
-```
+`v0.7.4 — Avatar Interaction/Card + Notification Controls Foundation`
 
 `v0.8.0` всё ещё находится в feature-ветке.
 
-Без отдельного Git-подтверждения не считать выполненными:
+После docs-коммита `HEAD` станет новее `f172ef1`, но latest functional checkpoint останется `f172ef1`.
 
-```text
-merge в main
-release declaration
-release tag
-```
-
-Документационный commit после этого файла сделает `HEAD` новее `67800f0`.
-
-В новом чате обязательно сначала проверить фактические:
+В новом чате сначала проверить:
 
 ```powershell
-git branch --show-current
-git status --short
-git rev-parse --short HEAD
-git rev-parse --short origin/feat/v0.8.0-spaces-substitution-foundation
+git.exe branch --show-current
+git.exe status --short
+git.exe rev-parse --short HEAD
+git.exe rev-parse --short origin/feat/v0.8.0-spaces-substitution-foundation
 ```
 
 ---
 
-# 2. Финальная проверка functional checkpoint 67800f0
+# 2. Финальная проверка functional checkpoint
 
 Flutter:
 
 ```text
+dart.bat format
+→ final changed Dart set formatted
+
 flutter.bat analyze
 → No issues found
 → 6.0 s
 
 flutter.bat test
-→ 981 tests passed
+→ 1012/1012 passed
 ```
 
-Во время полного Flutter suite может появляться diagnostic JPEG output:
+Во время full suite может появляться:
 
 ```text
 Corrupt JPEG data: 2 extraneous bytes before marker 0xd9
 JPEG datastream contains no image
 ```
 
-Если итог:
+Если итог `All tests passed!`, это diagnostic output, не падение suite.
+
+Targeted Vacation Dart:
 
 ```text
-All tests passed!
+VacationPeriod
+VacationPeriodMapper
+VacationPeriodFirestoreGateway
+→ 20/20 passed
 ```
 
-это не падение suite.
-
-Functions ownership tests:
+Substitution confirmed-call mapper после синхронизации с 3-second undo window:
 
 ```text
-node --test
-  test/push_installation_ownership.test.cjs
-  test/push_installation_ownership_service.test.cjs
-
-→ 19 tests
-→ 19 passed
+→ 12/12 passed
 ```
 
-Functions quality:
+Final Firestore Rules group:
 
 ```text
-npm.cmd run lint
-→ passed
-
-npm.cmd run build
-→ tsc passed
-```
-
-ESLint выводит существующее предупреждение совместимости:
-
-```text
-@typescript-eslint/typescript-estree
-supports TypeScript <5.2
-current TypeScript = 6.0.3
-```
-
-На текущем checkpoint это предупреждение не ломает lint/build.
-
-Firestore Rules targeted:
-
-```text
+substitution_space_rules.test.mjs
+substitution_finalize_rules.test.mjs
+vacation_period_rules.test.mjs
 push_device_rules.test.mjs
-→ 6/6 passed
+→ 91/91 passed
 ```
 
-Full Firestore Rules suite:
+Vacation Rules отдельно:
 
 ```text
-185 tests
-12 suites
-185 passed
-0 failed
+→ 12/12 passed
 ```
 
-Git:
+Generated Flutter plugin files после последней Flutter-команды восстановлены один раз и не попали в functional commit.
+
+После `f172ef1`:
 
 ```text
-git diff --check
-→ clean
-
-generated Flutter plugin files
-→ восстановлены после финальной Flutter-команды
-→ в functional commit не попали
-
-working tree после functional commit/push
-→ clean
-```
-
-Functional commit уже отправлен:
-
-```text
-origin/feat/v0.8.0-spaces-substitution-foundation
-→ 67800f0
+git status --short
+→ CLEAN
 ```
 
 ---
 
-# 3. Production deploy state на checkpoint 67800f0
+# 3. Production Firestore Rules hotfix — 2026-09-18
 
-Задеплоены в production только callable Functions:
+Production bug:
+
+```text
+Список / Подсменка
+→ owner/brigadier вызывает активного участника
+→ UI: "Не удалось выполнить вызов"
+```
+
+Root cause:
+
+```text
+новый client call transaction уже требует shiftClaims
+production Firestore Rules были старее этого contract
+→ Firestore transaction отклонялся Rules
+```
+
+Новый call transaction атомарно затрагивает:
+
+```text
+spaces/substitution/pendingCalls/{callId}
+spaces/substitution/shiftClaims/{claimId}
+spaces/substitution/participants/{userId}
+spaces/substitution
+```
+
+`shiftClaims` защищает от повторного вызова одной и той же рабочей смены.
+
+---
+
+# 4. Почему не деплоили текущий firestore.rules напрямую
+
+Текущий repository `firestore.rules` содержит:
+
+```text
+shiftClaims
+self-return sick → active
+Vacation Foundation
+strict push device ownership
+```
+
+Но часть пользователей всё ещё использует старый Android APK, который напрямую пишет:
+
+```text
+users/{uid}/devices/{installationId}
+```
+
+Новые APK используют:
 
 ```text
 claimPushInstallation
 releasePushInstallation
 ```
 
-Команда:
-
-```powershell
-firebase.cmd deploy --only functions:claimPushInstallation,functions:releasePushInstallation
-```
-
-Deploy completed successfully.
-
-Production registry уже мигрировал на:
+Если бы сразу задеплоили strict:
 
 ```text
-pushInstallations/{installationId}
-
-schemaVersion = 2
-userId = <current authenticated user uid>
-platform = android
-token = <FCM token>
-updatedAt = server timestamp
+allow create, update, delete: if false;
 ```
 
-Legacy field:
+старые APK могли бы потерять регистрацию/refresh/delete push token.
+
+Поэтому был создан временный `firestore.transition.rules`.
+
+Файл использовался только для тестирования/deploy и после deploy удалён. В repository он не должен попадать.
+
+---
+
+# 5. Production transition Rules — текущее состояние
+
+Production сейчас содержит:
 
 ```text
-ownerUserId
+новый Substitution shiftClaims contract
++
+legacy-compatible users/{uid}/devices writes
 ```
 
-больше не используется в новых документах.
+Legacy compatibility разрешает authenticated user только собственный device document и только exact fields:
 
-Schema v1 с `ownerUserId` читается только для безопасной автоматической миграции на schema v2.
+```text
+token
+platform
+updatedAt
+```
+
+Delete разрешён только для собственного user path.
 
 Важно:
 
 ```text
-Firestore Rules, закрывающие direct client writes в users/{uid}/devices,
-ЕЩЁ НЕ DEPLOYED.
+Vacation Rules на production НЕ DEPLOYED
+self-return sick → active из текущего repository Rules не входил в transition hotfix
 ```
 
-Они готовы локально, полностью протестированы, входят в commit `67800f0`, но production Rules пока оставлены старые для периода миграции пользователей на новый APK.
+То есть production Rules и repository `firestore.rules` намеренно различаются.
 
 ---
 
-# 4. Причина push-инцидента и подтверждённый root cause
+# 6. Проверки transition Rules
 
-Owner Android Poco ранее использовался для создания/входа в аккаунты коллег до появления Web-клиента.
-
-Одна физическая установка имела стабильный:
+Перед deploy:
 
 ```text
-installationId = ba4a84ff3faf57cadce0db0e9f8ba269
+call / shiftClaims → 23/23
+undo → 5/5
+finalize → 11/11
+legacy push compatibility → 6/6
 ```
 
-и один FCM token, но этот token оказался сохранён под несколькими пользователями:
+Дополнительно проверено:
 
 ```text
-users/{uid}/devices/{installationId}
+firestore.transition.rules
+→ vacationPeriods отсутствует
 ```
 
-Server push рассылал уведомления всем token-документам получателя.
-
-App role `owner` здесь не имела специального значения.
-
-Root cause:
+Deploy:
 
 ```text
-stale duplicated device ownership
+firebase.cmd deploy --only firestore:rules --project epistola-434b7
+→ Deploy complete!
 ```
 
-а не:
-
-```text
-owner role
-chat memberIds
-push deep-link routing
-```
-
-Ручная очистка старых Poco device-документов у чужих пользователей подтвердила диагноз:
-
-```text
-сообщения Андриенко / Яковец
-→ больше не создавали push на Owner Poco
-```
+После deploy локальный рабочий `firestore.rules` был восстановлен.
 
 ---
 
-# 5. Новый invariant Push Installation Ownership
+# 7. Production manual verification hotfix
 
-Основное правило:
-
-```text
-one Epistola installation / installationId
-→ one current authenticated account
-```
-
-При этом:
+Реальный сценарий:
 
 ```text
-one account
-→ any number of its own installations/devices
+Owner
+→ вызвал bot participant
+→ вызов прошёл
 ```
 
-FCM token — адрес доставки, а не постоянная identity физической установки.
-
-Стабильная локальная identity:
+После примерно 3 секунд:
 
 ```text
-installationId
+undo window закрылось
+bot переместился вниз rotation list
+statistics shifts → +1
 ```
 
-Генерация клиента:
+Notification projections:
 
 ```text
-16 random secure bytes
-→ 32 lowercase hex chars
-→ SharedPreferences key: push_installation_id
+SpacesBar notification → получено
+push notification → получено
 ```
+
+Также проверен старый APK, в котором ещё вообще нет Spaces:
+
+```text
+bot получил push
+```
+
+Это подтвердило legacy push compatibility.
+
+Production hotfix закрыт.
 
 ---
 
-# 6. Canonical push installation registry
+# 8. Push installation ownership
 
-Authoritative registry:
+Invariant:
+
+```text
+one installationId
+→ one current authenticated user
+
+one user
+→ multiple installations allowed
+```
+
+Registry:
 
 ```text
 pushInstallations/{installationId}
@@ -344,34 +315,6 @@ platform
 updatedAt
 ```
 
-Терминология:
-
-```text
-userId
-```
-
-означает текущего authenticated user, которому принадлежит installation.
-
-Это НЕ связано с app role:
-
-```text
-member
-brigadier
-owner
-```
-
-Именно поэтому legacy поле `ownerUserId` переименовано в `userId`.
-
----
-
-# 7. Callable ownership API
-
-Functions region:
-
-```text
-europe-west1
-```
-
 Callables:
 
 ```text
@@ -379,271 +322,468 @@ claimPushInstallation
 releasePushInstallation
 ```
 
-Client никогда не передаёт `userId`.
+Region:
 
-Backend использует:
+`europe-west1`
+
+New APK:
 
 ```text
-callableRequest.auth.uid
+auth state → claim
+token refresh → claim
+logout/unregister → release
 ```
 
-Claim exact request:
+Repository target Rules уже strict:
 
 ```text
-installationId
-token
-platform
+users/{uid}/devices/{deviceId}
+read own → allowed
+client create/update/delete → denied
 ```
 
-Release exact request:
+Production пока временно разрешает legacy own writes.
+
+После следующего широкого APK rollout:
 
 ```text
-installationId
-```
-
-Validation:
-
-```text
-installationId
-→ exactly 32 lowercase hex
-
-token
-→ non-empty
-→ trimmed
-→ <= 4096 chars
-
-platform
-→ android only
-```
-
-Web push пока отключён, поэтому Web не участвует в ownership registry.
-
----
-
-# 8. Claim transaction semantics
-
-`claimPushInstallationOwnership` выполняет atomic Firestore transaction.
-
-Flow:
-
-```text
-read pushInstallations/{installationId}
-→ determine previous user
-→ if previous user differs, delete old users/{previousUid}/devices/{installationId}
-→ set users/{currentUid}/devices/{installationId}
-→ set pushInstallations/{installationId}
-```
-
-Properties:
-
-```text
-same installation + same user
-→ idempotent claim
-→ token refresh updates token
-
-same installation + another user
-→ previous user's device doc removed atomically
-→ current user receives same installation
-
-same user + another physical installation
-→ both device docs remain
-→ multi-device supported
-```
-
-Release semantics:
-
-```text
-if caller == registry.userId
-→ delete registry
-→ delete caller device doc
-
-if caller is stale old user
-→ delete only caller stale device doc
-→ never delete current owner's registry/device
-
-if registry missing
-→ cleanup caller stale device doc
+1. проверить adoption
+2. прогнать Rules
+3. deploy strict repository Rules
+4. убрать legacy compatibility
 ```
 
 ---
 
-# 9. Production ownership manual verification
+# 9. Web / EpiLite checkpoint
 
-Real production roundtrip was checked on Poco:
+Commit:
+
+`764d3de — feat(web): enable chats and speed up user loading`
+
+Platform capability:
 
 ```text
-Owner
-→ Alex Born
-→ Owner
+supportsChats
+→ Web true
 ```
 
-When switching Owner → Alex:
+Manual Web verification:
 
 ```text
-pushInstallations/ba4...
-→ userId changed to Alex UID
-
-Owner users/{uid}/devices/ba4...
-→ removed
-
-Alex users/{uid}/devices/ba4...
-→ created
+fresh Web open
+→ Chats доступны
+→ names load примерно <1 second
+→ text message send works
 ```
 
-Alex already had another genuine installation:
+Performance:
 
 ```text
-d000b7204fb83ce7b636ee0e7b4fe688
+ChatMembersService
+SubstitutionUserCache
+→ independent user reads переведены на Future.wait
 ```
 
-After Poco moved to Alex, both Alex devices coexisted.
-
-When switching Alex → Owner:
+Known gap:
 
 ```text
-registry userId
-→ Owner UID
-
-Owner ba4...
-→ restored
-
-Alex ba4...
-→ removed
-
-Alex d000...
-→ preserved
+chat avatars всё ещё не отображаются корректно
 ```
 
-This confirms:
+Web push остаётся unsupported.
+
+Hosting:
+
+`https://epistola-434b7.web.app`
+
+В текущей сессии успешно выполнялись:
 
 ```text
-one installation → one user
-one user → multiple installations
-stale logout cannot steal/remove current ownership
+flutter.bat build web
+firebase.cmd deploy --only hosting
 ```
 
 ---
 
-# 10. PushTokenService client behavior
+# 10. Calendar foundation
 
-File:
+Space:
 
-```text
-lib/services/push_token_service.dart
-```
+`Календарь смен`
 
-Current client no longer writes device ownership directly to Firestore.
-
-Instead:
+Base calendar:
 
 ```text
-authStateChanges()
-→ authenticated user
-→ FirebaseMessaging.getToken()
-→ claimPushInstallation
-
-FirebaseMessaging.onTokenRefresh
-→ claimPushInstallation
-
-unregisterCurrentDevice()
-→ releasePushInstallation
+4 crews
+8-day repeating cycle
 ```
 
-Because auth stream reacts to account switches, the same installation migrates even when creating/logging into another account without a conventional logout path.
+Для crew 4 подтверждено:
 
-Existing logout flows call `unregisterCurrentDevice()` before sign-out.
+```text
+День 1
+День 2
+Вых
+Ночь 1
+Ночь 2
+О
+Вых
+Вых
+```
+
+Anchor:
+
+```text
+14.09.2026 = День 2
+```
+
+Базовый shift schedule считается immutable.
+
+Будущие overlays:
+
+```text
+vacation
+sick
+substitution
+additional shift / халтура
+```
+
+не должны переписывать 8-day cycle.
 
 ---
 
-# 11. Device Rules migration state
+# 11. Calendar UI
 
-Local `firestore.rules` now contains:
-
-```text
-match /devices/{deviceId} {
-  allow get, list: if signedIn()
-      && request.auth.uid == userId;
-
-  allow create, update, delete: if false;
-}
-```
-
-Reason:
+Готово:
 
 ```text
-all push token ownership writes should go only through trusted Cloud Functions
+full-screen calendar
+selected/target date centering
+horizontal date strip
+month title корректно меняется при 30 → 1
+selected date digit → red
+weekday/month header обновляется
+shift designation отображается
+Today navigation
 ```
 
-Admin SDK in Cloud Functions bypasses client Firestore Rules, so callable ownership continues working.
-
-However these restrictive Rules are intentionally NOT deployed yet.
-
-Migration strategy:
+View modes:
 
 ```text
-1. release/distribute new APK with callable ownership
-2. give users migration window
-3. verify most active Android users updated
-4. only then deploy restrictive Firestore Rules
+full
+medium
+compact
 ```
 
-Planned window:
+Persistence:
 
 ```text
-approximately 5–7 days
+ShiftCalendarViewMode
+SharedPreferences key: shift_calendar_view_mode
+default: medium
 ```
 
-A reminder/checkpoint was scheduled for this rollout.
+Crew + mode загружаются до render, чтобы не было flash неправильного состояния.
 
-If many users still run the legacy APK, defer Rules deploy.
-
-Why:
+Today:
 
 ```text
-old APK still writes users/{uid}/devices directly
+PageController
+_goToToday()
+Icons.today_outlined
 ```
 
-If restrictive Rules are deployed too early, old clients can lose ability to register/update/delete their FCM token documents.
+Работает в full / medium / compact.
+
+Swipe tuning:
+
+```text
+950/920 оказалось слишком нечувствительно
+возвращено примерно 550/520
+```
+
+Нужна ещё финальная оценка на телефоне.
 
 ---
 
-# 12. Deleted Auth user cleanup — important remaining gap
+# 12. Calendar overflow menu
 
-Current Auth-delete cleanup removes:
+В header добавлено `⋮`.
 
-```text
-users/{uid}
-device token documents
-spaces/substitution/participants/{uid}
-spaces_access/{uid}
-```
-
-Historical/business records remain:
+Пункты:
 
 ```text
-confirmedCalls
-statistics
-chats
-messages
+Отпуска
+Будильники
+Темы календаря
 ```
 
-New top-level registry:
+Текущие handlers:
 
 ```text
-pushInstallations/{installationId}
+placeholder / no-op
 ```
 
-was added after the existing deleted-user cleanup foundation.
-
-Therefore a future hardening task should explicitly audit/update deleted-user cleanup so stale registry docs owned by a deleted UID cannot remain indefinitely.
-
-Do NOT assume this was already implemented.
-
-Normal re-claim by another authenticated user can migrate the installation, but deleted-user cleanup should still gain an explicit registry path.
+Следующий продуктовый блок — `Отпуска`.
 
 ---
 
-# 13. Development workflow
+# 13. Substitution self-return
+
+Текущий repository checkpoint добавляет:
+
+```text
+ordinary participant:
+sick → active
+→ может вернуть себя сам
+```
+
+Ограничения:
+
+```text
+только собственный participant
+availability не подменяется
+rotationOrder не меняется
+vacation → active остаётся manager-controlled
+another participant → запрещено
+```
+
+UI и Firestore Rules согласованы.
+
+Это изменение ещё не было частью production transition deploy.
+
+---
+
+# 14. Vacation Foundation
+
+Новые файлы:
+
+```text
+lib/domain/models/vacation_period.dart
+lib/services/spaces/calendar/vacation_period_mapper.dart
+lib/services/spaces/calendar/vacation_period_firestore_gateway.dart
+```
+
+Tests:
+
+```text
+test/domain/models/vacation_period_test.dart
+test/services/spaces/calendar/vacation_period_mapper_test.dart
+test/services/spaces/calendar/vacation_period_firestore_gateway_test.dart
+test/rules/firestore/vacation_period_rules.test.mjs
+```
+
+Authoritative collection:
+
+```text
+spaces/calendar/vacationPeriods/{userId}__{slot}
+```
+
+Schema v1:
+
+```text
+schemaVersion
+userId
+slot
+startDay
+endDay
+updatedAt
+```
+
+Day storage:
+
+```text
+YYYYMMDD integer
+```
+
+Document ID:
+
+```text
+<userId>__<slot>
+```
+
+---
+
+# 15. Vacation slots
+
+Окончательный technical capacity текущего foundation:
+
+```text
+1..6
+```
+
+Tests:
+
+```text
+slot 6 → valid
+slot 7 → rejected
+```
+
+Проверено в:
+
+```text
+domain
+mapper
+gateway
+Firestore Rules
+```
+
+UI НЕ должен показывать шесть пустых слотов.
+
+Будущий UI:
+
+```text
+реальные current/future vacations
++
+"+ Добавить отпуск"
+```
+
+Slots — persistence capacity, не visual structure.
+
+---
+
+# 16. Vacation ownership / security
+
+User может:
+
+```text
+create/update/delete только свои vacation periods
+```
+
+Other signed-in users:
+
+```text
+могут read vacationPeriods
+```
+
+Manager special edit:
+
+```text
+НЕ предусмотрен
+```
+
+Delete означает:
+
+```text
+отмена / ошибочная запись
+→ period удаляется
+→ vacation coloring исчезает
+```
+
+Естественно завершившийся отпуск не должен физически удаляться только потому, что стал прошлым.
+
+---
+
+# 17. Vacation Calendar semantics
+
+Calendar — source of truth.
+
+Vacation — overlay поверх immutable base schedule.
+
+Planned display:
+
+```text
+весь startDay..endDay inclusive
+→ vacation color
+```
+
+Editable list:
+
+```text
+до последнего vacation day включительно → editable
+со следующего дня → не показывать как current/future item
+```
+
+Но past Calendar months должны сохранять historical vacation coloring.
+
+Visible History screen/editor сейчас не нужен.
+
+Unresolved architecture task:
+
+```text
+как безопасно переиспользовать 6 slots,
+не теряя historical vacation projection
+```
+
+Не внедрять автоматический slot reuse с потерей истории.
+
+---
+
+# 18. Planned Vacation input UX
+
+Желаемые форматы:
+
+```text
+18.09.2026
+18.09
+18 сентября
+18 сентября 2026
+```
+
+Если год отсутствует:
+
+```text
+использовать год, открытый сейчас в Calendar
+```
+
+Cross-year:
+
+```text
+Calendar year = 2026
+start = 20.12
+end = 10.01
+→ 20.12.2026 .. 10.01.2027
+```
+
+Placeholders:
+
+```text
+18.09
+02.10
+```
+
+Parser/editor UI ещё не реализован.
+
+---
+
+# 19. Calendar overlay composition
+
+Concept:
+
+```text
+baseShift(date, crew)
++
+vacationOverlay
++
+sickOverlay
++
+substitutionOverlay
++
+additionalShiftOverlay
+=
+effective day presentation
+```
+
+Нельзя кодировать exceptions переписыванием базового 8-day schedule.
+
+---
+
+# 20. Build notes
+
+Ранее в текущей сессии успешно собран:
+
+```text
+release APK → 58.5 MB
+```
+
+После последних Vacation 1..6 code/test изменений отдельный новый release APK не пересобирался.
+
+Это допустимо: Vacation UI ещё не подключён, checkpoint закрывался анализом и тестами.
+
+---
+
+# 21. Development workflow
 
 Environment:
 
@@ -658,7 +798,7 @@ Node 22
 Firebase CLI
 ```
 
-Preferred commands:
+Commands:
 
 ```text
 flutter.bat
@@ -666,28 +806,50 @@ dart.bat
 firebase.cmd
 npm.cmd
 npx.cmd
-git
+git.exe
 ```
 
-For Firebase emulator in a fresh PowerShell session, Java may need:
+В новой PowerShell session для emulator:
 
 ```powershell
 $env:JAVA_HOME = "C:\Program Files\Android\Android Studio\jbr"
 $env:Path = "$env:JAVA_HOME\bin;$env:Path"
 ```
 
-Workflow:
+---
 
-```text
-small verifiable steps
-risky actions separately
-manual test before commit
-commit / push / deploy only after explicit approval
-large edit → full file
-small edit → precise replacement
+# 22. Encoding warning
+
+Windows PowerShell:
+
+```powershell
+Set-Content -Encoding utf8
 ```
 
-Generated Flutter plugin files:
+может добавить BOM:
+
+```text
+EF-BB-BF
+```
+
+Firestore Rules compiler может упасть:
+
+```text
+L1:1 token recognition error
+```
+
+Для source/rules files использовать UTF-8 without BOM:
+
+```powershell
+$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+[System.IO.File]::WriteAllText($path, $content, $utf8NoBom)
+```
+
+---
+
+# 23. Generated Flutter files policy
+
+Files:
 
 ```text
 linux/flutter/generated_plugins.cmake
@@ -699,718 +861,91 @@ windows/flutter/generated_plugins.cmake
 Policy:
 
 ```text
-leave dirty during Flutter command series
-restore once after the last Flutter command
-never repeatedly restore between Flutter commands
+оставлять dirty во время серии Flutter-команд
+восстанавливать один раз после последней Flutter-команды
+не коммитить случайные generated changes
 ```
 
 ---
 
-# 14. Special root docs workflow
+# 24. Что ещё НЕ сделано
 
-Files:
-
-```text
-PROJECT_CONTEXT.md
-ARCHITECTURE.md
-README.md
-```
-
-Preferred workflow:
+Vacation:
 
 ```text
-assistant prepares all three complete files
-→ packs exactly these three files into one ZIP
-→ user extracts to temp
-→ Copy-Item -Force to repository root
-→ inspect diff
-→ commit docs separately
+Vacation editor screen
+friendly date parser
+Calendar vacation coloring
+effective Vacation overlay
+history-safe slot reuse
+production Vacation Rules deploy
 ```
 
-Do not patch these three docs section-by-section unless explicitly requested.
-
----
-
-# 15. Platform products
-
-Full client:
+Calendar:
 
 ```text
-Android / Epistola
+real handlers for Отпуска / Будильники / Темы календаря
+additional shift / халтура
+final phone gesture tuning
 ```
 
-Lightweight Web/PWA:
+Web:
 
 ```text
-EpiLite
+chat avatar rendering
+Web push
 ```
 
-Shared backend:
+Push/security:
 
 ```text
-Firebase Auth
-Firestore
-Firebase Storage
-Cloud Functions where applicable
+remove production transition legacy device writes after rollout
+deploy strict repository Rules
+deleted-user cleanup for pushInstallations
 ```
 
-Platform capability boundary:
-
-```text
-lib/platform/epistola_platform_capabilities.dart
-```
-
-Current broad policy still includes:
-
-```text
-supportsPushNotifications
-→ Android true
-→ Web false
-
-supportsChats
-→ Android true
-→ Web false
-```
-
-Important current reality:
-
-```text
-Web private chats were discovered to function through
-Contacts → user card → Написать
-```
-
-because that route is not gated by the same presentation capability.
-
-Therefore:
-
-```text
-Web chats are not backend/security blocked
-→ they are currently presentation-gated/incompletely exposed
-```
-
-Do not yet declare full Web Chats support.
-
-A dedicated phase can officially open/verify Web chats after current push rollout work.
-
-Web push remains disabled.
-
----
-
-# 16. EpiLite avatar replacement
-
-Web avatar replacement is implemented and manually verified on real iPhone Web/PWA users.
-
-Flow:
-
-```text
-ImagePicker
-→ ImageCropper Web
-→ bytes
-→ FlutterImageCompress
-→ Firebase Storage putData
-→ avatar metadata
-```
-
-Key Web support:
-
-```text
-web/index.html
-→ Cropper.js integration
-```
-
-Manual iPhone verification:
-
-```text
-existing Firebase account
-→ avatar selected
-→ crop works
-→ upload works
-→ avatar visible
-→ EpiLite can be pinned/installed on iPhone home screen
-```
-
-Keep Android/Web avatar implementation behind shared controllers/dependencies rather than duplicating UI behavior.
-
----
-
-# 17. Epistola Test Mode
-
-Runtime mode file:
-
-```text
-lib/platform/epistola_runtime_mode.dart
-```
-
-Enable:
-
-```powershell
-flutter.bat run --dart-define=EPISTOLA_TEST_MODE=true
-```
-
-Branding in Test Mode:
-
-```text
-Android title → Epistola Test
-Web title → EpiLite Test
-```
-
-Current Test Mode protection is intentionally narrow.
-
-It protects SpacesBar test work by avoiding production:
-
-```text
-spaces/spacesBar publication
-spaces/spacesBar watch
-SpacesBar management
-```
-
-and uses fake test messages for SpacesBar UI/animation work.
-
-Critical limitation:
-
-```text
-Test Mode is NOT a full Firebase sandbox.
-```
-
-Android Test Mode can still initialize unrelated production Firebase/FCM paths.
-
-Never assume `EPISTOLA_TEST_MODE=true` makes all backend operations safe.
-
-Use it specifically for visual/animation/rotation SpacesBar work unless protection is explicitly expanded.
-
----
-
-# 18. Spaces root and Hub
-
-Root:
-
-```text
-Контакты | Пространства | Профиль
-```
-
-Default:
-
-```text
-Пространства
-```
-
-Back:
-
-```text
-Контакты → Пространства
-Профиль → Пространства
-Пространства → exit
-```
-
-Current tiles:
-
-```text
-Чаты
-Список
-Судозаходы
-Календарь смен
-Автобусы
-ОТ и ТБ
-```
-
-Working Android Spaces:
-
-```text
-Чаты
-Список
-```
-
-Current Hub backlog:
+Spaces Hub:
 
 ```text
 ⋮ settings
 show/hide Spaces
 regular/compact layout
-7–8 compact behavior
 >8 behavior
 odd final tile behavior
 ```
 
----
-
-# 19. Chats unread summary
-
-Checkpoint:
+Buses:
 
 ```text
-f0a2084
-feat(spaces): add chats unread badge
-```
-
-Architecture:
-
-```text
-ChatUnreadSummaryController
-```
-
-owns one user chat stream and derives centralized unread count.
-
-Avoid:
-
-```text
-one Firestore unread query per ChatTile
-```
-
-Manual scenario previously verified:
-
-```text
-0 → 1 → 2 → 1 → 0
-```
-
----
-
-# 20. Spaces roles
-
-Roles:
-
-```text
-member
-brigadier
-owner
-```
-
-`owner` remains highest-priority role.
-
-Substitution managers:
-
-```text
-brigadier
-owner
-```
-
-SpacesBar managers:
-
-```text
-brigadier
-owner
-```
-
-UI visibility is not the security boundary.
-
-Firestore Rules independently protect authoritative writes.
-
----
-
-# 21. General SpacesBar backend
-
-Authoritative document:
-
-```text
-spaces/spacesBar
-```
-
-Schema v1:
-
-```text
-revision
-messages
-updatedAt
-```
-
-General capacity:
-
-```text
-3 active announcements
-```
-
-Message ID:
-
-```text
-messageId = board revision
-```
-
-Lifetimes / accent semantics:
-
-```text
-1 hour → green
-12 hours → blue
-24 hours → orange
-until cancelled → red
-```
-
-Lifetime controls expiry/accent, not priority.
-
-Realtime source:
-
-```text
-spaces/spacesBar snapshots()
-```
-
-Local general hide:
-
-```text
-SharedPreferences
-spaces_bar.hidden_message_ids.v1.<uid>
-```
-
-No Firestore write for local hide.
-
----
-
-# 22. Final SpacesBar UI on current branch
-
-Main widget:
-
-```text
-SpacesBarPanel
-```
-
-The previously deferred visual block is now completed.
-
-Current behavior:
-
-```text
-stationary neutral outer frame
-inner colored glow strongest near frame
-glow fades inward toward neutral center
-true cyclic/infinite swipe in both directions
-PageView-based manual interaction
-auto rotation through same PageController motion
-manual swipe continuously interpolates glow color
-no fade-to-dark transition
-```
-
-Current timing:
-
-```text
-auto dwell = 10 seconds
-slide duration = 1000 ms
-```
-
-Current glow tuning checkpoint:
-
-```text
-strong edge alpha ≈ 45
-inner alpha ≈ 10
-```
-
-Test palette used for visual verification:
-
-```text
-green
-blue
-orange
-red
-→ wraps cyclically
-```
-
-Presentation-only UI work did not change SpacesBar backend/business invariants.
-
-Manual emulator/phone verification completed during the block.
-
-Targeted widget tests were extended and passed before checkpoint `1ca3bcf`.
-
----
-
-# 23. Personal substitution SpacesBar
-
-Unified presentation model:
-
-```text
-SpacesBarPresentationItem
-```
-
-Sources:
-
-```text
-generalMessage
-substitutionCall
-```
-
-Presentation IDs:
-
-```text
-general:<messageId>
-substitution:<callId>
-```
-
-Substitution accent:
-
-```text
-purple
-```
-
-Combined order:
-
-```text
-publishedAt descending
-→ presentationId tie-breaker
-```
-
-Personal calls do not consume general `3/3` capacity.
-
-Active only while:
-
-```text
-nowLocal < shiftStartsAtLocal
-```
-
-Shift starts:
-
-```text
-day → 08:00 local
-night → 20:00 local
-```
-
-Local hide:
-
-```text
-spaces_bar.hidden_substitution_call_ids.v1.<uid>
-```
-
----
-
-# 24. Canonical confirmed substitution call
-
-Authoritative immutable event:
-
-```text
-spaces/substitution/confirmedCalls/{callId}
-```
-
-Finalization transaction:
-
-```text
-read pendingCall
-→ validate
-→ update statistics
-→ create confirmedCall
-→ delete pendingCall
-```
-
-Fields:
-
-```text
-schemaVersion
-callId
-userId
-revision
-calledByUserId
-calledAt
-finalizedAt
-shiftYear
-shiftMonth
-shiftDay
-shiftKind
-```
-
-Exactly-once protection comes from authoritative pendingCall deletion in the same transaction.
-
----
-
-# 25. Substitution push and technical history
-
-Function:
-
-```text
-sendSubstitutionCallNotification
-```
-
-Trigger:
-
-```text
-onDocumentCreated(
-  "spaces/substitution/confirmedCalls/{callId}"
-)
-```
-
-Payload target:
-
-```text
-deepLinkType = spacesBar
-spacesBarPresentationId = substitution:<callId>
-```
-
-Epistola technical chat is read-only and projects canonical confirmedCalls.
-
-Do not create fake normal chat documents for technical history.
-
----
-
-# 26. Participant membership semantics
-
-Canonical path:
-
-```text
-spaces/substitution/participants/{userId}
-```
-
-Statuses:
-
-```text
-active
-vacation
-sick
-removed
-```
-
-Inactive statuses retain canonical rotation slot/anchor.
-
-Normal `Удалить из списка` means:
-
-```text
-status = removed
-```
-
-not physical document deletion.
-
-Never-before-added participant:
-
-```text
-one-time top priority
-```
-
-Previously removed participant:
-
-```text
-restore at hidden canonical anchor
-no repeated top priority
-```
-
----
-
-# 27. Rotation editor/gateway separation
-
-Distinct contracts:
-
-```text
-SubstitutionParticipantStateFirestoreGateway
-→ state mutation
-
-SubstitutionRotationMembershipFirestoreGateway
-→ add/restore/soft remove
-
-SubstitutionRotationEditFirestoreGateway
-→ whole-list reorder transaction
-```
-
-Editor domain:
-
-```text
-SubstitutionRotationDraft
-```
-
-Editing is local until Apply.
-
-Apply normalizes:
-
-```text
-rotationOrder = 0..N-1
-```
-
-across the complete canonical list.
-
-Exact conflict text:
-
-```text
-Список изменился. Откройте режим редактирования заново.
-```
-
-Do not casually reword it.
-
----
-
-# 28. Buses / schedule planning notes
-
-The `Автобусы` Space is still unimplemented.
-
-Known business description from current planning:
-
-```text
-2 buses
-cyclic route
-between Управление and Автово
-with intermediate stops
-runs during day/evening when trip is present in schedule
-```
-
-Current desired stop naming:
-
-```text
-Трамвай → Автово
-Порт → Управление
-Быт блок 1 → Медпункт
-Быт блок 2 → Раздевалка
-```
-
-Weekend schedule differs from weekday schedule.
-
-Current old document may no longer reflect actual weekend departures; a newer schedule should be obtained before implementation.
-
-Do not hard-code the old weekday/weekend assumptions as authoritative business data.
-
----
-
-# 29. Current backlog / next work
-
-Immediate release/rollout:
-
-```text
-1. distribute/test new Android APK containing callable push ownership client
-2. allow migration period for active users
-3. in ~5–7 days verify adoption
-4. only then consider deploy of restrictive users/{uid}/devices Rules
-```
-
-Security follow-up:
-
-```text
-audit/update deleted Auth user cleanup for pushInstallations registry
-```
-
-Product/UI backlog:
-
-```text
-Spaces Hub ⋮
-show/hide Spaces
-regular/compact layout
->8 behavior
-odd final tile behavior
+waiting for current authoritative schedule
 ```
 
 Technical cleanup:
 
 ```text
-legacy *MessageId names
-→ migrate deliberately toward presentationId terminology
+legacy *MessageId → presentationId
 ```
-
-Web follow-up:
-
-```text
-official Web Chats exposure/verification
-Web push remains separate future foundation
-```
-
-Application foundations:
-
-```text
-Calendar
-Buses
-other Spaces
-```
-
-Do not mix these into push rollout work.
 
 ---
 
-# 30. New-chat startup checklist
+# 25. New-chat start
 
-At the beginning of a new Epistola development chat, first verify:
+Цель:
 
-```powershell
-git branch --show-current
-git status --short
-git rev-parse --short HEAD
-git rev-parse --short origin/feat/v0.8.0-spaces-substitution-foundation
+```text
+continue Calendar / Vacation
 ```
 
-Then read from the current feature branch:
+Сначала:
+
+```powershell
+git.exe branch --show-current
+git.exe status --short
+git.exe rev-parse --short HEAD
+git.exe rev-parse --short origin/feat/v0.8.0-spaces-substitution-foundation
+```
+
+Потом прочитать:
 
 ```text
 PROJECT_CONTEXT.md
@@ -1418,24 +953,25 @@ ARCHITECTURE.md
 README.md
 ```
 
-Priority:
+Expected after docs commit + push:
 
 ```text
-current source code
-→ PROJECT_CONTEXT.md
-→ ARCHITECTURE.md
-→ README.md
+latest functional checkpoint: f172ef1
+working tree: CLEAN
+origin: same as local docs HEAD
 ```
 
-Expected functional checkpoint for this block:
+Если Git говорит иначе — доверять Git.
+
+Recommended next sequence:
 
 ```text
-67800f0
-feat(push): add installation ownership foundation
+1. Vacation editor orchestration
+2. friendly date parser
+3. Calendar vacation overlay
+4. history/slot-reuse strategy
+5. additional shift / халтура
+6. Calendar polish
 ```
 
-A later docs-only commit will make `HEAD` newer.
-
-Before proposing code, audit the source files relevant to the requested block.
-
-Do not use `main` as the current `v0.8.0` source until release/merge is explicitly verified.
+Не деплоить локальный полный `firestore.rules` без отдельного решения о production transition migration.
