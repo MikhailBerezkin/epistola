@@ -12,6 +12,19 @@ enum ShiftCyclePhase {
 
   final String displayLabel;
 
+  String get displayTitle {
+    return switch (this) {
+      ShiftCyclePhase.day1 => 'День 1',
+      ShiftCyclePhase.day2 => 'День 2',
+      ShiftCyclePhase.offBeforeNight ||
+      ShiftCyclePhase.offAfterRecovery1 ||
+      ShiftCyclePhase.offAfterRecovery2 => 'Выходной',
+      ShiftCyclePhase.night1 => 'Ночь 1',
+      ShiftCyclePhase.night2 => 'Ночь 2',
+      ShiftCyclePhase.recovery => 'Отсыпной',
+    };
+  }
+
   bool get isDayShift {
     return this == ShiftCyclePhase.day1 || this == ShiftCyclePhase.day2;
   }

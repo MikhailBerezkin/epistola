@@ -1,12 +1,22 @@
+import 'dart:async';
+
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../domain/models/shift_cycle.dart';
-import '../services/spaces/calendar/shift_schedule_calculator.dart';
+import '../domain/models/vacation_period.dart';
 import '../services/spaces/calendar/shift_calendar_settings.dart';
+import '../services/spaces/calendar/shift_schedule_calculator.dart';
+import '../services/spaces/calendar/vacation_period_service.dart';
 import 'shift_calendar_settings_screen.dart';
-import 'dart:async';
+import 'vacation_periods_screen.dart';
+import '../domain/models/calendar_entry.dart';
+import 'calendar_entry_editor_screen.dart';
+import '../services/spaces/calendar/calendar_entry_local_store.dart';
+import '../services/spaces/calendar/calendar_entry_service.dart';
+import '../services/spaces/calendar/calendar_entry_day_markers.dart';
 
-enum _CalendarMenuAction { vacations, alarms, themes }
+enum _CalendarMenuAction { crew, vacations, alarms, themes }
 
 class ShiftCalendarScreen extends StatefulWidget {
   const ShiftCalendarScreen({super.key});
@@ -20,12 +30,20 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
 
   final ShiftScheduleCalculator _calculator = const ShiftScheduleCalculator();
 
+  final CalendarEntryService _calendarEntryService = CalendarEntryService(
+    const CalendarEntryLocalStore(),
+  );
+
+  List<CalendarEntry> _calendarEntries = const <CalendarEntry>[];
+
   late PageController _pageController;
   late final DateTime _baseMonth;
 
   late DateTime _visibleMonth;
   late DateTime _selectedDate;
   late DateTime _compactFocusedDate;
+
+  bool _hasSelectedDate = false;
   int _compactStripRevision = 0;
 
   ShiftCalendarViewMode _viewMode = ShiftCalendarViewMode.medium;
@@ -35,6 +53,11 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
 
   ShiftCrew _crew = ShiftCrew.crew4;
   bool _areSettingsLoaded = false;
+  late final VacationPeriodService _vacationPeriodService;
+
+  StreamSubscription<List<VacationPeriod>>? _vacationPeriodsSubscription;
+
+  List<VacationPeriod> _vacationPeriods = const <VacationPeriod>[];
 
   @override
   void initState() {
@@ -48,7 +71,57 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
     _compactFocusedDate = _selectedDate;
 
     _pageController = PageController(initialPage: _initialPage);
+    _vacationPeriodService = VacationPeriodService.firebase();
+    _watchVacationPeriods();
     _loadSettings();
+  }
+
+  Future<void> _openCalendarEntryEditor(CalendarEntryKind kind) async {
+    if (!_hasSelectedDate) {
+      return;
+    }
+
+    final result = await Navigator.of(context).push<CalendarEntryEditorResult>(
+      MaterialPageRoute(
+        builder: (context) {
+          return CalendarEntryEditorScreen(kind: kind, date: _selectedDate);
+        },
+      ),
+    );
+
+    if (!mounted || result == null) {
+      return;
+    }
+
+    final userId = _currentUserId;
+
+    if (userId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Не удалось определить пользователя')),
+      );
+      return;
+    }
+
+    try {
+      await _calendarEntryService.create(
+        userId: userId,
+        kind: result.kind,
+        date: result.date,
+        title: result.title,
+        description: result.description,
+        scheduledMinutes: result.scheduledMinutes,
+        reminderMinutes: result.reminderMinutes,
+        priority: result.priority,
+      );
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Не удалось сохранить запись')),
+      );
+    }
   }
 
   Future<void> _loadSettings() async {
@@ -66,6 +139,42 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
       _viewMode = results[1] as ShiftCalendarViewMode;
       _areSettingsLoaded = true;
     });
+    await _loadCalendarEntries();
+  }
+
+  Future<void> _loadCalendarEntries() async {
+    final userId = _currentUserId;
+
+    if (userId.isEmpty) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _calendarEntries = const <CalendarEntry>[];
+      });
+      return;
+    }
+
+    try {
+      final entries = await _calendarEntryService.loadForUser(userId: userId);
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _calendarEntries = entries;
+      });
+    } catch (_) {
+      // Личные локальные записи не должны ломать календарь.
+    }
+  }
+
+  CalendarEntryDayMarkers _entryMarkersForDate(DateTime date) {
+    final entries = _calendarEntries.where((entry) => entry.occursOn(date));
+
+    return CalendarEntryDayMarkers.fromEntries(entries);
   }
 
   void _setViewMode(ShiftCalendarViewMode viewMode) {
@@ -96,8 +205,45 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
     });
   }
 
+  String get _currentUserId {
+    return FirebaseAuth.instance.currentUser?.uid.trim() ?? '';
+  }
+
+  void _watchVacationPeriods() {
+    final userId = _currentUserId;
+
+    if (userId.isEmpty) {
+      return;
+    }
+
+    _vacationPeriodsSubscription = _vacationPeriodService
+        .watchForUser(userId: userId)
+        .listen(
+          (periods) {
+            if (!mounted) {
+              return;
+            }
+
+            setState(() {
+              _vacationPeriods = periods;
+            });
+          },
+          onError: (Object error, StackTrace stackTrace) {
+            // Ошибка Firestore не должна ломать сам календарь.
+            // До deploy Vacation Rules календарь просто останется
+            // без сохранённых отпусков.
+          },
+        );
+  }
+
   @override
   void dispose() {
+    final subscription = _vacationPeriodsSubscription;
+
+    if (subscription != null) {
+      unawaited(subscription.cancel());
+    }
+
     _pageController.dispose();
     super.dispose();
   }
@@ -108,6 +254,7 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
 
     setState(() {
       _visibleMonth = month;
+      _hasSelectedDate = false;
     });
   }
 
@@ -128,6 +275,7 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
       setState(() {
         _visibleMonth = todayMonth;
         _selectedDate = today;
+        _hasSelectedDate = true;
         _compactFocusedDate = today;
       });
 
@@ -148,6 +296,7 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
     setState(() {
       _visibleMonth = todayMonth;
       _selectedDate = today;
+      _hasSelectedDate = true;
       _compactFocusedDate = today;
       _compactStripRevision++;
     });
@@ -185,13 +334,54 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
 
   void _handleCalendarMenuAction(_CalendarMenuAction action) {
     switch (action) {
-      case _CalendarMenuAction.vacations:
+      case _CalendarMenuAction.crew:
+        unawaited(_openCalendarSettings());
         break;
+
+      case _CalendarMenuAction.vacations:
+        unawaited(_openVacationPeriods());
+        break;
+
       case _CalendarMenuAction.alarms:
         break;
+
       case _CalendarMenuAction.themes:
         break;
     }
+  }
+
+  Future<void> _openVacationPeriods() async {
+    final userId = _currentUserId;
+
+    if (userId.isEmpty) {
+      return;
+    }
+
+    final calendarYear = _viewMode == ShiftCalendarViewMode.compact
+        ? _compactFocusedDate.year
+        : _visibleMonth.year;
+
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) {
+          return VacationPeriodsScreen(
+            calendarYear: calendarYear,
+            userId: userId,
+            initialPeriods: _vacationPeriods,
+            service: _vacationPeriodService,
+            onPeriodsChanged: (periods) {
+              if (!mounted) {
+                return;
+              }
+
+              setState(() {
+                _vacationPeriods = periods;
+              });
+            },
+          );
+        },
+      ),
+    );
   }
 
   @override
@@ -224,11 +414,14 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
             selectedDate: _selectedDate,
             crew: _crew,
             calculator: _calculator,
+            vacationPeriods: _vacationPeriods,
             onDateSelected: (date) {
               setState(() {
                 _selectedDate = date;
+                _hasSelectedDate = true;
               });
             },
+            entryMarkersForDate: _entryMarkersForDate,
             colorScheme: _CalendarColors.fromTheme(theme),
           );
         },
@@ -250,11 +443,13 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
                         _compactFocusedDate.month,
                       )
                     : _visibleMonth,
-                selectedDate: _viewMode == ShiftCalendarViewMode.compact
-                    ? _compactFocusedDate
-                    : _selectedDate,
+                selectedDate: _selectedDate,
+                hasSelectedDate: _hasSelectedDate,
+                selectedPhase: _calculator.phaseFor(
+                  date: _selectedDate,
+                  crew: _crew,
+                ),
                 crew: _crew,
-                onCrewTap: _openCalendarSettings,
                 onTodayTap: _goToToday,
                 onMenuSelected: _handleCalendarMenuAction,
               ),
@@ -299,14 +494,21 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
                           const SizedBox(height: 4),
                           const _WeekdayHeader(),
                           const SizedBox(height: 4),
-                          Expanded(flex: 6, child: buildMonthPager()),
-                          const SizedBox(height: 6),
-                          Expanded(
-                            flex: 4,
-                            child: _CalendarAgendaPanel(
-                              selectedDate: _selectedDate,
+                          if (_hasSelectedDate) ...[
+                            Expanded(flex: 6, child: buildMonthPager()),
+                            const SizedBox(height: 6),
+                            Expanded(
+                              flex: 4,
+                              child: _CalendarAgendaPanel(
+                                selectedDate: _selectedDate,
+                                userId: _currentUserId,
+                                service: _calendarEntryService,
+                                onAddEntry: _openCalendarEntryEditor,
+                                onEntriesChanged: _loadCalendarEntries,
+                              ),
                             ),
-                          ),
+                          ] else
+                            Expanded(child: buildMonthPager()),
                         ],
                       ),
 
@@ -318,9 +520,11 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
                             selectedDate: _selectedDate,
                             calculator: _calculator,
                             crew: _crew,
+                            vacationPeriods: _vacationPeriods,
                             onDateSelected: (date) {
                               setState(() {
                                 _selectedDate = date;
+                                _hasSelectedDate = true;
                               });
                             },
                             onFocusedDateChanged: (date) {
@@ -331,8 +535,18 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
                           ),
                           const SizedBox(height: 8),
                           Expanded(
-                            child: _CalendarAgendaPanel(
-                              selectedDate: _selectedDate,
+                            child: AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 220),
+                              child: _hasSelectedDate
+                                  ? _CalendarAgendaPanel(
+                                      key: ValueKey(_selectedDate),
+                                      selectedDate: _selectedDate,
+                                      userId: _currentUserId,
+                                      service: _calendarEntryService,
+                                      onAddEntry: _openCalendarEntryEditor,
+                                      onEntriesChanged: _loadCalendarEntries,
+                                    )
+                                  : const SizedBox.shrink(),
                             ),
                           ),
                         ],
@@ -353,18 +567,20 @@ class _CalendarHeader extends StatelessWidget {
   const _CalendarHeader({
     required this.visibleMonth,
     required this.selectedDate,
+    required this.hasSelectedDate,
     required this.crew,
-    required this.onCrewTap,
     required this.onTodayTap,
     required this.onMenuSelected,
+    required this.selectedPhase,
   });
 
   final DateTime visibleMonth;
   final DateTime selectedDate;
+  final bool hasSelectedDate;
   final ShiftCrew crew;
-  final VoidCallback onCrewTap;
   final VoidCallback onTodayTap;
   final ValueChanged<_CalendarMenuAction> onMenuSelected;
+  final ShiftCyclePhase selectedPhase;
 
   static const _months = <String>[
     'Январь',
@@ -381,66 +597,69 @@ class _CalendarHeader extends StatelessWidget {
     'Декабрь',
   ];
 
-  static const _weekdays = <String>[
-    'понедельник',
-    'вторник',
-    'среда',
-    'четверг',
-    'пятница',
-    'суббота',
-    'воскресенье',
-  ];
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    final monthName = _months[visibleMonth.month - 1];
-    final selectedWeekday = _capitalize(_weekdays[selectedDate.weekday - 1]);
+    final monthTitle =
+        '${_months[visibleMonth.month - 1]} ${visibleMonth.year}';
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
       child: Column(
         children: [
           Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Expanded(
-                child: Text(
-                  monthName,
-                  style: theme.textTheme.headlineMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
+                child: ClipRect(
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 320),
+                    switchInCurve: Curves.easeOutCubic,
+                    switchOutCurve: Curves.easeInCubic,
+                    transitionBuilder: (child, animation) {
+                      final offsetAnimation = Tween<Offset>(
+                        begin: const Offset(0, 0.35),
+                        end: Offset.zero,
+                      ).animate(animation);
+
+                      return FadeTransition(
+                        opacity: animation,
+                        child: SlideTransition(
+                          position: offsetAnimation,
+                          child: child,
+                        ),
+                      );
+                    },
+                    child: Text(
+                      monthTitle,
+                      key: ValueKey(
+                        '${visibleMonth.year}-${visibleMonth.month}',
+                      ),
+                      style: theme.textTheme.headlineMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                   ),
                 ),
               ),
-              IconButton(
-                onPressed: onTodayTap,
-                tooltip: 'Сегодня',
-                visualDensity: VisualDensity.compact,
-                icon: const Icon(Icons.today_outlined, size: 20),
-              ),
-              const SizedBox(width: 2),
-              Text(
-                '${visibleMonth.year}',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(width: 2),
               PopupMenuButton<_CalendarMenuAction>(
                 tooltip: 'Настройки календаря',
                 onSelected: onMenuSelected,
-                itemBuilder: (context) => const [
+                itemBuilder: (context) => [
                   PopupMenuItem(
+                    value: _CalendarMenuAction.crew,
+                    child: Text(crew.displayName),
+                  ),
+                  const PopupMenuDivider(),
+                  const PopupMenuItem(
                     value: _CalendarMenuAction.vacations,
                     child: Text('Отпуска'),
                   ),
-                  PopupMenuItem(
+                  const PopupMenuItem(
                     value: _CalendarMenuAction.alarms,
                     child: Text('Будильники'),
                   ),
-                  PopupMenuItem(
+                  const PopupMenuItem(
                     value: _CalendarMenuAction.themes,
                     child: Text('Темы календаря'),
                   ),
@@ -451,49 +670,35 @@ class _CalendarHeader extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Expanded(
-                child: Text(
-                  selectedWeekday,
-                  style: theme.textTheme.bodyLarge?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 220),
+                  child: hasSelectedDate
+                      ? Text(
+                          selectedPhase.displayTitle,
+                          key: ValueKey(selectedPhase),
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            fontSize: 20,
+                            color: theme.colorScheme.onSurface,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0.2,
+                          ),
+                        )
+                      : const SizedBox.shrink(),
                 ),
               ),
-              InkWell(
-                borderRadius: BorderRadius.circular(14),
-                onTap: onCrewTap,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 7,
-                  ),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Text(
-                    crew.displayName,
-                    style: theme.textTheme.labelLarge?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
+              IconButton(
+                onPressed: onTodayTap,
+                tooltip: 'Вернуться к сегодня',
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(Icons.replay_rounded, size: 21),
               ),
             ],
           ),
         ],
       ),
     );
-  }
-
-  static String _capitalize(String value) {
-    if (value.isEmpty) {
-      return value;
-    }
-
-    return value[0].toUpperCase() + value.substring(1);
   }
 }
 
@@ -536,14 +741,18 @@ class _MonthGrid extends StatelessWidget {
     required this.calculator,
     required this.onDateSelected,
     required this.colorScheme,
+    required this.vacationPeriods,
+    required this.entryMarkersForDate,
   });
 
   final DateTime month;
   final DateTime selectedDate;
   final ShiftCrew crew;
   final ShiftScheduleCalculator calculator;
+  final List<VacationPeriod> vacationPeriods;
   final ValueChanged<DateTime> onDateSelected;
   final _CalendarColors colorScheme;
+  final CalendarEntryDayMarkers Function(DateTime date) entryMarkersForDate;
 
   @override
   Widget build(BuildContext context) {
@@ -576,7 +785,9 @@ class _MonthGrid extends StatelessWidget {
               isCurrentMonth: date.month == month.month,
               isToday: _isSameDay(date, DateTime.now()),
               isSelected: _isSameDay(date, selectedDate),
+              isVacation: _isVacationDate(date, vacationPeriods),
               colors: colorScheme,
+              entryMarkers: entryMarkersForDate(date),
               onTap: () => onDateSelected(date),
             );
           },
@@ -592,6 +803,7 @@ class _CompactDateStrip extends StatefulWidget {
     required this.selectedDate,
     required this.calculator,
     required this.crew,
+    required this.vacationPeriods,
     required this.onDateSelected,
     required this.onFocusedDateChanged,
   });
@@ -599,6 +811,7 @@ class _CompactDateStrip extends StatefulWidget {
   final DateTime selectedDate;
   final ShiftScheduleCalculator calculator;
   final ShiftCrew crew;
+  final List<VacationPeriod> vacationPeriods;
   final ValueChanged<DateTime> onDateSelected;
   final ValueChanged<DateTime> onFocusedDateChanged;
 
@@ -615,6 +828,9 @@ class _CompactDateStripState extends State<_CompactDateStrip> {
   late PageController _pageController;
 
   late DateTime _focusedDate;
+  static const _selectionSettleDelay = Duration(milliseconds: 250);
+
+  Timer? _settleTimer;
 
   @override
   void initState() {
@@ -636,6 +852,7 @@ class _CompactDateStripState extends State<_CompactDateStrip> {
 
   @override
   void dispose() {
+    _settleTimer?.cancel();
     _pageController.dispose();
     super.dispose();
   }
@@ -656,14 +873,48 @@ class _CompactDateStripState extends State<_CompactDateStrip> {
     setState(() {
       _focusedDate = date;
     });
+  }
 
-    widget.onFocusedDateChanged(date);
+  void _scheduleSettledSelection(DateTime date) {
+    _settleTimer?.cancel();
+
+    _settleTimer = Timer(_selectionSettleDelay, () {
+      if (!mounted) {
+        return;
+      }
+
+      widget.onFocusedDateChanged(date);
+      widget.onDateSelected(date);
+    });
+  }
+
+  bool _handleScrollNotification(ScrollNotification notification) {
+    if (notification is ScrollStartNotification) {
+      _settleTimer?.cancel();
+    }
+
+    if (notification is ScrollEndNotification) {
+      final page = _pageController.page?.round() ?? _initialPage;
+
+      _scheduleSettledSelection(_dateForPage(page));
+    }
+
+    return false;
   }
 
   void _handleDateTap(DateTime date) {
     final targetPage = _pageForDate(date);
 
-    widget.onDateSelected(date);
+    final currentPage = _pageController.hasClients
+        ? (_pageController.page?.round() ?? _initialPage)
+        : _initialPage;
+
+    if (targetPage == currentPage) {
+      _scheduleSettledSelection(date);
+      return;
+    }
+
+    _settleTimer?.cancel();
 
     _pageController.animateToPage(
       targetPage,
@@ -679,75 +930,186 @@ class _CompactDateStripState extends State<_CompactDateStrip> {
 
     return SizedBox(
       height: 96,
-      child: PageView.builder(
-        controller: _pageController,
-        onPageChanged: _handlePageChanged,
-        itemBuilder: (context, page) {
-          final date = _dateForPage(page);
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final focusedItemWidth = constraints.maxWidth / 7;
 
-          final phase = widget.calculator.phaseFor(
-            date: date,
-            crew: widget.crew,
-          );
+          return Stack(
+            alignment: Alignment.center,
+            children: [
+              NotificationListener<ScrollNotification>(
+                onNotification: _handleScrollNotification,
+                child: PageView.builder(
+                  controller: _pageController,
+                  onPageChanged: _handlePageChanged,
+                  itemBuilder: (context, page) {
+                    final date = _dateForPage(page);
 
-          final isSelected = _isSameDay(date, widget.selectedDate);
+                    final phase = widget.calculator.phaseFor(
+                      date: date,
+                      crew: widget.crew,
+                    );
 
-          final isFocused = _isSameDay(date, _focusedDate);
+                    final isSelected = _isSameDay(date, widget.selectedDate);
 
-          return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 2),
-            child: InkWell(
-              borderRadius: BorderRadius.circular(12),
-              onTap: () => _handleDateTap(date),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: colors.forPhase(phase),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: colors.gridLine, width: 0.7),
-                ),
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 7),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      _weekdays[date.weekday - 1],
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                        fontWeight: FontWeight.w600,
+                    final isFocused = _isSameDay(date, _focusedDate);
+
+                    final isVacation = _isVacationDate(
+                      date,
+                      widget.vacationPeriods,
+                    );
+
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 2),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(12),
+                        onTap: () => _handleDateTap(date),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: colors.forPhase(phase),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: colors.gridLine,
+                              width: 0.7,
+                            ),
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 4,
+                            vertical: 7,
+                          ),
+                          child: Stack(
+                            children: [
+                              Positioned.fill(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Text(
+                                      _weekdays[date.weekday - 1],
+                                      style: theme.textTheme.labelSmall
+                                          ?.copyWith(
+                                            color: theme
+                                                .colorScheme
+                                                .onSurfaceVariant,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      '${date.day}',
+                                      style: theme.textTheme.titleMedium
+                                          ?.copyWith(
+                                            fontSize: isSelected
+                                                ? 20
+                                                : isFocused
+                                                ? 17
+                                                : 16,
+                                            color: isSelected
+                                                ? const Color.fromARGB(
+                                                    255,
+                                                    196,
+                                                    8,
+                                                    39,
+                                                  )
+                                                : null,
+                                            fontWeight: isSelected || isFocused
+                                                ? FontWeight.w800
+                                                : FontWeight.w600,
+                                          ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      phase.displayLabel,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.fade,
+                                      softWrap: false,
+                                      style: theme.textTheme.labelSmall
+                                          ?.copyWith(
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              if (isVacation)
+                                Positioned(
+                                  left: 6,
+                                  right: 6,
+                                  bottom: 0,
+                                  child: Container(
+                                    height: 4,
+                                    decoration: BoxDecoration(
+                                      color: colors.vacationMarker,
+                                      borderRadius: BorderRadius.circular(999),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '${date.day}',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontSize: isSelected
-                            ? 20
-                            : isFocused
-                            ? 17
-                            : 16,
-                        color: isSelected
-                            ? const Color.fromARGB(255, 196, 8, 39)
-                            : null,
-                        fontWeight: isSelected || isFocused
-                            ? FontWeight.w800
-                            : FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      phase.displayLabel,
-                      maxLines: 1,
-                      overflow: TextOverflow.fade,
-                      softWrap: false,
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
+                    );
+                  },
                 ),
               ),
-            ),
+              IgnorePointer(
+                child: SizedBox(
+                  width: focusedItemWidth - 2,
+                  height: 96,
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Positioned.fill(
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(13),
+                            border: Border.all(
+                              color: theme.colorScheme.primary.withValues(
+                                alpha: 0.95,
+                              ),
+                              width: 2.4,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: theme.colorScheme.primary.withValues(
+                                  alpha: 0.16,
+                                ),
+                                blurRadius: 5,
+                                spreadRadius: 0.5,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        top: -3,
+                        left: 20,
+                        right: 20,
+                        child: Container(
+                          height: 5,
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.primary,
+                            borderRadius: BorderRadius.circular(3),
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        bottom: -3,
+                        left: 20,
+                        right: 20,
+                        child: Container(
+                          height: 5,
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.primary,
+                            borderRadius: BorderRadius.circular(3),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           );
         },
       ),
@@ -755,11 +1117,27 @@ class _CompactDateStripState extends State<_CompactDateStrip> {
   }
 }
 
-class _CalendarAgendaPanel extends StatelessWidget {
-  const _CalendarAgendaPanel({required this.selectedDate});
+class _CalendarAgendaPanel extends StatefulWidget {
+  const _CalendarAgendaPanel({
+    super.key,
+    required this.selectedDate,
+    required this.userId,
+    required this.service,
+    required this.onAddEntry,
+    required this.onEntriesChanged,
+  });
 
   final DateTime selectedDate;
+  final String userId;
+  final CalendarEntryService service;
+  final Future<void> Function(CalendarEntryKind kind) onAddEntry;
+  final Future<void> Function() onEntriesChanged;
 
+  @override
+  State<_CalendarAgendaPanel> createState() => _CalendarAgendaPanelState();
+}
+
+class _CalendarAgendaPanelState extends State<_CalendarAgendaPanel> {
   static const _months = <String>[
     'января',
     'февраля',
@@ -774,6 +1152,141 @@ class _CalendarAgendaPanel extends StatelessWidget {
     'ноября',
     'декабря',
   ];
+
+  static const _weekdays = <String>[
+    'Понедельник',
+    'Вторник',
+    'Среда',
+    'Четверг',
+    'Пятница',
+    'Суббота',
+    'Воскресенье',
+  ];
+
+  late Future<List<CalendarEntry>> _entriesFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _entriesFuture = _loadEntries();
+  }
+
+  @override
+  void didUpdateWidget(covariant _CalendarAgendaPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    if (!_isSameDay(oldWidget.selectedDate, widget.selectedDate) ||
+        oldWidget.userId != widget.userId) {
+      _entriesFuture = _loadEntries();
+    }
+  }
+
+  Future<List<CalendarEntry>> _loadEntries() {
+    if (widget.userId.trim().isEmpty) {
+      return Future<List<CalendarEntry>>.value(const <CalendarEntry>[]);
+    }
+
+    return widget.service.loadForDay(
+      userId: widget.userId,
+      date: widget.selectedDate,
+    );
+  }
+
+  void _reloadEntries() {
+    setState(() {
+      _entriesFuture = _loadEntries();
+    });
+  }
+
+  Future<void> _handleAddEntry(CalendarEntryKind kind) async {
+    await widget.onAddEntry(kind);
+
+    if (!mounted) {
+      return;
+    }
+
+    _reloadEntries();
+    await widget.onEntriesChanged();
+  }
+
+  Future<void> _editEntry(CalendarEntry entry) async {
+    final result = await Navigator.of(context).push<CalendarEntryEditorResult>(
+      MaterialPageRoute(
+        builder: (context) {
+          return CalendarEntryEditorScreen(
+            kind: entry.kind,
+            date: entry.date,
+            initialEntry: entry,
+          );
+        },
+      ),
+    );
+
+    if (!mounted || result == null) {
+      return;
+    }
+
+    try {
+      switch (result.action) {
+        case CalendarEntryEditorAction.save:
+          await widget.service.update(
+            userId: widget.userId,
+            currentEntry: entry,
+            kind: result.kind,
+            date: result.date,
+            title: result.title,
+            description: result.description,
+            scheduledMinutes: result.scheduledMinutes,
+            reminderMinutes: result.reminderMinutes,
+            priority: result.priority,
+            colorValue: entry.colorValue,
+          );
+
+        case CalendarEntryEditorAction.delete:
+          await widget.service.delete(userId: widget.userId, entry: entry);
+      }
+
+      if (!mounted) {
+        return;
+      }
+
+      _reloadEntries();
+      await widget.onEntriesChanged();
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Не удалось изменить запись')),
+      );
+    }
+  }
+
+  Future<void> _setCompleted(CalendarEntry entry, bool isCompleted) async {
+    try {
+      await widget.service.setCompleted(
+        userId: widget.userId,
+        entry: entry,
+        isCompleted: isCompleted,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      _reloadEntries();
+      await widget.onEntriesChanged();
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Не удалось изменить дело')));
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -798,25 +1311,231 @@ class _CalendarAgendaPanel extends StatelessWidget {
                   fontWeight: FontWeight.w700,
                 ),
               ),
-              const Spacer(),
-              Text(
-                '${selectedDate.day} ${_months[selectedDate.month - 1]}',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  '${_weekdays[widget.selectedDate.weekday - 1]}, '
+                  '${widget.selectedDate.day} '
+                  '${_months[widget.selectedDate.month - 1]}',
+                  maxLines: 1,
+                  softWrap: false,
+                  textAlign: TextAlign.end,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          Text(
-            'На этот день пока ничего не запланировано',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
+          const SizedBox(height: 12),
+          Expanded(
+            child: FutureBuilder<List<CalendarEntry>>(
+              future: _entriesFuture,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(
+                    child: SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  );
+                }
+
+                if (snapshot.hasError) {
+                  return Align(
+                    alignment: Alignment.topLeft,
+                    child: Text(
+                      'Не удалось загрузить дела',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.error,
+                      ),
+                    ),
+                  );
+                }
+
+                final entries = snapshot.data ?? const <CalendarEntry>[];
+
+                if (entries.isEmpty) {
+                  return Align(
+                    alignment: Alignment.topLeft,
+                    child: Text(
+                      'На этот день пока ничего не запланировано',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  );
+                }
+
+                return ListView.builder(
+                  padding: const EdgeInsets.only(bottom: 18),
+                  itemCount: entries.length,
+                  itemBuilder: (context, index) {
+                    final entry = entries[index];
+
+                    return _CalendarEntryListItem(
+                      entry: entry,
+                      onTap: () {
+                        _editEntry(entry);
+                      },
+                      onCompletedChanged: entry.kind == CalendarEntryKind.task
+                          ? (value) {
+                              _setCompleted(entry, value);
+                            }
+                          : null,
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 6),
+          Container(
+            height: 52,
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(26),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Material(
+                    color: theme.colorScheme.secondaryContainer,
+                    borderRadius: BorderRadius.circular(22),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(22),
+                      onTap: () {
+                        _handleAddEntry(CalendarEntryKind.task);
+                      },
+                      child: const SizedBox(
+                        height: 44,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.check_circle_outline_rounded, size: 19),
+                            SizedBox(width: 7),
+                            Text('Дело'),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  'Добавить',
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Material(
+                    color: theme.colorScheme.secondaryContainer,
+                    borderRadius: BorderRadius.circular(22),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(22),
+                      onTap: () {
+                        _handleAddEntry(CalendarEntryKind.note);
+                      },
+                      child: const SizedBox(
+                        height: 44,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.sticky_note_2_outlined, size: 19),
+                            SizedBox(width: 7),
+                            Text('Заметка'),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ],
       ),
     );
+  }
+
+  static bool _isSameDay(DateTime first, DateTime second) {
+    return first.year == second.year &&
+        first.month == second.month &&
+        first.day == second.day;
+  }
+}
+
+class _CalendarEntryListItem extends StatelessWidget {
+  const _CalendarEntryListItem({
+    required this.entry,
+    required this.onTap,
+    required this.onCompletedChanged,
+  });
+
+  final CalendarEntry entry;
+  final VoidCallback onTap;
+  final ValueChanged<bool>? onCompletedChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isCompleted = entry.isCompleted;
+
+    final subtitleParts = <String>[];
+
+    if (entry.scheduledMinutes != null) {
+      subtitleParts.add(_formatMinutes(entry.scheduledMinutes!));
+    }
+
+    final description = entry.description?.trim();
+
+    if (description != null && description.isNotEmpty) {
+      subtitleParts.add(description);
+    }
+
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      onTap: onTap,
+      leading: entry.kind == CalendarEntryKind.task
+          ? Checkbox(
+              value: isCompleted,
+              onChanged: (value) {
+                if (value == null) {
+                  return;
+                }
+
+                onCompletedChanged?.call(value);
+              },
+            )
+          : const SizedBox(
+              width: 48,
+              child: Icon(Icons.sticky_note_2_outlined),
+            ),
+      title: Text(
+        entry.title,
+        style: theme.textTheme.bodyLarge?.copyWith(
+          decoration: isCompleted ? TextDecoration.lineThrough : null,
+          color: isCompleted ? theme.colorScheme.onSurfaceVariant : null,
+        ),
+      ),
+      subtitle: subtitleParts.isEmpty ? null : Text(subtitleParts.join(' · ')),
+      trailing: entry.hasReminder
+          ? const Icon(Icons.notifications_active_outlined, size: 20)
+          : null,
+    );
+  }
+
+  static String _formatMinutes(int minutes) {
+    final hour = minutes ~/ 60;
+    final minute = minutes % 60;
+
+    return '${hour.toString().padLeft(2, '0')}:'
+        '${minute.toString().padLeft(2, '0')}';
   }
 }
 
@@ -827,6 +1546,8 @@ class _CalendarDayTile extends StatelessWidget {
     required this.isCurrentMonth,
     required this.isToday,
     required this.isSelected,
+    required this.isVacation,
+    required this.entryMarkers,
     required this.colors,
     required this.onTap,
   });
@@ -836,6 +1557,10 @@ class _CalendarDayTile extends StatelessWidget {
   final bool isCurrentMonth;
   final bool isToday;
   final bool isSelected;
+  final bool isVacation;
+
+  final CalendarEntryDayMarkers entryMarkers;
+
   final _CalendarColors colors;
   final VoidCallback onTap;
 
@@ -864,40 +1589,125 @@ class _CalendarDayTile extends StatelessWidget {
               borderRadius: BorderRadius.circular(10),
               border: Border.all(color: colors.gridLine, width: 0.7),
             ),
-            padding: const EdgeInsets.fromLTRB(6, 5, 5, 5),
-            child: Opacity(
-              opacity: isCurrentMonth ? 1 : 0.20,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '${date.day}',
-                    style: theme.textTheme.labelLarge?.copyWith(
-                      fontSize: isSelected ? 20 : 14,
-                      color: isSelected
-                          ? const Color.fromARGB(255, 196, 8, 39)
-                          : null,
-                      fontWeight: isToday || isSelected
-                          ? FontWeight.w800
-                          : FontWeight.w600,
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: Opacity(
+                    opacity: isCurrentMonth ? 1 : 0.20,
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(
+                        6,
+                        4,
+                        5,
+                        isVacation ? 10 : 4,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '${date.day}',
+                            style: theme.textTheme.labelLarge?.copyWith(
+                              fontSize: isSelected ? 20 : 14,
+                              color: isSelected
+                                  ? const Color.fromARGB(255, 196, 8, 39)
+                                  : null,
+                              fontWeight: isToday || isSelected
+                                  ? FontWeight.w800
+                                  : FontWeight.w600,
+                            ),
+                          ),
+                          const Spacer(),
+                          Text(
+                            phase.displayLabel,
+                            maxLines: 1,
+                            overflow: TextOverflow.fade,
+                            softWrap: false,
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                  const Spacer(),
-                  Text(
-                    phase.displayLabel,
-                    maxLines: 1,
-                    overflow: TextOverflow.fade,
-                    softWrap: false,
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      fontWeight: FontWeight.w600,
+                ),
+
+                if (entryMarkers.hasAnyMarker)
+                  Positioned(
+                    top: 4,
+                    right: 5,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (entryMarkers.hasPlainEntry)
+                          Icon(
+                            Icons.sticky_note_2_outlined,
+                            size: 11,
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurface.withValues(alpha: 0.82),
+                          ),
+                        if (entryMarkers.hasPlainEntry &&
+                            entryMarkers.hasPriority)
+                          const SizedBox(width: 3),
+                        if (entryMarkers.hasPriority)
+                          _CalendarPriorityDot(
+                            priority: entryMarkers.highestPriority,
+                          ),
+                        if (entryMarkers.hasPriority &&
+                            entryMarkers.hasReminder)
+                          const SizedBox(width: 3),
+                        if (entryMarkers.hasReminder)
+                          Icon(
+                            Icons.notifications_none_rounded,
+                            size: 12,
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurface.withValues(alpha: 0.88),
+                          ),
+                      ],
                     ),
                   ),
-                ],
-              ),
+                if (isVacation)
+                  Positioned(
+                    left: 7,
+                    right: 7,
+                    bottom: 4,
+                    child: Container(
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: colors.vacationMarker,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ),
         ),
       ),
+    );
+  }
+}
+
+class _CalendarPriorityDot extends StatelessWidget {
+  const _CalendarPriorityDot({required this.priority});
+
+  final CalendarEntryPriority priority;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = switch (priority) {
+      CalendarEntryPriority.none => Colors.transparent,
+      CalendarEntryPriority.low => Colors.green,
+      CalendarEntryPriority.medium => Colors.amber,
+      CalendarEntryPriority.high => Colors.red,
+    };
+
+    return Container(
+      width: 7,
+      height: 7,
+      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
     );
   }
 }
@@ -909,6 +1719,7 @@ class _CalendarColors {
     required this.recovery,
     required this.off,
     required this.gridLine,
+    required this.vacationMarker,
   });
 
   final Color day;
@@ -916,24 +1727,27 @@ class _CalendarColors {
   final Color recovery;
   final Color off;
   final Color gridLine;
+  final Color vacationMarker;
 
   factory _CalendarColors.fromTheme(ThemeData theme) {
     if (theme.brightness == Brightness.dark) {
-      return const _CalendarColors(
-        day: Color(0xFF394943),
-        night: Color(0xFF263E42),
-        recovery: Color(0xFF383A43),
-        off: Color(0xFF202327),
-        gridLine: Color(0xFF34383D),
+      return _CalendarColors(
+        day: const Color(0xFF394943),
+        night: const Color(0xFF263E42),
+        recovery: const Color(0xFF383A43),
+        off: const Color(0xFF202327),
+        gridLine: const Color(0xFF34383D),
+        vacationMarker: theme.colorScheme.tertiary,
       );
     }
 
-    return const _CalendarColors(
-      day: Color(0xFFDCEBE4),
-      night: Color(0xFFD5E4E6),
-      recovery: Color(0xFFE3E2E8),
-      off: Color(0xFFF3F4F3),
-      gridLine: Color(0xFFD4D8D6),
+    return _CalendarColors(
+      day: const Color(0xFFDCEBE4),
+      night: const Color(0xFFD5E4E6),
+      recovery: const Color(0xFFE3E2E8),
+      off: const Color(0xFFF3F4F3),
+      gridLine: const Color(0xFFD4D8D6),
+      vacationMarker: theme.colorScheme.tertiary,
     );
   }
 
@@ -952,6 +1766,10 @@ class _CalendarColors {
 
     return off;
   }
+}
+
+bool _isVacationDate(DateTime date, List<VacationPeriod> periods) {
+  return periods.any((period) => period.contains(date));
 }
 
 bool _isSameDay(DateTime left, DateTime right) {
