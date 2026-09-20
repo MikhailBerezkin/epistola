@@ -4,10 +4,10 @@
 >
 > При конфликте источников:
 >
-> исходный код текущей feature-ветки
-> → PROJECT_CONTEXT.md
-> → ARCHITECTURE.md
-> → README.md
+> текущий исходный код feature-ветки
+> → `PROJECT_CONTEXT.md`
+> → `ARCHITECTURE.md`
+> → `README.md`
 >
 > Не использовать `main` как источник текущего состояния `v0.8.0`, пока feature-ветка не merged/released.
 
@@ -23,17 +23,13 @@ Feature branch:
 
 `feat/v0.8.0-spaces-substitution-foundation`
 
-Последний functional checkpoint:
+Latest functional checkpoint:
 
-`f172ef1 — feat(calendar): add vacation foundation and calendar settings`
+`8abe66c — feat(calendar): add local agenda and vacation UI`
 
-Предыдущий functional checkpoint текущей сессии:
+HEAD перед docs-коммитом:
 
-`764d3de — feat(web): enable chats and speed up user loading`
-
-Важный более ранний checkpoint:
-
-`67800f0 — feat(push): add installation ownership foundation`
+`8abe66c`
 
 Последний стабильный release до `v0.8.0`:
 
@@ -41,7 +37,7 @@ Feature branch:
 
 `v0.8.0` всё ещё находится в feature-ветке.
 
-После docs-коммита `HEAD` станет новее `f172ef1`, но latest functional checkpoint останется `f172ef1`.
+После docs-коммита `HEAD` будет новее `8abe66c`, но latest functional checkpoint останется `8abe66c`.
 
 В новом чате сначала проверить:
 
@@ -54,65 +50,66 @@ git.exe rev-parse --short origin/feat/v0.8.0-spaces-substitution-foundation
 
 ---
 
-# 2. Финальная проверка functional checkpoint
+# 2. Финальная проверка checkpoint `8abe66c`
 
-Flutter:
+Targeted CalendarEntry:
 
 ```text
-dart.bat format
-→ final changed Dart set formatted
-
-flutter.bat analyze
-→ No issues found
-→ 6.0 s
-
-flutter.bat test
-→ 1012/1012 passed
+calendar_entry_test.dart → 7/7
+calendar_entry_mapper_test.dart → 6/6
+calendar_entry_local_store_test.dart → 7/7
+calendar_entry_service_test.dart → 8/8
+calendar_entry_day_markers_test.dart → 6/6
 ```
 
-Во время full suite может появляться:
+Итого targeted local agenda:
+
+`34/34 passed`
+
+Targeted Vacation additions:
+
+```text
+vacation_date_parser_test.dart → 13/13
+vacation_period_service_test.dart → 5/5
+```
+
+Итого targeted new Vacation layer:
+
+`18/18 passed`
+
+Full Flutter suite:
+
+```text
+flutter.bat test
+→ 1064/1064 passed
+```
+
+Во время full suite может появляться diagnostic output:
 
 ```text
 Corrupt JPEG data: 2 extraneous bytes before marker 0xd9
 JPEG datastream contains no image
 ```
 
-Если итог `All tests passed!`, это diagnostic output, не падение suite.
+Если итог `All tests passed!`, это не падение suite.
 
-Targeted Vacation Dart:
-
-```text
-VacationPeriod
-VacationPeriodMapper
-VacationPeriodFirestoreGateway
-→ 20/20 passed
-```
-
-Substitution confirmed-call mapper после синхронизации с 3-second undo window:
+Analyzer:
 
 ```text
-→ 12/12 passed
+flutter.bat analyze
+→ No issues found
 ```
 
-Final Firestore Rules group:
+Diff:
 
 ```text
-substitution_space_rules.test.mjs
-substitution_finalize_rules.test.mjs
-vacation_period_rules.test.mjs
-push_device_rules.test.mjs
-→ 91/91 passed
+git.exe diff --cached --check
+→ clean
 ```
 
-Vacation Rules отдельно:
+Generated Flutter plugin files были восстановлены перед commit и в `8abe66c` не попали.
 
-```text
-→ 12/12 passed
-```
-
-Generated Flutter plugin files после последней Flutter-команды восстановлены один раз и не попали в functional commit.
-
-После `f172ef1`:
+После functional commit:
 
 ```text
 git status --short
@@ -121,86 +118,19 @@ git status --short
 
 ---
 
-# 3. Production Firestore Rules hotfix — 2026-09-18
+# 3. Production Firestore Rules — актуальное состояние
 
-Production bug:
-
-```text
-Список / Подсменка
-→ owner/brigadier вызывает активного участника
-→ UI: "Не удалось выполнить вызов"
-```
-
-Root cause:
+Production всё ещё использует transition-compatible ruleset:
 
 ```text
-новый client call transaction уже требует shiftClaims
-production Firestore Rules были старее этого contract
-→ Firestore transaction отклонялся Rules
-```
-
-Новый call transaction атомарно затрагивает:
-
-```text
-spaces/substitution/pendingCalls/{callId}
-spaces/substitution/shiftClaims/{claimId}
-spaces/substitution/participants/{userId}
-spaces/substitution
-```
-
-`shiftClaims` защищает от повторного вызова одной и той же рабочей смены.
-
----
-
-# 4. Почему не деплоили текущий firestore.rules напрямую
-
-Текущий repository `firestore.rules` содержит:
-
-```text
-shiftClaims
-self-return sick → active
-Vacation Foundation
-strict push device ownership
-```
-
-Но часть пользователей всё ещё использует старый Android APK, который напрямую пишет:
-
-```text
-users/{uid}/devices/{installationId}
-```
-
-Новые APK используют:
-
-```text
-claimPushInstallation
-releasePushInstallation
-```
-
-Если бы сразу задеплоили strict:
-
-```text
-allow create, update, delete: if false;
-```
-
-старые APK могли бы потерять регистрацию/refresh/delete push token.
-
-Поэтому был создан временный `firestore.transition.rules`.
-
-Файл использовался только для тестирования/deploy и после deploy удалён. В repository он не должен попадать.
-
----
-
-# 5. Production transition Rules — текущее состояние
-
-Production сейчас содержит:
-
-```text
-новый Substitution shiftClaims contract
+Substitution shiftClaims contract
 +
 legacy-compatible users/{uid}/devices writes
++
+VacationPeriod Rules
 ```
 
-Legacy compatibility разрешает authenticated user только собственный device document и только exact fields:
+Legacy compatibility для старых APK разрешает authenticated user только собственный device document и только exact fields:
 
 ```text
 token
@@ -213,81 +143,107 @@ Delete разрешён только для собственного user path.
 Важно:
 
 ```text
-Vacation Rules на production НЕ DEPLOYED
-self-return sick → active из текущего repository Rules не входил в transition hotfix
+Vacation Rules УЖЕ DEPLOYED в production.
 ```
 
-То есть production Rules и repository `firestore.rules` намеренно различаются.
+Они были безопасно добавлены поверх фактического production transition ruleset, а не через слепой deploy repository `firestore.rules`.
 
----
+Проверка временной production-копии Vacation Rules:
 
-# 6. Проверки transition Rules
-
-Перед deploy:
-
-```text
-call / shiftClaims → 23/23
-undo → 5/5
-finalize → 11/11
-legacy push compatibility → 6/6
-```
-
-Дополнительно проверено:
-
-```text
-firestore.transition.rules
-→ vacationPeriods отсутствует
-```
+`12/12 passed`
 
 Deploy:
 
 ```text
-firebase.cmd deploy --only firestore:rules --project epistola-434b7
+firebase.cmd deploy --only firestore:rules --config firebase.production.json --project epistola-434b7
 → Deploy complete!
 ```
 
-После deploy локальный рабочий `firestore.rules` был восстановлен.
+Временные файлы после deploy удалены:
+
+```text
+firebase.production.json
+firestore.production.rules
+test/rules/firestore/vacation_period_rules.production.test.mjs
+```
 
 ---
 
-# 7. Production manual verification hotfix
+# 4. Почему нельзя слепо деплоить repository firestore.rules
 
-Реальный сценарий:
+Repository `firestore.rules` содержит:
 
 ```text
-Owner
-→ вызвал bot participant
-→ вызов прошёл
+shiftClaims
+Vacation Foundation
+self-return sick → active
+strict push device ownership
 ```
 
-После примерно 3 секунд:
+Production transition ruleset пока намеренно отличается:
 
 ```text
-undo window закрылось
-bot переместился вниз rotation list
+shiftClaims → есть
+Vacation Rules → есть
+legacy device writes → временно разрешены
+self-return sick → active → ещё не переносился отдельным production migration
+strict device write lock → ещё не включён из-за старых APK
+```
+
+Поэтому:
+
+```text
+DO NOT blindly deploy repository firestore.rules
+```
+
+После следующего broad APK rollout:
+
+```text
+1. проверить adoption
+2. прогнать Rules
+3. подготовить exact production migration
+4. убрать legacy device compatibility
+5. включить strict device ownership
+```
+
+---
+
+# 5. Production Substitution hotfix — 2026-09-18
+
+Причина hotfix:
+
+```text
+новый client call transaction требовал shiftClaims
+production Rules были старее contract
+→ вызов отклонялся Rules
+```
+
+Atomic call transaction:
+
+```text
+spaces/substitution/pendingCalls/{callId}
+spaces/substitution/shiftClaims/{claimId}
+spaces/substitution/participants/{userId}
+spaces/substitution
+```
+
+`shiftClaims` защищает от повторного вызова одной и той же рабочей смены.
+
+Production manual verification:
+
+```text
+Owner вызвал bot participant
+Undo window ≈ 3 sec
+participant переместился вниз rotation list
 statistics shifts → +1
-```
-
-Notification projections:
-
-```text
 SpacesBar notification → получено
 push notification → получено
+старый APK без Spaces → push получено
 ```
-
-Также проверен старый APK, в котором ещё вообще нет Spaces:
-
-```text
-bot получил push
-```
-
-Это подтвердило legacy push compatibility.
-
-Production hotfix закрыт.
 
 ---
 
-# 8. Push installation ownership
+# 6. Push installation ownership
 
 Invariant:
 
@@ -301,9 +257,7 @@ one user
 
 Registry:
 
-```text
-pushInstallations/{installationId}
-```
+`pushInstallations/{installationId}`
 
 Schema v2:
 
@@ -334,30 +288,13 @@ token refresh → claim
 logout/unregister → release
 ```
 
-Repository target Rules уже strict:
-
-```text
-users/{uid}/devices/{deviceId}
-read own → allowed
-client create/update/delete → denied
-```
-
-Production пока временно разрешает legacy own writes.
-
-После следующего широкого APK rollout:
-
-```text
-1. проверить adoption
-2. прогнать Rules
-3. deploy strict repository Rules
-4. убрать legacy compatibility
-```
+Repository target Rules уже strict, production пока временно legacy-compatible.
 
 ---
 
-# 9. Web / EpiLite checkpoint
+# 7. Web / EpiLite checkpoint
 
-Commit:
+Web chats/performance checkpoint:
 
 `764d3de — feat(web): enable chats and speed up user loading`
 
@@ -368,7 +305,7 @@ supportsChats
 → Web true
 ```
 
-Manual Web verification:
+Manual verification:
 
 ```text
 fresh Web open
@@ -382,44 +319,37 @@ Performance:
 ```text
 ChatMembersService
 SubstitutionUserCache
-→ independent user reads переведены на Future.wait
+→ independent user reads через Future.wait
 ```
 
-Known gap:
+Known Web gap:
 
-```text
-chat avatars всё ещё не отображаются корректно
-```
+`chat avatars всё ещё могут отображаться некорректно`
 
-Web push остаётся unsupported.
+Web push:
+
+`unsupported`
 
 Hosting:
 
 `https://epistola-434b7.web.app`
 
-В текущей сессии успешно выполнялись:
-
-```text
-flutter.bat build web
-firebase.cmd deploy --only hosting
-```
-
 ---
 
-# 10. Calendar foundation
+# 8. Calendar base schedule
 
 Space:
 
 `Календарь смен`
 
-Base calendar:
+Base model:
 
 ```text
 4 crews
 8-day repeating cycle
 ```
 
-Для crew 4 подтверждено:
+Crew 4:
 
 ```text
 День 1
@@ -434,13 +364,11 @@ Base calendar:
 
 Anchor:
 
-```text
-14.09.2026 = День 2
-```
+`14.09.2026 = День 2`
 
-Базовый shift schedule считается immutable.
+Базовый shift schedule immutable/deterministic.
 
-Будущие overlays:
+Exceptions должны быть overlays, а не переписыванием 8-day cycle:
 
 ```text
 vacation
@@ -449,26 +377,11 @@ substitution
 additional shift / халтура
 ```
 
-не должны переписывать 8-day cycle.
-
 ---
 
-# 11. Calendar UI
+# 9. Calendar UI — checkpoint `8abe66c`
 
-Готово:
-
-```text
-full-screen calendar
-selected/target date centering
-horizontal date strip
-month title корректно меняется при 30 → 1
-selected date digit → red
-weekday/month header обновляется
-shift designation отображается
-Today navigation
-```
-
-View modes:
+Modes:
 
 ```text
 full
@@ -479,106 +392,65 @@ compact
 Persistence:
 
 ```text
-ShiftCalendarViewMode
-SharedPreferences key: shift_calendar_view_mode
-default: medium
+SharedPreferences
+shift_calendar_view_mode
+default = medium
 ```
 
-Crew + mode загружаются до render, чтобы не было flash неправильного состояния.
+Crew + mode загружаются до основного render, чтобы убрать flash неправильного состояния.
 
-Today:
+Разделены состояния:
 
 ```text
-PageController
-_goToToday()
-Icons.today_outlined
+visibleMonth
+selectedDate
+compact focused/center date
 ```
 
-Работает в full / medium / compact.
-
-Swipe tuning:
+Full/medium month swipe:
 
 ```text
-950/920 оказалось слишком нечувствительно
-возвращено примерно 550/520
+меняет visible month
+не переносит selected day автоматически в новый месяц
+explicit selection очищается до нового выбора
 ```
 
-Нужна ещё финальная оценка на телефоне.
+Compact:
+
+```text
+stationary center frame
+dates scroll under the frame
+selection commits only after scroll settles
+settle delay = 250 ms
+tap side date → animate to center → commit after settle
+```
+
+Shift phase всегда считается через:
+
+```text
+ShiftScheduleCalculator.phaseFor(date, crew)
+```
+
+и не зависит от visual position.
+
+Header:
+
+```text
+Сентябрь 2026
+selected shift title: День 1 / День 2 / Ночь 1 / Ночь 2 / Отсыпной / Выходной
+Today action → replay-style icon
+⋮ menu
+```
+
+`ShiftCyclePhase.displayTitle` добавлен для человекочитаемого статуса.
 
 ---
 
-# 12. Calendar overflow menu
-
-В header добавлено `⋮`.
-
-Пункты:
-
-```text
-Отпуска
-Будильники
-Темы календаря
-```
-
-Текущие handlers:
-
-```text
-placeholder / no-op
-```
-
-Следующий продуктовый блок — `Отпуска`.
-
----
-
-# 13. Substitution self-return
-
-Текущий repository checkpoint добавляет:
-
-```text
-ordinary participant:
-sick → active
-→ может вернуть себя сам
-```
-
-Ограничения:
-
-```text
-только собственный participant
-availability не подменяется
-rotationOrder не меняется
-vacation → active остаётся manager-controlled
-another participant → запрещено
-```
-
-UI и Firestore Rules согласованы.
-
-Это изменение ещё не было частью production transition deploy.
-
----
-
-# 14. Vacation Foundation
-
-Новые файлы:
-
-```text
-lib/domain/models/vacation_period.dart
-lib/services/spaces/calendar/vacation_period_mapper.dart
-lib/services/spaces/calendar/vacation_period_firestore_gateway.dart
-```
-
-Tests:
-
-```text
-test/domain/models/vacation_period_test.dart
-test/services/spaces/calendar/vacation_period_mapper_test.dart
-test/services/spaces/calendar/vacation_period_firestore_gateway_test.dart
-test/rules/firestore/vacation_period_rules.test.mjs
-```
+# 10. Vacation UI / persistence
 
 Authoritative collection:
 
-```text
-spaces/calendar/vacationPeriods/{userId}__{slot}
-```
+`spaces/calendar/vacationPeriods/{userId}__{slot}`
 
 Schema v1:
 
@@ -591,159 +463,352 @@ endDay
 updatedAt
 ```
 
-Day storage:
+Technical capacity:
+
+`slots 1..6`
+
+Slots — persistence capacity, не visual slots.
+
+Реализованы:
 
 ```text
-YYYYMMDD integer
+VacationPeriodService
+Vacation date parser
+VacationPeriod editor
+Vacation periods list
+create
+update
+delete
+Firestore persistence
+realtime watch in Calendar
+pink date markers
 ```
 
-Document ID:
-
-```text
-<userId>__<slot>
-```
-
----
-
-# 15. Vacation slots
-
-Окончательный technical capacity текущего foundation:
-
-```text
-1..6
-```
-
-Tests:
-
-```text
-slot 6 → valid
-slot 7 → rejected
-```
-
-Проверено в:
-
-```text
-domain
-mapper
-gateway
-Firestore Rules
-```
-
-UI НЕ должен показывать шесть пустых слотов.
-
-Будущий UI:
-
-```text
-реальные current/future vacations
-+
-"+ Добавить отпуск"
-```
-
-Slots — persistence capacity, не visual structure.
-
----
-
-# 16. Vacation ownership / security
-
-User может:
-
-```text
-create/update/delete только свои vacation periods
-```
-
-Other signed-in users:
-
-```text
-могут read vacationPeriods
-```
-
-Manager special edit:
-
-```text
-НЕ предусмотрен
-```
-
-Delete означает:
-
-```text
-отмена / ошибочная запись
-→ period удаляется
-→ vacation coloring исчезает
-```
-
-Естественно завершившийся отпуск не должен физически удаляться только потому, что стал прошлым.
-
----
-
-# 17. Vacation Calendar semantics
-
-Calendar — source of truth.
-
-Vacation — overlay поверх immutable base schedule.
-
-Planned display:
-
-```text
-весь startDay..endDay inclusive
-→ vacation color
-```
-
-Editable list:
-
-```text
-до последнего vacation day включительно → editable
-со следующего дня → не показывать как current/future item
-```
-
-Но past Calendar months должны сохранять historical vacation coloring.
-
-Visible History screen/editor сейчас не нужен.
-
-Unresolved architecture task:
-
-```text
-как безопасно переиспользовать 6 slots,
-не теряя historical vacation projection
-```
-
-Не внедрять автоматический slot reuse с потерей истории.
-
----
-
-# 18. Planned Vacation input UX
-
-Желаемые форматы:
+Parser поддерживает:
 
 ```text
 18.09.2026
 18.09
+18/09/2026
+18/09
 18 сентября
 18 сентября 2026
 ```
 
-Если год отсутствует:
+No year:
 
-```text
-использовать год, открытый сейчас в Calendar
-```
+`используется открытый Calendar year`
 
 Cross-year:
 
 ```text
 Calendar year = 2026
-start = 20.12
-end = 10.01
+20.12 → 10.01
 → 20.12.2026 .. 10.01.2027
 ```
 
-Placeholders:
+Manual persistence verification:
 
 ```text
-18.09
-02.10
+создан VacationPeriod
+→ pink markers start..end inclusive
+→ exit/re-enter Calendar сохраняет
+→ full app stop/restart сохраняет
 ```
 
-Parser/editor UI ещё не реализован.
+Delete означает correction/cancellation и убирает coloring.
+
+---
+
+# 11. Vacation history / slot reuse
+
+Working current/future slots:
+
+`1..6`
+
+Не внедрять автоматический recycle с потерей истории.
+
+Желаемая стратегия:
+
+```text
+working current/future slots in Firebase
++
+recent completed server-side history ≈ 1–2 years
++
+local long-term archive if needed
+```
+
+Visible History screen сейчас не требуется.
+
+Past Calendar months должны сохранять historical vacation projection.
+
+---
+
+# 12. Vacation → Substitution automation — planned
+
+Не реализовано.
+
+Desired behavior:
+
+```text
+VacationPeriod startDate
+→ если applicable, participant status = vacation
+
+если participant уже vacation
+→ no-op
+
+day after endDate
+→ если status всё ещё vacation
+→ active
+```
+
+Manual `vacation` без дат фактически остаётся indefinite.
+
+Если есть релевантный VacationPeriod, его конец может вернуть `vacation → active`.
+
+Known pilot limitation:
+
+```text
+participant может изменить собственный VacationPeriod
+и тем самым влиять на auto-return
+```
+
+Пока это допустимо.
+
+Sick automation:
+
+`НЕ делать`
+
+---
+
+# 13. Local Calendar Agenda — личные Дела / Заметки
+
+Ключевое решение:
+
+```text
+личные Calendar entries НИКОГДА не сохраняются в Firestore
+```
+
+Storage:
+
+`SharedPreferences`
+
+Данные разделены по authenticated `uid`, чтобы аккаунты на одном устройстве не смешивались.
+
+Foundation:
+
+```text
+CalendarEntry
+CalendarEntryMapper
+CalendarEntryLocalStore
+CalendarEntryService
+CalendarEntryDayMarkers
+```
+
+Entry kinds:
+
+```text
+task
+note
+```
+
+Properties:
+
+```text
+date
+title
+description
+scheduledMinutes?
+reminderMinutes?
+priority: none / low / medium / high
+colorValue? reserved for future
+isCompleted
+completedAt?
+createdAt
+updatedAt
+```
+
+Время дела и время reminder независимы.
+
+---
+
+# 14. Local Agenda UI
+
+Flow:
+
+```text
+selected date
+→ agenda panel
+→ bottom fixed Add bar
+→ left oval: Дело
+→ center label: Добавить
+→ right oval: Заметка
+```
+
+Промежуточный bottom sheet `Что добавить?` удалён.
+
+Agenda:
+
+```text
+active entries above completed
+timed active entries sorted by time
+entries without time after timed
+completed tasks below active
+scrollable list
+fixed bottom Add bar
+```
+
+Task:
+
+```text
+checkbox completion
+completed item → strikethrough
+completed item does not participate in day markers
+```
+
+Tap existing entry:
+
+```text
+open same editor prefilled
+edit
+save
+delete with confirmation
+```
+
+Note cannot be completed.
+
+---
+
+# 15. CalendarEntry editor
+
+Create/edit supports:
+
+```text
+title
+optional scheduled time
+priority
+description / note text
+bell switch
+optional separate reminder time
+delete when editing
+```
+
+Time picker:
+
+```text
+two Cupertino wheel pickers
+hours 00..23
+minutes 00..59
+looping = true
+```
+
+Priority UI:
+
+```text
+Нет
+Низкий
+Средний
+Высокий
+```
+
+all four in one line.
+
+User color/category remains in domain model for future UI but is not exposed yet.
+
+---
+
+# 16. Calendar day markers
+
+For active local entries:
+
+```text
+plain entry without reminder → note icon
+entry with reminder → bell icon
+highest active priority → priority dot
+completed tasks → ignored
+```
+
+Priority dot:
+
+```text
+low → green
+medium → amber
+high → red
+none → no dot
+```
+
+Full/medium integration started and manually visible.
+
+Compact marker presentation still needs final tuning; do not overload stationary center frame.
+
+---
+
+# 17. Reminder / alarm gap
+
+IMPORTANT:
+
+```text
+UI reminder setting exists
+reminderMinutes persists locally
+bell marker is displayed
+BUT actual Android local notification is NOT scheduled yet
+```
+
+`flutter_local_notifications` already exists in project dependencies.
+
+Next implementation must add real local scheduling:
+
+```text
+create entry with reminder → schedule
+edit date/time/reminder → reschedule
+disable bell → cancel
+delete entry → cancel
+complete task → decide/cancel pending reminder
+app restart → reminder remains scheduled/reconciled
+stable notification id derived from CalendarEntry id
+```
+
+This is the immediate Calendar roadmap item for next chat.
+
+---
+
+# 18. Additional shift / халтура calendar event — planned
+
+Personal tasks and work events are separate concepts.
+
+Desired source:
+
+```text
+existing Substitution call / confirmed-call / SpacesBar event
+```
+
+Do not parse free-form text if structured call/date/shift data already exists.
+
+Desired calendar behavior:
+
+```text
+call received roughly 12–20h before shift
+→ calendar work event appears immediately
+→ day tile gets violet border
+→ agenda gets system row/card with violet vertical strip
+→ once shift start time arrives, status becomes occurred
+→ historical violet marker remains
+```
+
+Status should preferably be derived from `startAt`, not rewritten by timer:
+
+```text
+now < startAt → upcoming
+now >= startAt → occurred
+```
+
+Dedupe by stable source/call ID.
+
+Compact:
+
+```text
+do not add extra visual frame over stationary center selector if cluttered
+```
 
 ---
 
@@ -765,25 +830,108 @@ additionalShiftOverlay
 effective day presentation
 ```
 
-Нельзя кодировать exceptions переписыванием базового 8-day schedule.
+Personal local entries are a separate presentation layer and do not change effective work schedule.
 
 ---
 
-# 20. Build notes
+# 20. Calendar roadmap
 
-Ранее в текущей сессии успешно собран:
+## Immediate
 
 ```text
-release APK → 58.5 MB
+1. Real local reminder scheduling
+2. Final compact markers
+3. Calendar UI polish
+4. Additional shift / халтура work event projection
 ```
 
-После последних Vacation 1..6 code/test изменений отдельный новый release APK не пересобирался.
+## Local Agenda later
 
-Это допустимо: Vacation UI ещё не подключён, checkpoint закрывался анализом и тестами.
+```text
+user colors/categories
+repeating local entries
+templates tied to shift-cycle positions 1..8
+optional validFrom / validUntil
+optional time + reminder
+```
+
+Do not materialize hundreds of repeated copies unless required.
+
+## Vacation later
+
+```text
+Vacation → Substitution status automation
+history-safe slot reuse/archive
+recent server history ≈ 1–2 years
+```
+
+## Themes
+
+Future palette should support separate roles:
+
+```text
+8 cycle positions/phases
+vacation
+additional shift/substitution
+selection/focus
+grid/background
+priority markers
+```
+
+Presets:
+
+```text
+Standard
+Dark
+Contrast
+Custom/advanced later
+```
+
+## Web Calendar
+
+Plan:
+
+```text
+connect Calendar tile to EpiLite
+reuse deterministic ShiftScheduleCalculator
+Vacation Firestore data can be shared
+personal entries remain local-only
+Web personal storage should use browser-local persistence / IndexedDB style approach, not Firestore
+```
 
 ---
 
-# 21. Development workflow
+# 21. Calendar UI polish backlog
+
+```text
+final compact marker layout
+possible Today icon replacement
+month transition/presentation tuning
+compact selector frame tuning
+agenda/date typography tuning if needed
+```
+
+Current agenda date is kept on one line and allowed to use available width.
+
+---
+
+# 22. Build / APK state
+
+Earlier release APK in project history:
+
+`≈58.5 MB`
+
+After functional checkpoint `8abe66c`, final release APK has not yet been re-confirmed in this checkpoint.
+
+New chat may rebuild:
+
+```powershell
+flutter.bat build apk --release
+```
+
+---
+
+# 23. Development workflow
 
 Environment:
 
@@ -792,13 +940,14 @@ Windows
 PowerShell
 VS Code
 Flutter
+Android Emulator + Poco F6
 Android Studio JBR
-Java 21.0.10
+Java 21
 Node 22
 Firebase CLI
 ```
 
-Commands:
+Use explicit executables:
 
 ```text
 flutter.bat
@@ -809,47 +958,11 @@ npx.cmd
 git.exe
 ```
 
-В новой PowerShell session для emulator:
+Small verifiable steps.
 
-```powershell
-$env:JAVA_HOME = "C:\Program Files\Android\Android Studio\jbr"
-$env:Path = "$env:JAVA_HOME\bin;$env:Path"
-```
+Do not commit/push/deploy until explicit checkpoint approval.
 
----
-
-# 22. Encoding warning
-
-Windows PowerShell:
-
-```powershell
-Set-Content -Encoding utf8
-```
-
-может добавить BOM:
-
-```text
-EF-BB-BF
-```
-
-Firestore Rules compiler может упасть:
-
-```text
-L1:1 token recognition error
-```
-
-Для source/rules files использовать UTF-8 without BOM:
-
-```powershell
-$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
-[System.IO.File]::WriteAllText($path, $content, $utf8NoBom)
-```
-
----
-
-# 23. Generated Flutter files policy
-
-Files:
+Generated files:
 
 ```text
 linux/flutter/generated_plugins.cmake
@@ -861,47 +974,43 @@ windows/flutter/generated_plugins.cmake
 Policy:
 
 ```text
-оставлять dirty во время серии Flutter-команд
+оставлять dirty в серии Flutter-команд
 восстанавливать один раз после последней Flutter-команды
 не коммитить случайные generated changes
 ```
 
 ---
 
-# 24. Что ещё НЕ сделано
+# 24. Encoding warning
 
-Vacation:
+PowerShell `Set-Content -Encoding utf8` может добавить BOM:
 
-```text
-Vacation editor screen
-friendly date parser
-Calendar vacation coloring
-effective Vacation overlay
-history-safe slot reuse
-production Vacation Rules deploy
+`EF-BB-BF`
+
+Для source/rules files при необходимости использовать UTF-8 without BOM:
+
+```powershell
+$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+[System.IO.File]::WriteAllText($path, $content, $utf8NoBom)
 ```
 
-Calendar:
+---
 
-```text
-real handlers for Отпуска / Будильники / Темы календаря
-additional shift / халтура
-final phone gesture tuning
-```
+# 25. Other backlog
 
 Web:
 
 ```text
 chat avatar rendering
-Web push
+Web push later
 ```
 
 Push/security:
 
 ```text
-remove production transition legacy device writes after rollout
-deploy strict repository Rules
-deleted-user cleanup for pushInstallations
+remove production legacy device writes after broad rollout
+deploy exact strict migration
+pushInstallations cleanup for deleted Auth users
 ```
 
 Spaces Hub:
@@ -928,15 +1037,16 @@ legacy *MessageId → presentationId
 
 ---
 
-# 25. New-chat start
+# 26. New-chat start
 
-Цель:
+Goal:
 
 ```text
-continue Calendar / Vacation
+continue Calendar
+first task = real local reminder scheduling
 ```
 
-Сначала:
+First run:
 
 ```powershell
 git.exe branch --show-current
@@ -945,7 +1055,7 @@ git.exe rev-parse --short HEAD
 git.exe rev-parse --short origin/feat/v0.8.0-spaces-substitution-foundation
 ```
 
-Потом прочитать:
+Then read:
 
 ```text
 PROJECT_CONTEXT.md
@@ -956,22 +1066,13 @@ README.md
 Expected after docs commit + push:
 
 ```text
-latest functional checkpoint: f172ef1
-working tree: CLEAN
-origin: same as local docs HEAD
+latest functional checkpoint = 8abe66c
+working tree = CLEAN
+origin feature branch = same as local docs HEAD
 ```
 
-Если Git говорит иначе — доверять Git.
+If Git says otherwise, trust Git.
 
-Recommended next sequence:
+Do not use `main` as current `v0.8.0` source.
 
-```text
-1. Vacation editor orchestration
-2. friendly date parser
-3. Calendar vacation overlay
-4. history/slot-reuse strategy
-5. additional shift / халтура
-6. Calendar polish
-```
-
-Не деплоить локальный полный `firestore.rules` без отдельного решения о production transition migration.
+Do not deploy full repository `firestore.rules` blindly.
