@@ -1,5 +1,6 @@
 import '../../../domain/models/calendar_entry.dart';
 import 'calendar_entry_local_store.dart';
+import 'calendar_entry_reminder_service.dart';
 
 typedef CalendarEntryClock = DateTime Function();
 typedef CalendarEntryIdFactory = String Function();
@@ -9,15 +10,28 @@ final class CalendarEntryService {
     this._store, {
     CalendarEntryClock? clock,
     CalendarEntryIdFactory? idFactory,
+    CalendarEntryReminderService? reminderService,
   }) : _clock = clock ?? DateTime.now,
-       _idFactory = idFactory ?? _defaultIdFactory;
+       _idFactory = idFactory ?? _defaultIdFactory,
+       _reminderService = reminderService ?? CalendarEntryReminderService();
 
   final CalendarEntryLocalStore _store;
   final CalendarEntryClock _clock;
   final CalendarEntryIdFactory _idFactory;
+  final CalendarEntryReminderService _reminderService;
 
   Future<List<CalendarEntry>> loadForUser({required String userId}) {
     return _store.loadForUser(userId: userId);
+  }
+
+  Future<bool> ensureReminderPermission() {
+    return _reminderService.ensurePermission();
+  }
+
+  Future<void> reconcileReminders({required String userId}) async {
+    final entries = await _store.loadForUser(userId: userId);
+
+    await _reminderService.reconcile(entries);
   }
 
   Future<List<CalendarEntry>> loadForDay({
@@ -69,6 +83,7 @@ final class CalendarEntryService {
     }
 
     await _store.save(userId: userId, entry: entry);
+    await _reminderService.sync(entry);
 
     return entry;
   }
@@ -113,6 +128,7 @@ final class CalendarEntryService {
     }
 
     await _store.save(userId: userId, entry: updatedEntry);
+    await _reminderService.sync(updatedEntry);
 
     return updatedEntry;
   }
@@ -145,12 +161,18 @@ final class CalendarEntryService {
     );
 
     await _store.save(userId: userId, entry: updatedEntry);
+    await _reminderService.sync(updatedEntry);
 
     return updatedEntry;
   }
 
-  Future<void> delete({required String userId, required CalendarEntry entry}) {
-    return _store.delete(userId: userId, entryId: entry.id);
+  Future<void> delete({
+    required String userId,
+    required CalendarEntry entry,
+  }) async {
+    await _reminderService.cancel(entry);
+
+    await _store.delete(userId: userId, entryId: entry.id);
   }
 
   static int _compareEntries(CalendarEntry left, CalendarEntry right) {

@@ -102,6 +102,30 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
       return;
     }
 
+    var reminderMinutes = result.reminderMinutes;
+
+    if (reminderMinutes != null) {
+      final permissionGranted = await _calendarEntryService
+          .ensureReminderPermission();
+
+      if (!mounted) {
+        return;
+      }
+
+      if (!permissionGranted) {
+        reminderMinutes = null;
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Разрешение на точные напоминания не выдано. '
+              'Запись сохранена без будильника.',
+            ),
+          ),
+        );
+      }
+    }
+
     try {
       await _calendarEntryService.create(
         userId: userId,
@@ -110,7 +134,7 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
         title: result.title,
         description: result.description,
         scheduledMinutes: result.scheduledMinutes,
-        reminderMinutes: result.reminderMinutes,
+        reminderMinutes: reminderMinutes,
         priority: result.priority,
       );
     } catch (_) {
@@ -139,7 +163,23 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
       _viewMode = results[1] as ShiftCalendarViewMode;
       _areSettingsLoaded = true;
     });
+
     await _loadCalendarEntries();
+    await _reconcileCalendarReminders();
+  }
+
+  Future<void> _reconcileCalendarReminders() async {
+    final userId = _currentUserId;
+
+    if (userId.isEmpty) {
+      return;
+    }
+
+    try {
+      await _calendarEntryService.reconcileReminders(userId: userId);
+    } catch (_) {
+      // Ошибка локального reminder не должна ломать сам календарь.
+    }
   }
 
   Future<void> _loadCalendarEntries() async {
@@ -1229,6 +1269,30 @@ class _CalendarAgendaPanelState extends State<_CalendarAgendaPanel> {
     try {
       switch (result.action) {
         case CalendarEntryEditorAction.save:
+          var reminderMinutes = result.reminderMinutes;
+
+          if (reminderMinutes != null) {
+            final permissionGranted = await widget.service
+                .ensureReminderPermission();
+
+            if (!mounted) {
+              return;
+            }
+
+            if (!permissionGranted) {
+              reminderMinutes = null;
+
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    'Разрешение на точные напоминания не выдано. '
+                    'Запись сохранена без будильника.',
+                  ),
+                ),
+              );
+            }
+          }
+
           await widget.service.update(
             userId: widget.userId,
             currentEntry: entry,
@@ -1237,7 +1301,7 @@ class _CalendarAgendaPanelState extends State<_CalendarAgendaPanel> {
             title: result.title,
             description: result.description,
             scheduledMinutes: result.scheduledMinutes,
-            reminderMinutes: result.reminderMinutes,
+            reminderMinutes: reminderMinutes,
             priority: result.priority,
             colorValue: entry.colorValue,
           );

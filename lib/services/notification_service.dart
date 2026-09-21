@@ -3,6 +3,9 @@ import 'dart:async';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter_timezone/flutter_timezone.dart';
+import 'package:timezone/data/latest_all.dart' as tz_data;
+import 'package:timezone/timezone.dart' as tz;
 import 'package:vibration/vibration.dart';
 
 import '../domain/models/push_deep_link_request.dart';
@@ -49,6 +52,16 @@ class NotificationService {
         enableVibration: false,
       );
 
+  static const AndroidNotificationChannel _calendarReminderChannel =
+      AndroidNotificationChannel(
+        'epistola_calendar_reminders_v1',
+        'Напоминания календаря',
+        description: 'Локальные напоминания о делах и заметках',
+        importance: Importance.high,
+        playSound: true,
+        enableVibration: true,
+      );
+
   static const String _silentNotificationMode = 'silent';
 
   static final FlutterLocalNotificationsPlugin _localNotifications =
@@ -56,11 +69,14 @@ class NotificationService {
 
   static PushDeepLinkCoordinator? _deepLinkCoordinator;
   static bool _messagingListenersStarted = false;
+  static bool _calendarTimezoneReady = false;
 
   static Future<void> initialize({
     required PushDeepLinkCoordinator deepLinkCoordinator,
   }) async {
     _deepLinkCoordinator = deepLinkCoordinator;
+
+    await _initializeCalendarTimezone();
 
     const initializationSettings = InitializationSettings(
       android: AndroidInitializationSettings('@mipmap/ic_launcher'),
@@ -71,16 +87,179 @@ class NotificationService {
       onDidReceiveNotificationResponse: _handleLocalNotificationTap,
     );
 
-    final androidPlugin = _localNotifications
-        .resolvePlatformSpecificImplementation<
-          AndroidFlutterLocalNotificationsPlugin
-        >();
+    final androidPlugin = _androidPlugin;
 
     await androidPlugin?.createNotificationChannel(_messageChannel);
 
     await androidPlugin?.createNotificationChannel(_silentMessageChannel);
 
     await androidPlugin?.createNotificationChannel(_spacesBarChannel);
+
+    await androidPlugin?.createNotificationChannel(_calendarReminderChannel);
+  }
+
+  static AndroidFlutterLocalNotificationsPlugin? get _androidPlugin {
+    return _localNotifications
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >();
+  }
+
+  static Future<void> _initializeCalendarTimezone() async {
+    tz_data.initializeTimeZones();
+
+    try {
+      final currentTimezone = await FlutterTimezone.getLocalTimezone();
+      final location = tz.getLocation(currentTimezone.identifier);
+
+      tz.setLocalLocation(location);
+      _calendarTimezoneReady = true;
+
+      if (kDebugMode) {
+        debugPrint(
+          'Calendar notification timezone: ${currentTimezone.identifier}',
+        );
+      }
+    } catch (error, stackTrace) {
+      _calendarTimezoneReady = false;
+
+      if (kDebugMode) {
+        debugPrint('Calendar notification timezone setup error: $error');
+        debugPrintStack(stackTrace: stackTrace);
+      }
+    }
+  }
+
+  static Future<bool> canScheduleExactCalendarReminders() async {
+    final androidPlugin = _androidPlugin;
+
+    if (androidPlugin == null) {
+      return false;
+    }
+
+    return await androidPlugin.canScheduleExactNotifications() ?? false;
+  }
+
+  static Future<bool> requestExactCalendarReminderPermission() async {
+    final androidPlugin = _androidPlugin;
+
+    if (androidPlugin == null) {
+      return false;
+    }
+
+    final alreadyAllowed =
+        await androidPlugin.canScheduleExactNotifications() ?? false;
+
+    if (alreadyAllowed) {
+      return true;
+    }
+
+    return await androidPlugin.requestExactAlarmsPermission() ?? false;
+  }
+
+  static Future<bool> scheduleCalendarReminder({
+    required int notificationId,
+    required DateTime date,
+    required int reminderMinutes,
+    required String title,
+    String? body,
+  }) async {
+    if (!_calendarTimezoneReady) {
+      if (kDebugMode) {
+        debugPrint(
+          'Calendar reminder was not scheduled: timezone is unavailable',
+        );
+      }
+
+      return false;
+    }
+
+    if (reminderMinutes < 0 || reminderMinutes >= 24 * 60) {
+      throw ArgumentError.value(
+        reminderMinutes,
+        'reminderMinutes',
+        'must be between 0 and 1439',
+      );
+    }
+
+    final canScheduleExact = await canScheduleExactCalendarReminders();
+
+    if (!canScheduleExact) {
+      if (kDebugMode) {
+        debugPrint(
+          'Calendar reminder was not scheduled: '
+          'exact alarm permission is unavailable',
+        );
+      }
+
+      return false;
+    }
+
+    final hour = reminderMinutes ~/ 60;
+    final minute = reminderMinutes % 60;
+
+    final scheduledDate = tz.TZDateTime(
+      tz.local,
+      date.year,
+      date.month,
+      date.day,
+      hour,
+      minute,
+    );
+
+    final now = tz.TZDateTime.now(tz.local);
+
+    if (!scheduledDate.isAfter(now)) {
+      await cancelCalendarReminder(notificationId: notificationId);
+
+      if (kDebugMode) {
+        debugPrint(
+          'Calendar reminder was not scheduled because it is in the past: '
+          '$scheduledDate',
+        );
+      }
+
+      return false;
+    }
+
+    await _localNotifications.zonedSchedule(
+      id: notificationId,
+      title: title,
+      body: body ?? 'Напоминание календаря',
+      scheduledDate: scheduledDate,
+      notificationDetails: NotificationDetails(
+        android: AndroidNotificationDetails(
+          _calendarReminderChannel.id,
+          _calendarReminderChannel.name,
+          channelDescription: _calendarReminderChannel.description,
+          importance: Importance.high,
+          priority: Priority.high,
+          icon: '@mipmap/ic_launcher',
+          playSound: true,
+          enableVibration: true,
+        ),
+      ),
+      androidScheduleMode: AndroidScheduleMode.alarmClock,
+    );
+
+    if (kDebugMode) {
+      debugPrint(
+        'Calendar reminder scheduled: '
+        'id=$notificationId, at=$scheduledDate',
+      );
+    }
+
+    return true;
+  }
+
+  static Future<void> cancelCalendarReminder({
+    required int notificationId,
+  }) async {
+    await _localNotifications.cancel(id: notificationId);
+
+    if (kDebugMode) {
+      debugPrint('Calendar reminder cancelled: id=$notificationId');
+    }
   }
 
   static Future<void> startMessaging() async {
@@ -198,6 +377,7 @@ class NotificationService {
       ),
       payload: request?.toLocalPayload(),
     );
+
     if (!isSilent) {
       await vibrate();
     }
@@ -218,7 +398,13 @@ class NotificationService {
   }
 
   static void _handleLocalNotificationTap(NotificationResponse response) {
-    final request = PushDeepLinkRequest.fromLocalPayload(response.payload);
+    final payload = response.payload;
+
+    if (payload == null || payload.isEmpty) {
+      return;
+    }
+
+    final request = PushDeepLinkRequest.fromLocalPayload(payload);
 
     if (request == null) {
       if (kDebugMode) {
