@@ -2,11 +2,13 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import '../domain/models/shift_cycle.dart';
 import '../models/app_user.dart';
 import '../services/avatar/avatar_image_dependencies.dart';
 import '../services/avatar/avatar_replacement_controller.dart';
 import '../widgets/profile_avatar_editor.dart';
 import '../widgets/profile_info_card.dart';
+import 'assigned_crew_setup_screen.dart';
 import 'edit_profile_screen.dart';
 import 'settings_screen.dart';
 
@@ -208,6 +210,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 },
               ),
               const SizedBox(height: 12),
+
               ProfileInfoCard(
                 icon: Icons.info_outline,
                 title: 'О себе',
@@ -224,6 +227,24 @@ class _ProfilePageState extends State<ProfilePage> {
                     contactEmail: contactEmail,
                   );
                 },
+              ),
+              const SizedBox(height: 12),
+
+              ProfileInfoCard(
+                icon: Icons.groups_2_outlined,
+                title: 'Звено',
+                subtitle: profileUser.assignedCrew?.displayName ?? 'Не выбрано',
+                showChevron: profileUser.assignedCrew == null,
+                onTap: profileUser.assignedCrew == null
+                    ? () async {
+                        await Navigator.of(context).push<ShiftCrew>(
+                          MaterialPageRoute<ShiftCrew>(
+                            builder: (_) =>
+                                AssignedCrewSetupScreen(userId: user.uid),
+                          ),
+                        );
+                      }
+                    : null,
               ),
               const SizedBox(height: 12),
 

@@ -2,6 +2,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import 'assigned_crew_setup_screen.dart';
+import 'home_screen.dart';
+
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
 
@@ -36,28 +39,55 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
       final user = userCredential.user;
 
-      if (user != null) {
-        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
-          'uid': user.uid,
-          'name': nameController.text.trim(),
-          'email': emailController.text.trim().toLowerCase(),
-          'phone': '',
-          'about': '',
-          'avatarUrl': '',
-          'createdAt': FieldValue.serverTimestamp(),
-        });
+      if (user == null) {
+        throw StateError('Firebase Auth did not return a user.');
       }
 
-      if (!mounted) return;
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+        'uid': user.uid,
+        'name': nameController.text.trim(),
+        'email': emailController.text.trim().toLowerCase(),
+        'phone': '',
+        'about': '',
+        'avatarUrl': '',
+        'createdAt': FieldValue.serverTimestamp(),
+      });
 
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Аккаунт создан')));
+      if (!mounted) {
+        return;
+      }
 
-      Navigator.pop(context);
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute<void>(
+          builder: (setupContext) {
+            return AssignedCrewSetupScreen(
+              userId: user.uid,
+              allowBack: false,
+              onSaved: (_) {
+                Navigator.of(setupContext).pushReplacement(
+                  MaterialPageRoute<void>(builder: (_) => const HomeScreen()),
+                );
+              },
+            );
+          },
+        ),
+        (route) => false,
+      );
     } on FirebaseAuthException catch (e) {
+      if (!mounted) {
+        return;
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(e.message ?? 'Ошибка регистрации')),
+      );
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Не удалось создать аккаунт')),
       );
     } finally {
       if (mounted) {
