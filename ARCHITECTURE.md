@@ -26,7 +26,7 @@
 | Current target | `v0.8.0` |
 | Stage | `Spaces / Substitution / EpiLite / Calendar / Vacation / Local Agenda` |
 | Feature branch | `feat/v0.8.0-spaces-substitution-foundation` |
-| Latest functional checkpoint | `8abe66c` |
+| Latest functional checkpoint | `27cce8e` |
 | Web chats/performance checkpoint | `764d3de` |
 | Push installation ownership | `67800f0` |
 | Stable baseline before v0.8.0 | `v0.7.4` |
@@ -36,7 +36,7 @@
 
 `v0.8.0` ещё не declared merged/released.
 
-Docs-only commit may move `HEAD` beyond `8abe66c`.
+Docs-only commit may move `HEAD` beyond `27cce8e`.
 
 ---
 
@@ -1104,35 +1104,117 @@ Compact final marker layout still needs tuning.
 
 ---
 
-# 39. Reminder scheduling boundary
+# 39. Local reminder scheduling architecture
 
-Current state:
+Implemented at:
 
-```text
-reminderMinutes is persisted
-bell UI works
-bell marker works
-actual Android local notification scheduling is NOT implemented
-```
+`27cce8e — feat(calendar): add exact local reminders`
 
-Project already has:
-
-`flutter_local_notifications`
-
-Next service should own notification scheduling/cancel/reconciliation, not the editor widget.
-
-Required operations:
+Ownership:
 
 ```text
-schedule on create
-reschedule on edit
-cancel on bell off
-cancel on delete
-decide/cancel on completion
-restore/reconcile after app restart
+CalendarEntryService
+→ entry persistence lifecycle
+→ delegates reminder lifecycle
+
+CalendarEntryReminderService
+→ stable notification identity
+→ permission orchestration
+→ schedule/cancel/reconcile policy
+
+NotificationService
+→ Android notification plugin integration
+→ timezone initialization
+→ exact scheduling/cancel operations
 ```
 
-Use stable notification identity derived from local entry ID.
+The editor UI does not own Android scheduling directly.
+
+Stable identity:
+
+```text
+CalendarEntry.id
+→ deterministic 32-bit FNV-style hash
+→ positive signed Android notification ID
+```
+
+Lifecycle contract:
+
+```text
+create with reminder → schedule
+edit reminder/date → reschedule same notification identity
+bell off → cancel
+delete → cancel
+complete task → cancel
+restore completed task → schedule again when applicable
+Calendar load → reconcile persisted local entries
+```
+
+Local persistence remains authoritative for personal Calendar entries. Firestore is not involved.
+
+Timezone stack:
+
+```text
+flutter_timezone
+→ device timezone identifier
+→ timezone package
+→ tz.local
+```
+
+Android dependencies/configuration:
+
+```text
+flutter_local_notifications
+timezone ^0.11.1
+flutter_timezone ^5.1.0
+RECEIVE_BOOT_COMPLETED
+SCHEDULE_EXACT_ALARM
+ScheduledNotificationReceiver
+ScheduledNotificationBootReceiver
+```
+
+Scheduling mode:
+
+```text
+AndroidScheduleMode.alarmClock
+```
+
+Reason for mode choice:
+
+```text
+exactAllowWhileIdle
+→ real-device delay observed around 1–2 minutes
+
+alarmClock
+→ delivered in requested minute during manual testing
+```
+
+Calendar channel uses ordinary system notification sound and vibration. It intentionally does not reuse the custom Epistola seagull sound.
+
+Permission policy:
+
+```text
+check exact-alarm permission
+→ request when absent
+→ if denied, preserve/save CalendarEntry but disable that reminder and inform user
+```
+
+Reconciliation boundary:
+
+```text
+native scheduled alarms survive app process restart
+Calendar screen load reconciles reminders from local CalendarEntry storage
+```
+
+Do not overstate this as a global application-start reconciliation.
+
+Boot receiver infrastructure is present, but full physical-device reboot survival has not yet been manually verified.
+
+Current notification tap behavior:
+
+```text
+Calendar reminder has no Calendar deep-link payload
+```
 
 ---
 
@@ -1344,16 +1426,32 @@ $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 
 Functional checkpoint:
 
-`8abe66c`
+`27cce8e — feat(calendar): add exact local reminders`
 
 Flutter:
 
 ```text
 analyze → No issues found
-full test → 1064/1064
-CalendarEntry targeted → 34/34
+full test → 1083/1083
+Calendar local agenda + reminders targeted → 53/53
 Vacation parser/service targeted → 18/18
 ```
+
+Manual Android reminder lifecycle:
+
+```text
+exact time → passed
+system sound → passed
+reschedule → passed
+bell off cancel → passed
+completion cancel → passed
+delete cancel → passed
+app close/reopen survival → passed
+```
+
+Release APK:
+
+`60.7 MB`
 
 Vacation production Rules:
 
@@ -1371,18 +1469,25 @@ Generated files excluded from functional commit.
 
 # 50. Next architecture focus
 
-Immediate:
+Completed:
 
 ```text
-real local reminder scheduling
+real local reminder scheduling → 27cce8e
+```
+
+Next Calendar blocks:
+
+```text
 compact marker polish
 Calendar UI polish
+additional shift / халтура projection
 ```
+
+Their order is a product decision; additional shift / халтура may be taken before cosmetic polish.
 
 Then:
 
 ```text
-additional shift / халтура projection
 Vacation → Substitution automation
 history-safe Vacation archive/slot reuse
 Calendar themes

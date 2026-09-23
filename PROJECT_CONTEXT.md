@@ -25,11 +25,11 @@ Feature branch:
 
 Latest functional checkpoint:
 
-`8abe66c — feat(calendar): add local agenda and vacation UI`
+`27cce8e — feat(calendar): add exact local reminders`
 
 HEAD перед docs-коммитом:
 
-`8abe66c`
+`27cce8e`
 
 Последний стабильный release до `v0.8.0`:
 
@@ -37,7 +37,7 @@ HEAD перед docs-коммитом:
 
 `v0.8.0` всё ещё находится в feature-ветке.
 
-После docs-коммита `HEAD` будет новее `8abe66c`, но latest functional checkpoint останется `8abe66c`.
+После docs-коммита `HEAD` будет новее `27cce8e`, но latest functional checkpoint останется `27cce8e`.
 
 В новом чате сначала проверить:
 
@@ -50,21 +50,22 @@ git.exe rev-parse --short origin/feat/v0.8.0-spaces-substitution-foundation
 
 ---
 
-# 2. Финальная проверка checkpoint `8abe66c`
+# 2. Финальная проверка checkpoint `27cce8e`
 
-Targeted CalendarEntry:
+Targeted CalendarEntry + local reminders:
 
 ```text
 calendar_entry_test.dart → 7/7
 calendar_entry_mapper_test.dart → 6/6
 calendar_entry_local_store_test.dart → 7/7
-calendar_entry_service_test.dart → 8/8
+calendar_entry_service_test.dart → 17/17
 calendar_entry_day_markers_test.dart → 6/6
+calendar_entry_reminder_service_test.dart → 10/10
 ```
 
-Итого targeted local agenda:
+Итого targeted Calendar local agenda + reminders:
 
-`34/34 passed`
+`53/53 passed`
 
 Targeted Vacation additions:
 
@@ -81,7 +82,7 @@ Full Flutter suite:
 
 ```text
 flutter.bat test
-→ 1064/1064 passed
+→ 1083/1083 passed
 ```
 
 Во время full suite может появляться diagnostic output:
@@ -100,14 +101,14 @@ flutter.bat analyze
 → No issues found
 ```
 
-Diff:
+Diff перед functional commit:
 
 ```text
 git.exe diff --cached --check
 → clean
 ```
 
-Generated Flutter plugin files были восстановлены перед commit и в `8abe66c` не попали.
+Generated Flutter plugin files были восстановлены перед commit и в `27cce8e` не попали.
 
 После functional commit:
 
@@ -379,7 +380,7 @@ additional shift / халтура
 
 ---
 
-# 9. Calendar UI — checkpoint `8abe66c`
+# 9. Calendar UI — current state through `27cce8e`
 
 Modes:
 
@@ -743,32 +744,121 @@ Compact marker presentation still needs final tuning; do not overload stationary
 
 ---
 
-# 17. Reminder / alarm gap
+# 17. Real local Calendar reminders — implemented
 
-IMPORTANT:
+Checkpoint:
+
+`27cce8e — feat(calendar): add exact local reminders`
+
+Architecture:
 
 ```text
-UI reminder setting exists
-reminderMinutes persists locally
-bell marker is displayed
-BUT actual Android local notification is NOT scheduled yet
+CalendarEntry editor / ShiftCalendarScreen
+→ CalendarEntryService
+→ CalendarEntryReminderService
+→ NotificationService
+→ flutter_local_notifications
 ```
 
-`flutter_local_notifications` already exists in project dependencies.
+Dependencies added:
 
-Next implementation must add real local scheduling:
+```text
+timezone: ^0.11.1
+flutter_timezone: ^5.1.0
+```
+
+Android manifest additions:
+
+```text
+RECEIVE_BOOT_COMPLETED
+SCHEDULE_EXACT_ALARM
+ScheduledNotificationReceiver
+ScheduledNotificationBootReceiver
+```
+
+Timezone initialization:
+
+```text
+flutter_timezone
+→ current timezone identifier
+→ timezone package tz.local
+```
+
+Reminder lifecycle:
 
 ```text
 create entry with reminder → schedule
-edit date/time/reminder → reschedule
+edit date/reminder → reschedule using same stable notification identity
 disable bell → cancel
 delete entry → cancel
-complete task → decide/cancel pending reminder
-app restart → reminder remains scheduled/reconciled
-stable notification id derived from CalendarEntry id
+complete task → cancel pending reminder
+restore completed task to active → schedule again when applicable
+Calendar load → reconcile persisted local entries with scheduled reminders
 ```
 
-This is the immediate Calendar roadmap item for next chat.
+Stable Android notification ID is derived from `CalendarEntry.id` via deterministic 32-bit hash and kept in positive signed range.
+
+Scheduling mode:
+
+```text
+AndroidScheduleMode.alarmClock
+```
+
+Why `alarmClock`:
+
+```text
+exactAllowWhileIdle on real devices
+→ observed delay around 1–2 minutes
+
+alarmClock on real device
+→ notification arrived in the requested minute
+→ ordinary system notification sound worked
+```
+
+Calendar reminders intentionally use the normal system notification sound, not the Epistola seagull sound used by messaging/SpacesBar notifications.
+
+Permission behavior:
+
+```text
+reminder enabled
+→ check exact-alarm permission
+→ request if missing
+
+permission denied
+→ CalendarEntry is still saved
+→ reminder is disabled for that save
+→ Snackbar explains that exact reminder permission was not granted
+```
+
+Important boundaries:
+
+```text
+personal CalendarEntry data remains local-only
+no Firestore collection is used for reminders
+reminder time is independent from task scheduled time
+completed task does not participate in active markers and has no pending reminder
+local notification tap currently has no Calendar deep-link payload
+```
+
+Manual Android verification:
+
+```text
+exact requested time → passed
+system sound → passed
+reschedule → old time silent, new time exactly one notification
+bell off → cancelled
+complete task → cancelled
+delete task → cancelled
+close/reopen Epistola → reminder still delivered exactly once
+```
+
+Not manually verified yet:
+
+```text
+full physical phone reboot → reminder delivery after reboot
+```
+
+Boot receiver support is configured, but do not describe reboot survival as manually confirmed until tested.
 
 ---
 
@@ -839,11 +929,15 @@ Personal local entries are a separate presentation layer and do not change effec
 ## Immediate
 
 ```text
-1. Real local reminder scheduling
-2. Final compact markers
-3. Calendar UI polish
-4. Additional shift / халтура work event projection
+Real local reminder scheduling → CLOSED at 27cce8e
+
+Next available Calendar blocks:
+1. Final compact markers
+2. Calendar UI polish
+3. Additional shift / халтура work event projection
 ```
+
+The order of these remaining blocks is not mandatory. If business value is preferred over cosmetic polish, additional shift / халтура projection can be started before compact/UI polish.
 
 ## Local Agenda later
 
@@ -917,13 +1011,17 @@ Current agenda date is kept on one line and allowed to use available width.
 
 # 22. Build / APK state
 
-Earlier release APK in project history:
+Release APK after local-reminder implementation:
 
-`≈58.5 MB`
+```text
+flutter.bat build apk --release
+→ build/app/outputs/flutter-apk/app-release.apk
+→ 60.7 MB
+```
 
-After functional checkpoint `8abe66c`, final release APK has not yet been re-confirmed in this checkpoint.
+The APK was installed and used for real-device reminder lifecycle verification.
 
-New chat may rebuild:
+Rebuild command:
 
 ```powershell
 flutter.bat build apk --release
@@ -1042,8 +1140,11 @@ legacy *MessageId → presentationId
 Goal:
 
 ```text
-continue Calendar
-first task = real local reminder scheduling
+continue Calendar after completed exact local reminders
+choose next block explicitly:
+- final compact markers
+- Calendar UI polish
+- additional shift / халтура projection
 ```
 
 First run:
@@ -1066,7 +1167,7 @@ README.md
 Expected after docs commit + push:
 
 ```text
-latest functional checkpoint = 8abe66c
+latest functional checkpoint = 27cce8e
 working tree = CLEAN
 origin feature branch = same as local docs HEAD
 ```

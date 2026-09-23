@@ -25,7 +25,7 @@ Pilot target:
 | Target | `v0.8.0` |
 | Stage | `Spaces / Substitution / EpiLite / Calendar / Vacation / Local Agenda` |
 | Branch | `feat/v0.8.0-spaces-substitution-foundation` |
-| Latest functional checkpoint | `8abe66c` |
+| Latest functional checkpoint | `27cce8e` |
 | Web chats/performance | `764d3de` |
 | Push installation ownership | `67800f0` |
 | Stable baseline before v0.8.0 | `v0.7.4` |
@@ -389,29 +389,45 @@ Compact marker layout still needs final tuning.
 
 ---
 
-# Important reminder gap
+# Exact local Calendar reminders
 
-Current bell UI is not yet a real alarm.
+Real Android local reminders are implemented.
 
-Implemented:
-
-```text
-reminderMinutes stored locally
-bell state persists
-bell marker shown
-```
-
-Not implemented:
+Flow:
 
 ```text
-actual Android local notification scheduling
+CalendarEntryService
+→ CalendarEntryReminderService
+→ NotificationService
+→ flutter_local_notifications
 ```
 
-Project already depends on:
+Behavior:
 
-`flutter_local_notifications`
+```text
+create with reminder → schedule
+edit reminder/date → reschedule
+bell off → cancel
+complete task → cancel
+delete → cancel
+Calendar load → reconcile local entries
+```
 
-This is the immediate next Calendar task.
+Android uses:
+
+```text
+SCHEDULE_EXACT_ALARM
+RECEIVE_BOOT_COMPLETED
+AndroidScheduleMode.alarmClock
+```
+
+`alarmClock` was selected after `exactAllowWhileIdle` showed roughly 1–2 minute delays on real devices. Manual testing with `alarmClock` delivered in the requested minute.
+
+Calendar reminders use the ordinary system notification sound, not the Epistola seagull sound.
+
+Personal Calendar entries and reminder configuration remain device-local; Firestore is not used.
+
+Manual Android lifecycle checks passed for exact time, sound, reschedule, bell-off cancellation, completion cancellation, delete cancellation, and app close/reopen survival.
 
 ---
 
@@ -439,11 +455,15 @@ Avoid creating a new Firestore collection only for Calendar projection if existi
 Immediate:
 
 ```text
-1. Real local reminder scheduling
-2. Compact marker polish
-3. Calendar UI polish
-4. Additional shift / халтура projection
+Real local reminder scheduling → completed at 27cce8e
+
+Next available blocks:
+1. Compact marker polish
+2. Calendar UI polish
+3. Additional shift / халтура projection
 ```
+
+These remaining blocks do not have to be completed strictly in that order.
 
 Later:
 
@@ -467,7 +487,7 @@ Web personal Calendar data should also remain browser-local rather than move to 
 
 Functional checkpoint:
 
-`8abe66c — feat(calendar): add local agenda and vacation UI`
+`27cce8e — feat(calendar): add exact local reminders`
 
 Flutter:
 
@@ -476,15 +496,19 @@ flutter.bat analyze
 → No issues found
 
 flutter.bat test
-→ 1064/1064 passed
+→ 1083/1083 passed
 ```
 
 Targeted:
 
 ```text
-CalendarEntry → 34/34
+Calendar local agenda + reminders → 53/53
 Vacation parser/service → 18/18
 ```
+
+Release APK:
+
+`60.7 MB`
 
 Vacation production Rules:
 
@@ -546,10 +570,10 @@ README.md
 
 Expected latest functional checkpoint:
 
-`8abe66c`
+`27cce8e`
 
 Do not use `main` as current `v0.8.0` source until merge/release is explicitly verified.
 
 Immediate new-chat goal:
 
-`real local Calendar reminder scheduling`
+`choose next Calendar block: compact markers, UI polish, or additional shift / халтура projection`
