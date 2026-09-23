@@ -46,7 +46,7 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
   bool _hasSelectedDate = false;
   int _compactStripRevision = 0;
 
-  ShiftCalendarViewMode _viewMode = ShiftCalendarViewMode.medium;
+  ShiftCalendarViewMode _viewMode = ShiftCalendarViewMode.full;
 
   // Пока первая версия открывается для 4 звена.
   final ShiftCalendarSettings _settings = const ShiftCalendarSettings();
@@ -149,18 +149,15 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
   }
 
   Future<void> _loadSettings() async {
-    final results = await Future.wait<Object>([
-      _settings.loadCrew(),
-      _settings.loadViewMode(),
-    ]);
+    final crew = await _settings.loadCrew();
 
     if (!mounted) {
       return;
     }
 
     setState(() {
-      _crew = results[0] as ShiftCrew;
-      _viewMode = results[1] as ShiftCalendarViewMode;
+      _crew = crew;
+      _viewMode = ShiftCalendarViewMode.full;
       _areSettingsLoaded = true;
     });
 
@@ -225,8 +222,18 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
     setState(() {
       _viewMode = viewMode;
     });
+  }
 
-    unawaited(_settings.saveViewMode(viewMode));
+  void _openDateInCompact(DateTime date) {
+    final normalizedDate = DateTime(date.year, date.month, date.day);
+
+    setState(() {
+      _selectedDate = normalizedDate;
+      _compactFocusedDate = normalizedDate;
+      _hasSelectedDate = true;
+      _viewMode = ShiftCalendarViewMode.compact;
+      _compactStripRevision++;
+    });
   }
 
   Future<void> _openCalendarSettings() async {
@@ -309,14 +316,26 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final todayMonth = DateTime(today.year, today.month);
+
+    if (_viewMode == ShiftCalendarViewMode.compact) {
+      setState(() {
+        _selectedDate = today;
+        _compactFocusedDate = today;
+        _hasSelectedDate = true;
+        _compactStripRevision++;
+      });
+
+      return;
+    }
+
     final targetPage = _pageForMonth(todayMonth);
 
     if (_pageController.hasClients) {
       setState(() {
         _visibleMonth = todayMonth;
         _selectedDate = today;
-        _hasSelectedDate = true;
         _compactFocusedDate = today;
+        _hasSelectedDate = false;
       });
 
       unawaited(
@@ -336,8 +355,8 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
     setState(() {
       _visibleMonth = todayMonth;
       _selectedDate = today;
-      _hasSelectedDate = true;
       _compactFocusedDate = today;
+      _hasSelectedDate = false;
       _compactStripRevision++;
     });
   }
@@ -345,29 +364,41 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
   void _handleVerticalDragEnd(DragEndDetails details) {
     final velocity = details.primaryVelocity ?? 0;
 
-    // Свайп вниз: compact -> medium -> full.
+    // Свайп вниз: compact -> full.
     if (velocity > 250) {
       if (_viewMode == ShiftCalendarViewMode.compact) {
-        _setViewMode(ShiftCalendarViewMode.medium);
-        return;
-      }
-
-      if (_viewMode == ShiftCalendarViewMode.medium) {
         _setViewMode(ShiftCalendarViewMode.full);
       }
 
       return;
     }
 
-    // Свайп вверх: full -> medium -> compact.
+    // Свайп вверх: full -> compact.
     if (velocity < -250) {
       if (_viewMode == ShiftCalendarViewMode.full) {
-        _setViewMode(ShiftCalendarViewMode.medium);
-        return;
-      }
+        final now = DateTime.now();
 
-      if (_viewMode == ShiftCalendarViewMode.medium) {
-        _setViewMode(ShiftCalendarViewMode.compact);
+        final isCurrentMonth =
+            _visibleMonth.year == now.year && _visibleMonth.month == now.month;
+
+        if (isCurrentMonth) {
+          _openDateInCompact(DateTime(now.year, now.month, now.day));
+          return;
+        }
+
+        // Если пользователь смотрит другой месяц и открывает mini свайпом,
+        // сохраняем контекст именно этого месяца.
+        final lastDayOfMonth = DateTime(
+          _visibleMonth.year,
+          _visibleMonth.month + 1,
+          0,
+        ).day;
+
+        final targetDay = now.day > lastDayOfMonth ? lastDayOfMonth : now.day;
+
+        _openDateInCompact(
+          DateTime(_visibleMonth.year, _visibleMonth.month, targetDay),
+        );
       }
     }
   }
@@ -427,15 +458,36 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
+    final isCurrentMonth =
+        _visibleMonth.year == today.year && _visibleMonth.month == today.month;
+
+    final DateTime? headerDate = switch (_viewMode) {
+      ShiftCalendarViewMode.full => isCurrentMonth ? today : null,
+      ShiftCalendarViewMode.compact => _selectedDate,
+    };
+
+    final headerMonth = switch (_viewMode) {
+      ShiftCalendarViewMode.full => _visibleMonth,
+      ShiftCalendarViewMode.compact => DateTime(
+        _selectedDate.year,
+        _selectedDate.month,
+      ),
+    };
+
+    final ShiftCyclePhase? headerPhase = headerDate == null
+        ? null
+        : _calculator.phaseFor(date: headerDate, crew: _crew);
+
+    final showToday = switch (_viewMode) {
+      ShiftCalendarViewMode.full => !isCurrentMonth,
+      ShiftCalendarViewMode.compact => !_isSameDay(_selectedDate, today),
+    };
+
     if (!_areSettingsLoaded) {
-      return Scaffold(
-        appBar: AppBar(
-          actions: [
-            TextButton(onPressed: _goToToday, child: const Text('Сегодня')),
-          ],
-        ),
-        body: const SafeArea(child: SizedBox.expand()),
-      );
+      return const Scaffold(body: SafeArea(child: SizedBox.expand()));
     }
 
     Widget buildMonthPager() {
@@ -448,19 +500,21 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
             _baseMonth.year,
             _baseMonth.month + monthOffset,
           );
+          final now = DateTime.now();
+          final today = DateTime(now.year, now.month, now.day);
+
+          final isCurrentMonth =
+              month.year == today.year && month.month == today.month;
+
+          final highlightedDate = isCurrentMonth ? today : null;
 
           return _MonthGrid(
             month: month,
-            selectedDate: _selectedDate,
+            selectedDate: highlightedDate,
             crew: _crew,
             calculator: _calculator,
             vacationPeriods: _vacationPeriods,
-            onDateSelected: (date) {
-              setState(() {
-                _selectedDate = date;
-                _hasSelectedDate = true;
-              });
-            },
+            onDateSelected: _openDateInCompact,
             entryMarkersForDate: _entryMarkersForDate,
             colorScheme: _CalendarColors.fromTheme(theme),
           );
@@ -469,7 +523,6 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
     }
 
     return Scaffold(
-      appBar: AppBar(),
       body: SafeArea(
         child: GestureDetector(
           behavior: HitTestBehavior.translucent,
@@ -477,19 +530,14 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
           child: Column(
             children: [
               _CalendarHeader(
-                visibleMonth: _viewMode == ShiftCalendarViewMode.compact
-                    ? DateTime(
-                        _compactFocusedDate.year,
-                        _compactFocusedDate.month,
-                      )
-                    : _visibleMonth,
-                selectedDate: _selectedDate,
-                hasSelectedDate: _hasSelectedDate,
-                selectedPhase: _calculator.phaseFor(
-                  date: _selectedDate,
-                  crew: _crew,
-                ),
+                visibleMonth: headerMonth,
+                activeDate: headerDate,
+                selectedPhase: headerPhase,
                 crew: _crew,
+                showToday: showToday,
+                onBackTap: () {
+                  Navigator.of(context).maybePop();
+                },
                 onTodayTap: _goToToday,
                 onMenuSelected: _handleCalendarMenuAction,
               ),
@@ -529,29 +577,6 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
                         ],
                       ),
 
-                      ShiftCalendarViewMode.medium => Column(
-                        children: [
-                          const SizedBox(height: 4),
-                          const _WeekdayHeader(),
-                          const SizedBox(height: 4),
-                          if (_hasSelectedDate) ...[
-                            Expanded(flex: 6, child: buildMonthPager()),
-                            const SizedBox(height: 6),
-                            Expanded(
-                              flex: 4,
-                              child: _CalendarAgendaPanel(
-                                selectedDate: _selectedDate,
-                                userId: _currentUserId,
-                                service: _calendarEntryService,
-                                onAddEntry: _openCalendarEntryEditor,
-                                onEntriesChanged: _loadCalendarEntries,
-                              ),
-                            ),
-                          ] else
-                            Expanded(child: buildMonthPager()),
-                        ],
-                      ),
-
                       ShiftCalendarViewMode.compact => Column(
                         children: [
                           const SizedBox(height: 8),
@@ -575,18 +600,13 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
                           ),
                           const SizedBox(height: 8),
                           Expanded(
-                            child: AnimatedSwitcher(
-                              duration: const Duration(milliseconds: 220),
-                              child: _hasSelectedDate
-                                  ? _CalendarAgendaPanel(
-                                      key: ValueKey(_selectedDate),
-                                      selectedDate: _selectedDate,
-                                      userId: _currentUserId,
-                                      service: _calendarEntryService,
-                                      onAddEntry: _openCalendarEntryEditor,
-                                      onEntriesChanged: _loadCalendarEntries,
-                                    )
-                                  : const SizedBox.shrink(),
+                            child: _CalendarAgendaPanel(
+                              key: ValueKey(_selectedDate),
+                              selectedDate: _selectedDate,
+                              userId: _currentUserId,
+                              service: _calendarEntryService,
+                              onAddEntry: _openCalendarEntryEditor,
+                              onEntriesChanged: _loadCalendarEntries,
                             ),
                           ),
                         ],
@@ -606,21 +626,24 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
 class _CalendarHeader extends StatelessWidget {
   const _CalendarHeader({
     required this.visibleMonth,
-    required this.selectedDate,
-    required this.hasSelectedDate,
+    required this.activeDate,
+    required this.selectedPhase,
     required this.crew,
+    required this.showToday,
+    required this.onBackTap,
     required this.onTodayTap,
     required this.onMenuSelected,
-    required this.selectedPhase,
   });
 
   final DateTime visibleMonth;
-  final DateTime selectedDate;
-  final bool hasSelectedDate;
+  final DateTime? activeDate;
+  final ShiftCyclePhase? selectedPhase;
   final ShiftCrew crew;
+  final bool showToday;
+
+  final VoidCallback onBackTap;
   final VoidCallback onTodayTap;
   final ValueChanged<_CalendarMenuAction> onMenuSelected;
-  final ShiftCyclePhase selectedPhase;
 
   static const _months = <String>[
     'Январь',
@@ -637,104 +660,132 @@ class _CalendarHeader extends StatelessWidget {
     'Декабрь',
   ];
 
+  static const _monthsGenitive = <String>[
+    'января',
+    'февраля',
+    'марта',
+    'апреля',
+    'мая',
+    'июня',
+    'июля',
+    'августа',
+    'сентября',
+    'октября',
+    'ноября',
+    'декабря',
+  ];
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    final monthTitle =
-        '${_months[visibleMonth.month - 1]} ${visibleMonth.year}';
+    final date = activeDate;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      padding: const EdgeInsets.fromLTRB(8, 2, 8, 4),
       child: Column(
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: ClipRect(
-                  child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 320),
-                    switchInCurve: Curves.easeOutCubic,
-                    switchOutCurve: Curves.easeInCubic,
-                    transitionBuilder: (child, animation) {
-                      final offsetAnimation = Tween<Offset>(
-                        begin: const Offset(0, 0.35),
-                        end: Offset.zero,
-                      ).animate(animation);
-
-                      return FadeTransition(
-                        opacity: animation,
-                        child: SlideTransition(
-                          position: offsetAnimation,
-                          child: child,
-                        ),
-                      );
-                    },
-                    child: Text(
-                      monthTitle,
-                      key: ValueKey(
-                        '${visibleMonth.year}-${visibleMonth.month}',
-                      ),
-                      style: theme.textTheme.headlineMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
+          SizedBox(
+            height: 42,
+            child: Row(
+              children: [
+                IconButton(
+                  onPressed: onBackTap,
+                  tooltip: 'Назад',
+                  visualDensity: VisualDensity.compact,
+                  icon: const Icon(Icons.arrow_back),
                 ),
-              ),
-              PopupMenuButton<_CalendarMenuAction>(
-                tooltip: 'Настройки календаря',
-                onSelected: onMenuSelected,
-                itemBuilder: (context) => [
-                  PopupMenuItem(
-                    value: _CalendarMenuAction.crew,
-                    child: Text(crew.displayName),
-                  ),
-                  const PopupMenuDivider(),
-                  const PopupMenuItem(
-                    value: _CalendarMenuAction.vacations,
-                    child: Text('Отпуска'),
-                  ),
-                  const PopupMenuItem(
-                    value: _CalendarMenuAction.alarms,
-                    child: Text('Будильники'),
-                  ),
-                  const PopupMenuItem(
-                    value: _CalendarMenuAction.themes,
-                    child: Text('Темы календаря'),
-                  ),
-                ],
-                icon: const Icon(Icons.more_vert),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Row(
-            children: [
-              Expanded(
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 220),
-                  child: hasSelectedDate
-                      ? Text(
-                          selectedPhase.displayTitle,
-                          key: ValueKey(selectedPhase),
-                          style: theme.textTheme.titleLarge?.copyWith(
-                            fontSize: 20,
-                            color: theme.colorScheme.onSurface,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 0.2,
+                const SizedBox(width: 2),
+                Expanded(
+                  child: date != null
+                      ? Text.rich(
+                          TextSpan(
+                            children: [
+                              TextSpan(
+                                text: '${date.day}',
+                                style: theme.textTheme.headlineSmall?.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              TextSpan(
+                                text:
+                                    ' ${_monthsGenitive[date.month - 1]} '
+                                    '${date.year}',
+                                style: theme.textTheme.titleLarge?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
                           ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         )
-                      : const SizedBox.shrink(),
+                      : Text(
+                          '${_months[visibleMonth.month - 1]} '
+                          '${visibleMonth.year}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
                 ),
-              ),
-              IconButton(
-                onPressed: onTodayTap,
-                tooltip: 'Вернуться к сегодня',
-                visualDensity: VisualDensity.compact,
-                icon: const Icon(Icons.replay_rounded, size: 21),
-              ),
-            ],
+              ],
+            ),
+          ),
+          SizedBox(
+            height: 36,
+            child: Row(
+              children: [
+                const SizedBox(width: 48),
+                Expanded(
+                  child: selectedPhase == null
+                      ? const SizedBox.shrink()
+                      : Text(
+                          selectedPhase!.displayTitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                ),
+                if (showToday)
+                  TextButton(
+                    onPressed: onTodayTap,
+                    style: TextButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                    ),
+                    child: const Text('Сегодня'),
+                  ),
+                PopupMenuButton<_CalendarMenuAction>(
+                  tooltip: 'Настройки календаря',
+                  onSelected: onMenuSelected,
+                  itemBuilder: (context) => [
+                    PopupMenuItem(
+                      value: _CalendarMenuAction.crew,
+                      child: Text(crew.displayName),
+                    ),
+                    const PopupMenuDivider(),
+                    const PopupMenuItem(
+                      value: _CalendarMenuAction.vacations,
+                      child: Text('Отпуска'),
+                    ),
+                    const PopupMenuItem(
+                      value: _CalendarMenuAction.alarms,
+                      child: Text('Будильники'),
+                    ),
+                    const PopupMenuItem(
+                      value: _CalendarMenuAction.themes,
+                      child: Text('Темы календаря'),
+                    ),
+                  ],
+                  icon: const Icon(Icons.more_vert),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -776,7 +827,7 @@ class _WeekdayHeader extends StatelessWidget {
 class _MonthGrid extends StatelessWidget {
   const _MonthGrid({
     required this.month,
-    required this.selectedDate,
+    this.selectedDate,
     required this.crew,
     required this.calculator,
     required this.onDateSelected,
@@ -786,7 +837,7 @@ class _MonthGrid extends StatelessWidget {
   });
 
   final DateTime month;
-  final DateTime selectedDate;
+  final DateTime? selectedDate;
   final ShiftCrew crew;
   final ShiftScheduleCalculator calculator;
   final List<VacationPeriod> vacationPeriods;
@@ -803,6 +854,12 @@ class _MonthGrid extends StatelessWidget {
 
     final firstVisibleDate = firstDay.subtract(Duration(days: leadingDays));
 
+    final daysInMonth = DateTime(month.year, month.month + 1, 0).day;
+
+    final requiredCells = leadingDays + daysInMonth;
+    final rowCount = (requiredCells / 7).ceil();
+    final itemCount = rowCount * 7;
+
     return LayoutBuilder(
       builder: (context, constraints) {
         final cellHeight = constraints.maxHeight / 6;
@@ -814,7 +871,7 @@ class _MonthGrid extends StatelessWidget {
             crossAxisCount: 7,
             mainAxisExtent: cellHeight,
           ),
-          itemCount: 42,
+          itemCount: itemCount,
           itemBuilder: (context, index) {
             final date = firstVisibleDate.add(Duration(days: index));
             final phase = calculator.phaseFor(date: date, crew: crew);
@@ -824,7 +881,8 @@ class _MonthGrid extends StatelessWidget {
               phase: phase,
               isCurrentMonth: date.month == month.month,
               isToday: _isSameDay(date, DateTime.now()),
-              isSelected: _isSameDay(date, selectedDate),
+              isSelected:
+                  selectedDate != null && _isSameDay(date, selectedDate!),
               isVacation: _isVacationDate(date, vacationPeriods),
               colors: colorScheme,
               entryMarkers: entryMarkersForDate(date),
