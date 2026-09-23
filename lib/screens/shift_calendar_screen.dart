@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../domain/models/shift_cycle.dart';
 import '../domain/models/vacation_period.dart';
+import '../domain/models/substitution_shift.dart';
 import '../services/spaces/calendar/shift_calendar_settings.dart';
 import '../services/spaces/calendar/shift_schedule_calculator.dart';
 import '../services/spaces/calendar/vacation_period_service.dart';
@@ -15,6 +16,8 @@ import 'calendar_entry_editor_screen.dart';
 import '../services/spaces/calendar/calendar_entry_local_store.dart';
 import '../services/spaces/calendar/calendar_entry_service.dart';
 import '../services/spaces/calendar/calendar_entry_day_markers.dart';
+import '../domain/models/calendar_additional_shift_event.dart';
+import '../services/spaces/calendar/calendar_additional_shift_service.dart';
 
 enum _CalendarMenuAction { crew, vacations, alarms, themes }
 
@@ -53,11 +56,17 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
 
   ShiftCrew _crew = ShiftCrew.crew4;
   bool _areSettingsLoaded = false;
+
   late final VacationPeriodService _vacationPeriodService;
+  late final CalendarAdditionalShiftService _additionalShiftService;
 
   StreamSubscription<List<VacationPeriod>>? _vacationPeriodsSubscription;
+  StreamSubscription<List<CalendarAdditionalShiftEvent>>?
+  _additionalShiftSubscription;
 
   List<VacationPeriod> _vacationPeriods = const <VacationPeriod>[];
+  List<CalendarAdditionalShiftEvent> _additionalShiftEvents =
+      const <CalendarAdditionalShiftEvent>[];
 
   @override
   void initState() {
@@ -72,7 +81,11 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
 
     _pageController = PageController(initialPage: _initialPage);
     _vacationPeriodService = VacationPeriodService.firebase();
+    _additionalShiftService = CalendarAdditionalShiftService.firebase();
+
     _watchVacationPeriods();
+    _watchAdditionalShifts();
+
     _loadSettings();
   }
 
@@ -283,12 +296,58 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
         );
   }
 
+  void _watchAdditionalShifts() {
+    final userId = _currentUserId;
+
+    if (userId.isEmpty) {
+      return;
+    }
+
+    _additionalShiftSubscription = _additionalShiftService
+        .watchForUser(userId: userId)
+        .listen(
+          (events) {
+            if (!mounted) {
+              return;
+            }
+
+            setState(() {
+              _additionalShiftEvents = events;
+            });
+          },
+          onError: (Object error, StackTrace stackTrace) {
+            // Ошибка Firestore не должна ломать сам календарь.
+            // Календарь просто останется без дополнительных смен.
+          },
+        );
+  }
+
+  bool _hasAdditionalShiftForDate(DateTime date) {
+    return _additionalShiftEvents.any((event) => event.occursOn(date));
+  }
+
+  List<CalendarAdditionalShiftEvent> _additionalShiftsForDate(DateTime date) {
+    if (_isVacationDate(date, _vacationPeriods)) {
+      return const <CalendarAdditionalShiftEvent>[];
+    }
+
+    return _additionalShiftEvents
+        .where((event) => event.occursOn(date))
+        .toList(growable: false);
+  }
+
   @override
   void dispose() {
-    final subscription = _vacationPeriodsSubscription;
+    final vacationSubscription = _vacationPeriodsSubscription;
 
-    if (subscription != null) {
-      unawaited(subscription.cancel());
+    if (vacationSubscription != null) {
+      unawaited(vacationSubscription.cancel());
+    }
+
+    final additionalShiftSubscription = _additionalShiftSubscription;
+
+    if (additionalShiftSubscription != null) {
+      unawaited(additionalShiftSubscription.cancel());
     }
 
     _pageController.dispose();
@@ -516,6 +575,7 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
             vacationPeriods: _vacationPeriods,
             onDateSelected: _openDateInCompact,
             entryMarkersForDate: _entryMarkersForDate,
+            hasAdditionalShiftForDate: _hasAdditionalShiftForDate,
             colorScheme: _CalendarColors.fromTheme(theme),
           );
         },
@@ -605,6 +665,9 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
                               selectedDate: _selectedDate,
                               userId: _currentUserId,
                               service: _calendarEntryService,
+                              additionalShiftEvents: _additionalShiftsForDate(
+                                _selectedDate,
+                              ),
                               onAddEntry: _openCalendarEntryEditor,
                               onEntriesChanged: _loadCalendarEntries,
                             ),
@@ -834,6 +897,7 @@ class _MonthGrid extends StatelessWidget {
     required this.colorScheme,
     required this.vacationPeriods,
     required this.entryMarkersForDate,
+    required this.hasAdditionalShiftForDate,
   });
 
   final DateTime month;
@@ -844,6 +908,7 @@ class _MonthGrid extends StatelessWidget {
   final ValueChanged<DateTime> onDateSelected;
   final _CalendarColors colorScheme;
   final CalendarEntryDayMarkers Function(DateTime date) entryMarkersForDate;
+  final bool Function(DateTime date) hasAdditionalShiftForDate;
 
   @override
   Widget build(BuildContext context) {
@@ -875,6 +940,10 @@ class _MonthGrid extends StatelessWidget {
           itemBuilder: (context, index) {
             final date = firstVisibleDate.add(Duration(days: index));
             final phase = calculator.phaseFor(date: date, crew: crew);
+            final isVacation = _isVacationDate(date, vacationPeriods);
+
+            final isAdditionalShift =
+                !isVacation && hasAdditionalShiftForDate(date);
 
             return _CalendarDayTile(
               date: date,
@@ -883,7 +952,8 @@ class _MonthGrid extends StatelessWidget {
               isToday: _isSameDay(date, DateTime.now()),
               isSelected:
                   selectedDate != null && _isSameDay(date, selectedDate!),
-              isVacation: _isVacationDate(date, vacationPeriods),
+              isVacation: isVacation,
+              isAdditionalShift: isAdditionalShift,
               colors: colorScheme,
               entryMarkers: entryMarkersForDate(date),
               onTap: () => onDateSelected(date),
@@ -1223,6 +1293,7 @@ class _CalendarAgendaPanel extends StatefulWidget {
     required this.service,
     required this.onAddEntry,
     required this.onEntriesChanged,
+    required this.additionalShiftEvents,
   });
 
   final DateTime selectedDate;
@@ -1230,6 +1301,7 @@ class _CalendarAgendaPanel extends StatefulWidget {
   final CalendarEntryService service;
   final Future<void> Function(CalendarEntryKind kind) onAddEntry;
   final Future<void> Function() onEntriesChanged;
+  final List<CalendarAdditionalShiftEvent> additionalShiftEvents;
 
   @override
   State<_CalendarAgendaPanel> createState() => _CalendarAgendaPanelState();
@@ -1477,8 +1549,9 @@ class _CalendarAgendaPanelState extends State<_CalendarAgendaPanel> {
                 }
 
                 final entries = snapshot.data ?? const <CalendarEntry>[];
+                final additionalShiftEvents = widget.additionalShiftEvents;
 
-                if (entries.isEmpty) {
+                if (entries.isEmpty && additionalShiftEvents.isEmpty) {
                   return Align(
                     alignment: Alignment.topLeft,
                     child: Text(
@@ -1492,9 +1565,15 @@ class _CalendarAgendaPanelState extends State<_CalendarAgendaPanel> {
 
                 return ListView.builder(
                   padding: const EdgeInsets.only(bottom: 18),
-                  itemCount: entries.length,
+                  itemCount: additionalShiftEvents.length + entries.length,
                   itemBuilder: (context, index) {
-                    final entry = entries[index];
+                    if (index < additionalShiftEvents.length) {
+                      return _CalendarAdditionalShiftListItem(
+                        event: additionalShiftEvents[index],
+                      );
+                    }
+
+                    final entry = entries[index - additionalShiftEvents.length];
 
                     return _CalendarEntryListItem(
                       entry: entry,
@@ -1592,6 +1671,45 @@ class _CalendarAgendaPanelState extends State<_CalendarAgendaPanel> {
   }
 }
 
+class _CalendarAdditionalShiftListItem extends StatelessWidget {
+  const _CalendarAdditionalShiftListItem({required this.event});
+
+  final CalendarAdditionalShiftEvent event;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    final title = switch (event.kind) {
+      SubstitutionShiftKind.day => 'Дополнительная дневная смена',
+      SubstitutionShiftKind.night => 'Дополнительная ночная смена',
+    };
+
+    final accent = _CalendarColors.fromTheme(theme).additionalShiftMarker;
+
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: SizedBox(
+        width: 48,
+        child: Center(
+          child: Container(
+            width: 4,
+            height: 32,
+            decoration: BoxDecoration(
+              color: accent,
+              borderRadius: BorderRadius.circular(999),
+            ),
+          ),
+        ),
+      ),
+      title: Text(
+        title,
+        style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
+      ),
+    );
+  }
+}
+
 class _CalendarEntryListItem extends StatelessWidget {
   const _CalendarEntryListItem({
     required this.entry,
@@ -1669,6 +1787,7 @@ class _CalendarDayTile extends StatelessWidget {
     required this.isToday,
     required this.isSelected,
     required this.isVacation,
+    required this.isAdditionalShift,
     required this.entryMarkers,
     required this.colors,
     required this.onTap,
@@ -1680,6 +1799,7 @@ class _CalendarDayTile extends StatelessWidget {
   final bool isToday;
   final bool isSelected;
   final bool isVacation;
+  final bool isAdditionalShift;
 
   final CalendarEntryDayMarkers entryMarkers;
 
@@ -1709,7 +1829,12 @@ class _CalendarDayTile extends StatelessWidget {
             curve: Curves.easeOutCubic,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: colors.gridLine, width: 0.7),
+              border: Border.all(
+                color: isAdditionalShift
+                    ? colors.additionalShiftMarker
+                    : colors.gridLine,
+                width: isAdditionalShift ? 2.2 : 0.7,
+              ),
             ),
             child: Stack(
               children: [
@@ -1842,6 +1967,7 @@ class _CalendarColors {
     required this.off,
     required this.gridLine,
     required this.vacationMarker,
+    required this.additionalShiftMarker,
   });
 
   final Color day;
@@ -1850,6 +1976,7 @@ class _CalendarColors {
   final Color off;
   final Color gridLine;
   final Color vacationMarker;
+  final Color additionalShiftMarker;
 
   factory _CalendarColors.fromTheme(ThemeData theme) {
     if (theme.brightness == Brightness.dark) {
@@ -1860,6 +1987,7 @@ class _CalendarColors {
         off: const Color(0xFF202327),
         gridLine: const Color(0xFF34383D),
         vacationMarker: theme.colorScheme.tertiary,
+        additionalShiftMarker: const Color(0xFFB388FF),
       );
     }
 
@@ -1870,6 +1998,7 @@ class _CalendarColors {
       off: const Color(0xFFF3F4F3),
       gridLine: const Color(0xFFD4D8D6),
       vacationMarker: theme.colorScheme.tertiary,
+      additionalShiftMarker: const Color(0xFF7C4DFF),
     );
   }
 
