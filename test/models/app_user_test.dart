@@ -3,6 +3,7 @@ import 'package:epistola/domain/models/media_asset.dart';
 import 'package:epistola/domain/models/user_avatar.dart';
 import 'package:epistola/models/app_user.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:epistola/domain/models/shift_cycle.dart';
 
 void main() {
   group('AppUser avatars', () {
@@ -310,6 +311,80 @@ void main() {
 
       expect(data['name'], 'Vanya');
       expect(data['workDisplayName'], 'Иванов Иван Иванович');
+    });
+  });
+  group('AppUser assigned crew', () {
+    test('keeps assignedCrew null for an existing user without the field', () {
+      final user = AppUser.fromMap(const {
+        'uid': 'legacy-user',
+        'email': 'legacy@example.com',
+        'name': 'Legacy User',
+        'phone': '',
+        'about': '',
+      });
+
+      expect(user.assignedCrew, isNull);
+    });
+
+    test('reads every supported assignedCrew number', () {
+      for (final crew in ShiftCrew.values) {
+        final user = AppUser.fromMap({
+          'uid': 'user-${crew.number}',
+          'email': 'user${crew.number}@example.com',
+          'name': 'User ${crew.number}',
+          'phone': '',
+          'about': '',
+          'assignedCrew': crew.number,
+        });
+
+        expect(user.assignedCrew, crew);
+      }
+    });
+
+    test('rejects unsupported assignedCrew values', () {
+      for (final value in <Object?>[0, 5, -1, '4', null]) {
+        final user = AppUser.fromMap({
+          'uid': 'user-1',
+          'email': 'user@example.com',
+          'name': 'User',
+          'phone': '',
+          'about': '',
+          'assignedCrew': value,
+        });
+
+        expect(user.assignedCrew, isNull, reason: 'value: $value');
+      }
+    });
+
+    test('toMap omits assignedCrew when it is not selected', () {
+      const user = AppUser(
+        uid: 'user-1',
+        email: 'user@example.com',
+        name: 'User',
+        phone: '',
+        about: '',
+      );
+
+      final data = user.toMap();
+
+      expect(data.containsKey('assignedCrew'), isFalse);
+    });
+
+    test('toMap persists and round-trips assignedCrew', () {
+      const user = AppUser(
+        uid: 'user-1',
+        email: 'user@example.com',
+        name: 'User',
+        phone: '',
+        about: '',
+        assignedCrew: ShiftCrew.crew4,
+      );
+
+      final data = user.toMap();
+      final restored = AppUser.fromMap(data);
+
+      expect(data['assignedCrew'], 4);
+      expect(restored.assignedCrew, ShiftCrew.crew4);
     });
   });
 }

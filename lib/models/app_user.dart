@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../domain/models/media_asset.dart';
+import '../domain/models/shift_cycle.dart';
 import '../domain/models/user_avatar.dart';
 
 class AppUser {
@@ -10,6 +11,7 @@ class AppUser {
   final String workDisplayName;
   final String phone;
   final String about;
+  final ShiftCrew? assignedCrew;
 
   /// Старое поле сохраняется временно для совместимости
   /// с существующими документами пользователей.
@@ -25,10 +27,12 @@ class AppUser {
     this.workDisplayName = '',
     required this.phone,
     required this.about,
+    this.assignedCrew,
     this.avatarUrl = '',
     this.avatar,
     this.createdAt,
   });
+
   String get effectiveWorkDisplayName {
     final officialName = workDisplayName.trim();
 
@@ -84,6 +88,7 @@ class AppUser {
       workDisplayName: _readString(data['workDisplayName']),
       phone: _readString(data['phone']),
       about: _readString(data['about']),
+      assignedCrew: _readAssignedCrew(data['assignedCrew']),
       avatarUrl: _readString(data['avatarUrl']),
       avatar: _readAvatar(data: data, userId: uid),
       createdAt: _readDateTime(data['createdAt']),
@@ -117,6 +122,12 @@ class AppUser {
       'avatarUrl': avatarUrl,
       'createdAt': createdAt,
     };
+
+    final currentAssignedCrew = assignedCrew;
+
+    if (currentAssignedCrew != null) {
+      data['assignedCrew'] = currentAssignedCrew.number;
+    }
 
     final currentAvatar = effectiveAvatar;
 
@@ -159,12 +170,14 @@ class AppUser {
         thumbnailPath.isNotEmpty &&
         fullPath.isNotEmpty &&
         version > 0;
+
     final hasPathFirstMetadata =
         thumbnailSize != null &&
         thumbnailSize >= 0 &&
         fullSize != null &&
         fullSize >= 0 &&
         updatedAt != null;
+
     final hasLegacyUrlMetadata = thumbnailUrl.isNotEmpty && fullUrl.isNotEmpty;
 
     if (!hasCoreMetadata || (!hasPathFirstMetadata && !hasLegacyUrlMetadata)) {
@@ -213,6 +226,20 @@ class AppUser {
 
   static int? _readNullableInt(dynamic value) {
     return value is int ? value : null;
+  }
+
+  static ShiftCrew? _readAssignedCrew(dynamic value) {
+    if (value is! int) {
+      return null;
+    }
+
+    for (final crew in ShiftCrew.values) {
+      if (crew.number == value) {
+        return crew;
+      }
+    }
+
+    return null;
   }
 
   static DateTime? _readDateTime(dynamic value) {

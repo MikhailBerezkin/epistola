@@ -605,21 +605,41 @@ function isGroupAvatarMetadataUpdate(chatId) {
     }
 
     function hasValidUserUpdate(userId) {
-      return !changedKeys().hasAny(avatarControlledKeys())
-          || (
-            changedKeys().hasOnly(avatarMetadataKeys())
-            && changedKeys().hasAny(['avatarVersion'])
-            && hasValidAvatarMetadata(userId)
-            && (
-              !resource.data.keys().hasAny(['avatarVersion'])
-              || (
-                resource.data.avatarVersion is int
-                && request.resource.data.avatarVersion
-                    > resource.data.avatarVersion
-              )
+  return !changedKeys().hasAny([
+        'assignedCrew'
+      ])
+
+      && (
+        !changedKeys().hasAny(
+          avatarControlledKeys()
+        )
+
+        || (
+          changedKeys().hasOnly(
+            avatarMetadataKeys()
+          )
+
+          && changedKeys().hasAny([
+            'avatarVersion'
+          ])
+
+          && hasValidAvatarMetadata(userId)
+
+          && (
+            !resource.data.keys().hasAny([
+              'avatarVersion'
+            ])
+
+            || (
+              resource.data.avatarVersion is int
+
+              && request.resource.data.avatarVersion
+                  > resource.data.avatarVersion
             )
-          );
-    }
+          )
+        )
+      );
+}
 
     function isOwnLastReadUpdate() {
   let oldLastRead =
@@ -1455,7 +1475,33 @@ function isSpacesManager() {
       );
 }
 
-function isManagedSubstitutionWorkDisplayNameUpdate(userId) {
+function hasValidAssignedCrew(data) {
+  let assignedCrew = data.get('assignedCrew', 0);
+
+  return assignedCrew is int
+      && assignedCrew >= 1
+      && assignedCrew <= 4;
+}
+
+function isOwnInitialAssignedCrewUpdate(userId) {
+  return signedIn()
+
+      && request.auth.uid == userId
+
+      && !resource.data.keys().hasAny([
+        'assignedCrew'
+      ])
+
+      && changedKeys().hasOnly([
+        'assignedCrew'
+      ])
+
+      && hasValidAssignedCrew(
+        request.resource.data
+      );
+}
+
+function isManagedSubstitutionWorkProfileUpdate(userId) {
   return isSpacesManager()
 
       && exists(
@@ -1463,20 +1509,40 @@ function isManagedSubstitutionWorkDisplayNameUpdate(userId) {
       )
 
       && changedKeys().hasAny([
-        'workDisplayName'
+        'workDisplayName',
+        'assignedCrew'
       ])
 
       && changedKeys().hasOnly([
-        'workDisplayName'
+        'workDisplayName',
+        'assignedCrew'
       ])
 
-      && request.resource.data.keys().hasAny([
-        'workDisplayName'
-      ])
+      && (
+        !changedKeys().hasAny([
+          'workDisplayName'
+        ])
+        || (
+          request.resource.data.get(
+            'workDisplayName',
+            ''
+          ) is string
 
-      && request.resource.data.workDisplayName is string
+          && request.resource.data.get(
+            'workDisplayName',
+            ''
+          ).size() <= 80
+        )
+      )
 
-      && request.resource.data.workDisplayName.size() <= 80;
+      && (
+        !changedKeys().hasAny([
+          'assignedCrew'
+        ])
+        || hasValidAssignedCrew(
+          request.resource.data
+        )
+      );
 }
 
 function hasValidVacationPeriodData(
@@ -3547,10 +3613,13 @@ match /spaces/substitution {
     && (
       (
         request.auth.uid == userId
-        && hasValidUserUpdate(userId)
+        && (
+          isOwnInitialAssignedCrewUpdate(userId)
+          || hasValidUserUpdate(userId)
+        )
       )
       ||
-      isManagedSubstitutionWorkDisplayNameUpdate(userId)
+      isManagedSubstitutionWorkProfileUpdate(userId)
     );
 
       allow delete: if false;

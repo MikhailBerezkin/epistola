@@ -746,6 +746,176 @@ test(
   );
 
   test(
+  'allows member to select own assigned crew once',
+  async () => {
+    const db = authenticatedFirestore(member);
+
+    await assertSucceeds(
+      updateDoc(
+        doc(db, 'users', member.uid),
+        {
+          assignedCrew: 4,
+        },
+      ),
+    );
+  },
+);
+
+test(
+  'rejects member changing own assigned crew after selection',
+  async () => {
+    const db = authenticatedFirestore(member);
+
+    await assertSucceeds(
+      updateDoc(
+        doc(db, 'users', member.uid),
+        {
+          assignedCrew: 4,
+        },
+      ),
+    );
+
+    await assertFails(
+      updateDoc(
+        doc(db, 'users', member.uid),
+        {
+          assignedCrew: 2,
+        },
+      ),
+    );
+  },
+);
+
+test(
+  'rejects invalid initial assigned crew',
+  async () => {
+    const db = authenticatedFirestore(member);
+
+    await assertFails(
+      updateDoc(
+        doc(db, 'users', member.uid),
+        {
+          assignedCrew: 5,
+        },
+      ),
+    );
+  },
+);
+
+test(
+  'rejects member selecting crew while changing another field',
+  async () => {
+    const db = authenticatedFirestore(member);
+
+    await assertFails(
+      updateDoc(
+        doc(db, 'users', member.uid),
+        {
+          assignedCrew: 4,
+          about: 'Одновременное изменение',
+        },
+      ),
+    );
+  },
+);
+
+test(
+  'allows brigadier to assign participant crew',
+  async () => {
+    const db = authenticatedFirestore(brigadier);
+
+    await assertSucceeds(
+      updateDoc(
+        doc(db, 'users', member.uid),
+        {
+          assignedCrew: 4,
+        },
+      ),
+    );
+  },
+);
+
+test(
+  'allows brigadier to correct participant crew',
+  async () => {
+    await testEnvironment.withSecurityRulesDisabled(
+      async (context) => {
+        await updateDoc(
+          doc(
+            context.firestore(),
+            'users',
+            member.uid,
+          ),
+          {
+            assignedCrew: 2,
+          },
+        );
+      },
+    );
+
+    const db = authenticatedFirestore(brigadier);
+
+    await assertSucceeds(
+      updateDoc(
+        doc(db, 'users', member.uid),
+        {
+          assignedCrew: 4,
+        },
+      ),
+    );
+  },
+);
+
+test(
+  'allows manager to update participant name and crew together',
+  async () => {
+    const db = authenticatedFirestore(brigadier);
+
+    await assertSucceeds(
+      updateDoc(
+        doc(db, 'users', member.uid),
+        {
+          workDisplayName: 'Иван Иванов',
+          assignedCrew: 4,
+        },
+      ),
+    );
+  },
+);
+
+test(
+  'rejects member changing another participant crew',
+  async () => {
+    const db = authenticatedFirestore(member);
+
+    await assertFails(
+      updateDoc(
+        doc(db, 'users', secondMember.uid),
+        {
+          assignedCrew: 3,
+        },
+      ),
+    );
+  },
+);
+
+test(
+  'rejects brigadier assigning crew outside substitution',
+  async () => {
+    const db = authenticatedFirestore(brigadier);
+
+    await assertFails(
+      updateDoc(
+        doc(db, 'users', candidate.uid),
+        {
+          assignedCrew: 1,
+        },
+      ),
+    );
+  },
+);
+
+  test(
     'allows brigadier to change participant work display name',
     async () => {
       const db = authenticatedFirestore(brigadier);
