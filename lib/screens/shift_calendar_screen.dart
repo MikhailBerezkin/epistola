@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import '../domain/models/shift_cycle.dart';
 import '../domain/models/vacation_period.dart';
 import '../domain/models/substitution_shift.dart';
-import '../services/spaces/calendar/shift_calendar_settings.dart';
 import '../services/spaces/calendar/shift_schedule_calculator.dart';
 import '../services/spaces/calendar/vacation_period_service.dart';
 import 'shift_calendar_settings_screen.dart';
@@ -18,6 +17,9 @@ import '../services/spaces/calendar/calendar_entry_service.dart';
 import '../services/spaces/calendar/calendar_entry_day_markers.dart';
 import '../domain/models/calendar_additional_shift_event.dart';
 import '../services/spaces/calendar/calendar_additional_shift_service.dart';
+import '../services/work_schedule/user_assigned_crew_reader.dart';
+
+enum ShiftCalendarViewMode { full, compact }
 
 enum _CalendarMenuAction { crew, vacations, alarms, themes }
 
@@ -52,10 +54,15 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
   ShiftCalendarViewMode _viewMode = ShiftCalendarViewMode.full;
 
   // Пока первая версия открывается для 4 звена.
-  final ShiftCalendarSettings _settings = const ShiftCalendarSettings();
+  late final UserAssignedCrewReader _assignedCrewReader;
 
-  ShiftCrew _crew = ShiftCrew.crew4;
-  bool _areSettingsLoaded = false;
+  StreamSubscription<ShiftCrew?>? _assignedCrewSubscription;
+
+  ShiftCrew? _assignedCrew;
+  ShiftCrew? _previewCrew;
+
+  bool _isAssignedCrewLoaded = false;
+  bool _assignedCrewLoadFailed = false;
 
   late final VacationPeriodService _vacationPeriodService;
   late final CalendarAdditionalShiftService _additionalShiftService;
@@ -82,11 +89,14 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
     _pageController = PageController(initialPage: _initialPage);
     _vacationPeriodService = VacationPeriodService.firebase();
     _additionalShiftService = CalendarAdditionalShiftService.firebase();
+    _assignedCrewReader = UserAssignedCrewReader.firebase();
 
+    _watchAssignedCrew();
     _watchVacationPeriods();
     _watchAdditionalShifts();
 
-    _loadSettings();
+    unawaited(_loadCalendarEntries());
+    unawaited(_reconcileCalendarReminders());
   }
 
   Future<void> _openCalendarEntryEditor(CalendarEntryKind kind) async {
@@ -161,23 +171,6 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
     }
   }
 
-  Future<void> _loadSettings() async {
-    final crew = await _settings.loadCrew();
-
-    if (!mounted) {
-      return;
-    }
-
-    setState(() {
-      _crew = crew;
-      _viewMode = ShiftCalendarViewMode.full;
-      _areSettingsLoaded = true;
-    });
-
-    await _loadCalendarEntries();
-    await _reconcileCalendarReminders();
-  }
-
   Future<void> _reconcileCalendarReminders() async {
     final userId = _currentUserId;
 
@@ -250,23 +243,76 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
   }
 
   Future<void> _openCalendarSettings() async {
+    final currentCrew = _effectiveCrew;
+
+    if (currentCrew == null) {
+      return;
+    }
+
     final crew = await Navigator.of(context).push<ShiftCrew>(
       MaterialPageRoute(
-        builder: (_) => ShiftCalendarSettingsScreen(initialCrew: _crew),
+        builder: (_) => ShiftCalendarSettingsScreen(initialCrew: currentCrew),
       ),
     );
 
-    if (!mounted || crew == null || crew == _crew) {
+    if (!mounted || crew == null) {
       return;
     }
 
     setState(() {
-      _crew = crew;
+      _previewCrew = crew == _assignedCrew ? null : crew;
     });
   }
 
   String get _currentUserId {
     return FirebaseAuth.instance.currentUser?.uid.trim() ?? '';
+  }
+
+  ShiftCrew? get _effectiveCrew {
+    return _previewCrew ?? _assignedCrew;
+  }
+
+  bool get _isPreviewingCrew {
+    return _previewCrew != null;
+  }
+
+  void _watchAssignedCrew() {
+    final userId = _currentUserId;
+
+    if (userId.isEmpty) {
+      _isAssignedCrewLoaded = true;
+      return;
+    }
+
+    _assignedCrewSubscription = _assignedCrewReader
+        .watch(userId: userId)
+        .listen(
+          (crew) {
+            if (!mounted) {
+              return;
+            }
+
+            setState(() {
+              _assignedCrew = crew;
+              _assignedCrewLoadFailed = false;
+              _isAssignedCrewLoaded = true;
+
+              if (_previewCrew == crew) {
+                _previewCrew = null;
+              }
+            });
+          },
+          onError: (Object error, StackTrace stackTrace) {
+            if (!mounted) {
+              return;
+            }
+
+            setState(() {
+              _assignedCrewLoadFailed = true;
+              _isAssignedCrewLoaded = true;
+            });
+          },
+        );
   }
 
   void _watchVacationPeriods() {
@@ -338,6 +384,12 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
 
   @override
   void dispose() {
+    final assignedCrewSubscription = _assignedCrewSubscription;
+
+    if (assignedCrewSubscription != null) {
+      unawaited(assignedCrewSubscription.cancel());
+    }
+
     final vacationSubscription = _vacationPeriodsSubscription;
 
     if (vacationSubscription != null) {
@@ -517,6 +569,44 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final crew = _effectiveCrew;
+
+    if (!_isAssignedCrewLoaded) {
+      return const Scaffold(
+        body: SafeArea(child: Center(child: CircularProgressIndicator())),
+      );
+    }
+
+    if (_assignedCrewLoadFailed) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Календарь смен')),
+        body: const Center(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: Text(
+              'Не удалось загрузить ваше звено.',
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
+      );
+    }
+
+    if (crew == null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Календарь смен')),
+        body: const Center(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: Text(
+              'Вы не выбрали ваше звено.\n'
+              'Выберите звено в профиле, чтобы открыть рабочий календарь.',
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
+      );
+    }
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
 
@@ -538,16 +628,12 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
 
     final ShiftCyclePhase? headerPhase = headerDate == null
         ? null
-        : _calculator.phaseFor(date: headerDate, crew: _crew);
+        : _calculator.phaseFor(date: headerDate, crew: crew);
 
     final showToday = switch (_viewMode) {
       ShiftCalendarViewMode.full => !isCurrentMonth,
       ShiftCalendarViewMode.compact => !_isSameDay(_selectedDate, today),
     };
-
-    if (!_areSettingsLoaded) {
-      return const Scaffold(body: SafeArea(child: SizedBox.expand()));
-    }
 
     Widget buildMonthPager() {
       return PageView.builder(
@@ -570,7 +656,7 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
           return _MonthGrid(
             month: month,
             selectedDate: highlightedDate,
-            crew: _crew,
+            crew: crew,
             calculator: _calculator,
             vacationPeriods: _vacationPeriods,
             onDateSelected: _openDateInCompact,
@@ -593,7 +679,8 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
                 visibleMonth: headerMonth,
                 activeDate: headerDate,
                 selectedPhase: headerPhase,
-                crew: _crew,
+                crew: crew,
+                isPreviewingCrew: _isPreviewingCrew,
                 showToday: showToday,
                 onBackTap: () {
                   Navigator.of(context).maybePop();
@@ -644,7 +731,7 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
                             key: ValueKey(_compactStripRevision),
                             selectedDate: _selectedDate,
                             calculator: _calculator,
-                            crew: _crew,
+                            crew: crew,
                             vacationPeriods: _vacationPeriods,
                             onDateSelected: (date) {
                               setState(() {
@@ -696,12 +783,14 @@ class _CalendarHeader extends StatelessWidget {
     required this.onBackTap,
     required this.onTodayTap,
     required this.onMenuSelected,
+    required this.isPreviewingCrew,
   });
 
   final DateTime visibleMonth;
   final DateTime? activeDate;
   final ShiftCyclePhase? selectedPhase;
   final ShiftCrew crew;
+  final bool isPreviewingCrew;
   final bool showToday;
 
   final VoidCallback onBackTap;
@@ -829,7 +918,11 @@ class _CalendarHeader extends StatelessWidget {
                   itemBuilder: (context) => [
                     PopupMenuItem(
                       value: _CalendarMenuAction.crew,
-                      child: Text(crew.displayName),
+                      child: Text(
+                        isPreviewingCrew
+                            ? '${crew.displayName} · просмотр'
+                            : crew.displayName,
+                      ),
                     ),
                     const PopupMenuDivider(),
                     const PopupMenuItem(

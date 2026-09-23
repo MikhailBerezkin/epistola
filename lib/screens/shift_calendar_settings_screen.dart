@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../domain/models/shift_cycle.dart';
-import '../services/spaces/calendar/shift_calendar_settings.dart';
 
 class ShiftCalendarSettingsScreen extends StatefulWidget {
   const ShiftCalendarSettingsScreen({super.key, required this.initialCrew});
@@ -15,8 +14,6 @@ class ShiftCalendarSettingsScreen extends StatefulWidget {
 
 class _ShiftCalendarSettingsScreenState
     extends State<ShiftCalendarSettingsScreen> {
-  final ShiftCalendarSettings _settings = const ShiftCalendarSettings();
-
   late ShiftCrew _selectedCrew;
 
   @override
@@ -25,7 +22,7 @@ class _ShiftCalendarSettingsScreenState
     _selectedCrew = widget.initialCrew;
   }
 
-  Future<void> _selectCrew(ShiftCrew crew) async {
+  void _selectCrew(ShiftCrew crew) {
     if (_selectedCrew == crew) {
       return;
     }
@@ -33,12 +30,6 @@ class _ShiftCalendarSettingsScreenState
     setState(() {
       _selectedCrew = crew;
     });
-
-    await _settings.saveCrew(crew);
-
-    if (!mounted) {
-      return;
-    }
 
     Navigator.of(context).pop(crew);
   }
@@ -53,14 +44,15 @@ class _ShiftCalendarSettingsScreenState
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
         children: [
           Text(
-            'Выбор звена',
+            'Просмотр звена',
             style: theme.textTheme.titleMedium?.copyWith(
               fontWeight: FontWeight.w700,
             ),
           ),
           const SizedBox(height: 6),
           Text(
-            'Календарь будет рассчитывать график выбранного звена.',
+            'Можно временно посмотреть график другого звена. '
+            'Ваше рабочее звено при этом не изменится.',
             style: theme.textTheme.bodyMedium?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),
