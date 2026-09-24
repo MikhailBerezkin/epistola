@@ -33,6 +33,7 @@ import '../domain/models/vacation_period.dart';
 import '../services/spaces/calendar/vacation_period_service.dart';
 import '../services/spaces/substitution/substitution_effective_status_resolver.dart';
 import 'vacation_periods_screen.dart';
+import '../services/spaces/substitution/substitution_call_eligibility_resolver.dart';
 
 final class _SubstitutionWorkProfileEditResult {
   const _SubstitutionWorkProfileEditResult({
@@ -69,6 +70,9 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
 
   final SubstitutionEffectiveStatusResolver _effectiveStatusResolver =
       const SubstitutionEffectiveStatusResolver();
+
+  final SubstitutionCallEligibilityResolver _callEligibilityResolver =
+      const SubstitutionCallEligibilityResolver();
 
   int _currentTabIndex = 0;
   SubstitutionQueueDisplayMode _queueDisplayMode =
@@ -497,8 +501,6 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
         });
       },
       onError: (Object error, StackTrace stackTrace) {
-        debugPrint('VACATION WATCH ERROR: $error');
-
         if (!mounted) {
           return;
         }
@@ -1031,6 +1033,28 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
     }
   }
 
+  String _callIneligibilityReasonText(
+    SubstitutionCallIneligibilityReason reason,
+  ) {
+    return switch (reason) {
+      SubstitutionCallIneligibilityReason.missingCrew =>
+        'Недоступно: не указано звено',
+      SubstitutionCallIneligibilityReason.vacation => 'Недоступно: отпуск',
+      SubstitutionCallIneligibilityReason.workShift =>
+        'Недоступно: рабочая смена',
+    };
+  }
+
+  String? _callIneligibilityText(SubstitutionCallEligibility eligibility) {
+    final reason = eligibility.reason;
+
+    if (reason == null) {
+      return null;
+    }
+
+    return _callIneligibilityReasonText(reason);
+  }
+
   Future<void> _confirmCallParticipant(
     SubstitutionParticipant participant,
   ) async {
@@ -1040,16 +1064,82 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
       return;
     }
 
+    var user = _userCache.userById(participant.userId);
+
+    if (user == null) {
+      try {
+        await _userCache.refresh(participant.userId);
+      } catch (_) {
+        // Ниже покажем единое сообщение.
+      }
+
+      if (!mounted) {
+        return;
+      }
+
+      user = _userCache.userById(participant.userId);
+    }
+
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Не удалось проверить доступность участника'),
+        ),
+      );
+      return;
+    }
+
+    if (_vacationPeriodsError != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Не удалось проверить данные отпусков')),
+      );
+      return;
+    }
+
     final now = DateTime.now();
 
     final today = DateTime(now.year, now.month, now.day);
 
     final tomorrow = DateTime(now.year, now.month, now.day + 1);
 
+    final todayNightShift = SubstitutionShift(
+      year: today.year,
+      month: today.month,
+      day: today.day,
+      kind: SubstitutionShiftKind.night,
+    );
+
+    final tomorrowDayShift = SubstitutionShift(
+      year: tomorrow.year,
+      month: tomorrow.month,
+      day: tomorrow.day,
+      kind: SubstitutionShiftKind.day,
+    );
+
+    final todayNightEligibility = _callEligibilityResolver.resolve(
+      userId: participant.userId,
+      crew: user.assignedCrew,
+      shift: todayNightShift,
+      vacationPeriods: _vacationPeriods,
+    );
+
+    final tomorrowDayEligibility = _callEligibilityResolver.resolve(
+      userId: participant.userId,
+      crew: user.assignedCrew,
+      shift: tomorrowDayShift,
+      vacationPeriods: _vacationPeriods,
+    );
+
+    final todayNightReason = _callIneligibilityText(todayNightEligibility);
+    final tomorrowDayReason = _callIneligibilityText(tomorrowDayEligibility);
+
     final selectedShift = await showDialog<SubstitutionShift>(
       context: context,
       builder: (dialogContext) {
         const buttonHeight = 48.0;
+
+        final reasonStyle = Theme.of(dialogContext).textTheme.bodySmall
+            ?.copyWith(color: Theme.of(dialogContext).colorScheme.error);
 
         return AlertDialog(
           contentPadding: const EdgeInsets.all(24),
@@ -1060,38 +1150,44 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
                 width: double.infinity,
                 height: buttonHeight,
                 child: FilledButton(
-                  onPressed: () {
-                    Navigator.of(dialogContext).pop(
-                      SubstitutionShift(
-                        year: today.year,
-                        month: today.month,
-                        day: today.day,
-                        kind: SubstitutionShiftKind.night,
-                      ),
-                    );
-                  },
+                  onPressed: todayNightEligibility.isEligible
+                      ? () {
+                          Navigator.of(dialogContext).pop(todayNightShift);
+                        }
+                      : null,
                   child: const Text('Сегодня в ночь'),
                 ),
               ),
-              const SizedBox(height: 12),
+              if (todayNightReason != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  todayNightReason,
+                  textAlign: TextAlign.center,
+                  style: reasonStyle,
+                ),
+              ],
+              const SizedBox(height: 18),
               SizedBox(
                 width: double.infinity,
                 height: buttonHeight,
                 child: FilledButton(
-                  onPressed: () {
-                    Navigator.of(dialogContext).pop(
-                      SubstitutionShift(
-                        year: tomorrow.year,
-                        month: tomorrow.month,
-                        day: tomorrow.day,
-                        kind: SubstitutionShiftKind.day,
-                      ),
-                    );
-                  },
+                  onPressed: tomorrowDayEligibility.isEligible
+                      ? () {
+                          Navigator.of(dialogContext).pop(tomorrowDayShift);
+                        }
+                      : null,
                   child: const Text('Завтра в день'),
                 ),
               ),
-              const SizedBox(height: 12),
+              if (tomorrowDayReason != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  tomorrowDayReason,
+                  textAlign: TextAlign.center,
+                  style: reasonStyle,
+                ),
+              ],
+              const SizedBox(height: 18),
               SizedBox(
                 width: double.infinity,
                 height: buttonHeight,
@@ -1171,6 +1267,14 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
 
         unawaited(_finalizePendingCallAfterUndoWindow(receipt));
       });
+    } on SubstitutionCallUnavailableException catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_callIneligibilityReasonText(error.reason))),
+      );
     } on SubstitutionShiftAlreadyCalledException {
       if (!mounted) {
         return;

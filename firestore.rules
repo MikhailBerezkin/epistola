@@ -2008,6 +2008,94 @@ function hasValidSubstitutionPendingCallData(data, callId) {
       ];
 }
 
+function substitutionCrewAnchorPhaseIndex(
+  assignedCrew
+) {
+  return assignedCrew == 1
+      ? 7
+      : assignedCrew == 2
+        ? 5
+        : assignedCrew == 3
+          ? 3
+          : 1;
+}
+
+function substitutionShiftPhaseIndex(
+  data,
+  assignedCrew
+) {
+  let shiftDate =
+      timestamp.date(
+        data.shiftYear,
+        data.shiftMonth,
+        data.shiftDay
+      );
+
+  let anchorDate =
+      timestamp.date(
+        2026,
+        9,
+        14
+      );
+
+  let dayOffset =
+      (shiftDate - anchorDate).seconds()
+          / 86400;
+
+  let rawPhaseIndex =
+      substitutionCrewAnchorPhaseIndex(
+        assignedCrew
+      )
+      + dayOffset;
+
+  return (
+    (
+      rawPhaseIndex % 8
+    )
+    + 8
+  ) % 8;
+}
+
+function isSubstitutionShiftAllowedForPhase(
+  phaseIndex,
+  shiftKind
+) {
+  return phaseIndex == 2
+
+      || phaseIndex == 6
+
+      || (
+        phaseIndex == 5
+        && shiftKind == 'night'
+      )
+
+      || (
+        phaseIndex == 7
+        && shiftKind == 'day'
+      );
+}
+
+function isSubstitutionShiftEligibleForAssignedCrew(
+  data
+) {
+  let userPath =
+      /databases/$(database)/documents/users/$(data.userId);
+
+  return exists(userPath)
+
+      && hasValidAssignedCrew(
+        get(userPath).data
+      )
+
+      && isSubstitutionShiftAllowedForPhase(
+        substitutionShiftPhaseIndex(
+          data,
+          get(userPath).data.assignedCrew
+        ),
+        data.shiftKind
+      );
+}
+
 function hasValidSubstitutionShiftClaimData(
   data,
   claimId
@@ -2037,7 +2125,10 @@ function hasValidSubstitutionShiftClaimData(
       ])
 
       && data.schemaVersion is int
-      && data.schemaVersion == 1
+&& data.schemaVersion in [
+  1,
+  2
+]
 
       && data.userId is string
       && data.userId.size() > 0
@@ -3465,15 +3556,22 @@ match /spaces/substitution {
   allow list: if false;
 
   allow create: if
-      isSpacesManager()
+    isSpacesManager()
 
-      && hasValidSubstitutionShiftClaimData(
-        request.resource.data,
-        claimId
-      )
+    && hasValidSubstitutionShiftClaimData(
+      request.resource.data,
+      claimId
+    )
 
-      && request.resource.data.calledByUserId
-          == request.auth.uid
+    && request.resource.data.schemaVersion
+        == 2
+
+    && isSubstitutionShiftEligibleForAssignedCrew(
+      request.resource.data
+    )
+
+    && request.resource.data.calledByUserId
+        == request.auth.uid
 
       && request.resource.data.createdAt
           == request.time

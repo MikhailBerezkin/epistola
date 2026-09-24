@@ -66,6 +66,7 @@ class SubstitutionParticipantOverlay extends StatelessWidget {
     return IdentityOverlay(
       isOpen: isOpen,
       onClose: onClose,
+      heightFactor: 0.68,
       child: IdentityBackground(
         stableKey: currentParticipant.userId,
         name: displayName,

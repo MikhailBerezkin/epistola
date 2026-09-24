@@ -4,6 +4,7 @@ import 'package:epistola/domain/models/substitution_shift.dart';
 import 'package:epistola/services/spaces/substitution/substitution_call_firestore_gateway.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:epistola/services/spaces/substitution/substitution_shift_call_claim.dart';
+import 'package:epistola/services/spaces/substitution/substitution_call_eligibility_resolver.dart';
 
 void main() {
   group('callParticipant', () {
@@ -18,6 +19,9 @@ void main() {
               'availability': 'green',
               'status': 'active',
             },
+          },
+          users: <String, Map<String, dynamic>>{
+            'user-1': <String, dynamic>{'assignedCrew': 3},
           },
         );
 
@@ -147,6 +151,9 @@ void main() {
             'status': 'active',
           },
         },
+        users: <String, Map<String, dynamic>>{
+          'user-1': <String, dynamic>{'assignedCrew': 2},
+        },
         shiftClaims: <String, Map<String, dynamic>>{
           existingClaimId: <String, dynamic>{
             'schemaVersion': 1,
@@ -181,6 +188,9 @@ void main() {
               'status': 'active',
             },
           },
+          users: <String, Map<String, dynamic>>{
+            'user-2': <String, dynamic>{'assignedCrew': 3},
+          },
         );
 
         final gateway = _gateway(context);
@@ -210,6 +220,7 @@ void main() {
 
         expect(context.pendingCallCreates.single.callId, '8');
         expect(context.pendingCallCreates.single.data['revision'], 8);
+
         expect(
           context.pendingCallCreates.single.data['calledByUserId'],
           'owner-1',
@@ -227,6 +238,9 @@ void main() {
             'status': 'active',
           },
         },
+        users: <String, Map<String, dynamic>>{
+          'user-3': <String, dynamic>{'assignedCrew': 3},
+        },
       );
 
       final gateway = _gateway(context);
@@ -240,10 +254,131 @@ void main() {
       expect(receipt.userId, 'user-3');
       expect(context.participantReads, ['user-3']);
       expect(context.participantUpdates.single.userId, 'user-3');
+
       expect(
         context.pendingCallCreates.single.data['calledByUserId'],
         'brigadier-1',
       );
+    });
+
+    test('rejects participant without assigned crew', () async {
+      final context = _FakeTransactionContext(
+        moduleData: <String, dynamic>{'nextRotationOrder': 41},
+        participants: <String, Map<String, dynamic>>{
+          'user-1': <String, dynamic>{
+            'rotationOrder': 15,
+            'availability': 'green',
+            'status': 'active',
+          },
+        },
+        users: <String, Map<String, dynamic>>{'user-1': <String, dynamic>{}},
+      );
+
+      final gateway = _gateway(context);
+
+      await expectLater(
+        gateway.callParticipant(
+          userId: 'user-1',
+          calledByUserId: 'brigadier-1',
+          shift: _testShift(),
+        ),
+        throwsA(
+          isA<SubstitutionCallUnavailableException>().having(
+            (error) => error.reason,
+            'reason',
+            SubstitutionCallIneligibilityReason.missingCrew,
+          ),
+        ),
+      );
+
+      expect(context.participantUpdates, isEmpty);
+      expect(context.moduleUpdates, isEmpty);
+      expect(context.pendingCallCreates, isEmpty);
+      expect(context.shiftClaimCreates, isEmpty);
+    });
+
+    test('rejects participant during own work shift', () async {
+      final context = _FakeTransactionContext(
+        moduleData: <String, dynamic>{'nextRotationOrder': 41},
+        participants: <String, Map<String, dynamic>>{
+          'user-1': <String, dynamic>{
+            'rotationOrder': 15,
+            'availability': 'green',
+            'status': 'active',
+          },
+        },
+        users: <String, Map<String, dynamic>>{
+          'user-1': <String, dynamic>{'assignedCrew': 4},
+        },
+      );
+
+      final gateway = _gateway(context);
+
+      await expectLater(
+        gateway.callParticipant(
+          userId: 'user-1',
+          calledByUserId: 'brigadier-1',
+          shift: _testShift(),
+        ),
+        throwsA(
+          isA<SubstitutionCallUnavailableException>().having(
+            (error) => error.reason,
+            'reason',
+            SubstitutionCallIneligibilityReason.workShift,
+          ),
+        ),
+      );
+
+      expect(context.participantUpdates, isEmpty);
+      expect(context.moduleUpdates, isEmpty);
+      expect(context.pendingCallCreates, isEmpty);
+      expect(context.shiftClaimCreates, isEmpty);
+    });
+
+    test('rejects participant when shift overlaps vacation', () async {
+      final context = _FakeTransactionContext(
+        moduleData: <String, dynamic>{'nextRotationOrder': 41},
+        participants: <String, Map<String, dynamic>>{
+          'user-1': <String, dynamic>{
+            'rotationOrder': 15,
+            'availability': 'green',
+            'status': 'active',
+          },
+        },
+        users: <String, Map<String, dynamic>>{
+          'user-1': <String, dynamic>{'assignedCrew': 3},
+        },
+        vacationPeriods: <String, Map<String, dynamic>>{
+          'user-1__1': _vacationPeriodData(
+            userId: 'user-1',
+            slot: 1,
+            startDay: 20260831,
+            endDay: 20260831,
+          ),
+        },
+      );
+
+      final gateway = _gateway(context);
+
+      await expectLater(
+        gateway.callParticipant(
+          userId: 'user-1',
+          calledByUserId: 'brigadier-1',
+          shift: _testShift(),
+        ),
+        throwsA(
+          isA<SubstitutionCallUnavailableException>().having(
+            (error) => error.reason,
+            'reason',
+            SubstitutionCallIneligibilityReason.vacation,
+          ),
+        ),
+      );
+
+      expect(context.participantUpdates, isEmpty);
+      expect(context.moduleUpdates, isEmpty);
+      expect(context.pendingCallCreates, isEmpty);
+      expect(context.shiftClaimCreates, isEmpty);
     });
 
     test('rejects participant that is not active', () async {
@@ -704,6 +839,22 @@ Map<String, dynamic> _pendingCallData({
   };
 }
 
+Map<String, dynamic> _vacationPeriodData({
+  required String userId,
+  required int slot,
+  required int startDay,
+  required int endDay,
+}) {
+  return <String, dynamic>{
+    'schemaVersion': 1,
+    'userId': userId,
+    'slot': slot,
+    'startDay': startDay,
+    'endDay': endDay,
+    'updatedAt': Timestamp.fromDate(DateTime.utc(2026, 8, 20, 12)),
+  };
+}
+
 final class _FakeTransactionRunner
     implements SubstitutionCallTransactionRunner {
   _FakeTransactionRunner(this.context);
@@ -730,6 +881,10 @@ final class _FakeTransactionContext
         const <String, Map<String, dynamic>>{},
     Map<String, Map<String, dynamic>> shiftClaims =
         const <String, Map<String, dynamic>>{},
+    Map<String, Map<String, dynamic>> users =
+        const <String, Map<String, dynamic>>{},
+    Map<String, Map<String, dynamic>> vacationPeriods =
+        const <String, Map<String, dynamic>>{},
   }) : _moduleData = moduleData == null
            ? null
            : Map<String, dynamic>.from(moduleData),
@@ -741,19 +896,27 @@ final class _FakeTransactionContext
        ),
        _shiftClaims = shiftClaims.map(
          (claimId, data) => MapEntry(claimId, Map<String, dynamic>.from(data)),
+       ),
+       _users = users.map(
+         (userId, data) => MapEntry(userId, Map<String, dynamic>.from(data)),
+       ),
+       _vacationPeriods = vacationPeriods.map(
+         (documentId, data) =>
+             MapEntry(documentId, Map<String, dynamic>.from(data)),
        );
 
   final Map<String, dynamic>? _moduleData;
   final Map<String, Map<String, dynamic>> _participants;
   final Map<String, Map<String, dynamic>> _pendingCalls;
   final Map<String, Map<String, dynamic>> _shiftClaims;
+  final Map<String, Map<String, dynamic>> _users;
+  final Map<String, Map<String, dynamic>> _vacationPeriods;
 
   final List<String> participantReads = <String>[];
   final List<String> pendingCallReads = <String>[];
   final List<String> shiftClaimReads = <String>[];
 
   final List<_ShiftClaimCreate> shiftClaimCreates = <_ShiftClaimCreate>[];
-
   final List<String> shiftClaimDeletes = <String>[];
 
   final List<Map<String, dynamic>> moduleUpdates = <Map<String, dynamic>>[];
@@ -784,6 +947,30 @@ final class _FakeTransactionContext
     participantReads.add(userId);
 
     final data = _participants[userId];
+
+    if (data == null) {
+      return null;
+    }
+
+    return Map<String, dynamic>.from(data);
+  }
+
+  @override
+  Future<Map<String, dynamic>?> readUser({required String userId}) async {
+    final data = _users[userId];
+
+    if (data == null) {
+      return null;
+    }
+
+    return Map<String, dynamic>.from(data);
+  }
+
+  @override
+  Future<Map<String, dynamic>?> readVacationPeriod({
+    required String documentId,
+  }) async {
+    final data = _vacationPeriods[documentId];
 
     if (data == null) {
       return null;

@@ -21,7 +21,7 @@ final class SubstitutionShiftAlreadyCalledException implements Exception {
 final class SubstitutionShiftCallClaim {
   const SubstitutionShiftCallClaim._();
 
-  static const int schemaVersion = 1;
+  static const int schemaVersion = 2;
 
   static const String schemaVersionField = 'schemaVersion';
   static const String userIdField = 'userId';

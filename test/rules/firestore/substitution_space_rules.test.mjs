@@ -612,7 +612,7 @@ test(
 
     const callBatch = writeBatch(db);
 
-    addCallWrites({
+    await addCallWrites({
       batch: callBatch,
       db,
       calledByUserId: brigadier.uid,
@@ -1187,7 +1187,7 @@ test(
 
     const callBatch = writeBatch(db);
 
-    addCallWrites({
+    await addCallWrites({
       batch: callBatch,
       db,
       calledByUserId: brigadier.uid,
@@ -1302,12 +1302,70 @@ test(
   );
 
   test(
+  'rejects old apk call with shift claim schema version 1',
+  async () => {
+    const db = authenticatedFirestore(brigadier);
+    const batch = writeBatch(db);
+
+    await addCallWrites({
+      batch,
+      db,
+      calledByUserId: brigadier.uid,
+      participantUserId: member.uid,
+      previousRotationOrder: 0,
+      assignedCrew: 3,
+      claimSchemaVersion: 1,
+    });
+
+    await assertFails(batch.commit());
+  },
+);
+
+test(
+  'rejects call when participant has no assigned crew',
+  async () => {
+    const db = authenticatedFirestore(brigadier);
+    const batch = writeBatch(db);
+
+    await addCallWrites({
+      batch,
+      db,
+      calledByUserId: brigadier.uid,
+      participantUserId: member.uid,
+      previousRotationOrder: 0,
+      assignedCrew: null,
+    });
+
+    await assertFails(batch.commit());
+  },
+);
+
+test(
+  'rejects call during participant own work shift',
+  async () => {
+    const db = authenticatedFirestore(brigadier);
+    const batch = writeBatch(db);
+
+    await addCallWrites({
+      batch,
+      db,
+      calledByUserId: brigadier.uid,
+      participantUserId: member.uid,
+      previousRotationOrder: 0,
+      assignedCrew: 4,
+    });
+
+    await assertFails(batch.commit());
+  },
+);
+
+  test(
     'allows brigadier to atomically call active participant with pending call',
     async () => {
       const db = authenticatedFirestore(brigadier);
       const batch = writeBatch(db);
 
-      addCallWrites({
+      await addCallWrites({
         batch,
         db,
         calledByUserId: brigadier.uid,
@@ -1343,7 +1401,7 @@ test(
       const db = authenticatedFirestore(owner);
       const batch = writeBatch(db);
 
-      addCallWrites({
+      await addCallWrites({
         batch,
         db,
         calledByUserId: owner.uid,
@@ -1445,7 +1503,7 @@ test(
     const db = authenticatedFirestore(brigadier);
     const batch = writeBatch(db);
 
-    addCallWrites({
+    await addCallWrites({
       batch,
       db,
       calledByUserId: brigadier.uid,
@@ -1562,7 +1620,7 @@ shiftKind: 'night',
       const db = authenticatedFirestore(member);
       const batch = writeBatch(db);
 
-      addCallWrites({
+      await addCallWrites({
         batch,
         db,
         calledByUserId: member.uid,
@@ -1585,7 +1643,7 @@ shiftKind: 'night',
       const db = authenticatedFirestore(brigadier);
       const batch = writeBatch(db);
 
-      addCallWrites({
+      await addCallWrites({
         batch,
         db,
         calledByUserId: brigadier.uid,
@@ -1658,7 +1716,7 @@ shiftKind: 'night',
 
     const callBatch = writeBatch(db);
 
-    addCallWrites({
+    await addCallWrites({
       batch: callBatch,
       db,
       calledByUserId: brigadier.uid,
@@ -1701,7 +1759,7 @@ shiftKind: 'night',
 
       const callBatch = writeBatch(db);
 
-      addCallWrites({
+      await addCallWrites({
         batch: callBatch,
         db,
         calledByUserId: brigadier.uid,
@@ -1777,7 +1835,7 @@ shiftKind: 'night',
 
       const callBatch = writeBatch(db);
 
-      addCallWrites({
+      await addCallWrites({
         batch: callBatch,
         db,
         calledByUserId: brigadier.uid,
@@ -1814,7 +1872,7 @@ shiftKind: 'night',
 
       const callBatch = writeBatch(db);
 
-      addCallWrites({
+      await addCallWrites({
         batch: callBatch,
         db,
         calledByUserId: owner.uid,
@@ -1845,7 +1903,7 @@ shiftKind: 'night',
 
       const callBatch = writeBatch(db);
 
-      addCallWrites({
+      await addCallWrites({
         batch: callBatch,
         db,
         calledByUserId: brigadier.uid,
@@ -1948,13 +2006,26 @@ function shiftClaimId({
   return `${participantUserId}__${shiftYear}_${shiftMonth}_${shiftDay}__${shiftKind}`;
 }
 
-function addCallWrites({
+async function addCallWrites({
   batch,
   db,
   calledByUserId,
   participantUserId,
   previousRotationOrder,
+  assignedCrew = 3,
+  claimSchemaVersion = 2,
+  shiftYear = 2026,
+  shiftMonth = 8,
+  shiftDay = 31,
+  shiftKind = 'night',
 }) {
+  if (assignedCrew != null) {
+    await setAssignedCrewWithoutRules({
+      userId: participantUserId,
+      assignedCrew,
+    });
+  }
+
   batch.update(
     participantDoc(db, participantUserId),
     {
@@ -1983,29 +2054,33 @@ function addCallWrites({
       revision: 1,
       calledByUserId,
       calledAt: serverTimestamp(),
-      shiftYear: 2026,
-      shiftMonth: 8,
-      shiftDay: 31,
-      shiftKind: 'night',
+      shiftYear,
+      shiftMonth,
+      shiftDay,
+      shiftKind,
     },
   );
 
   const claimId = shiftClaimId({
     participantUserId,
+    shiftYear,
+    shiftMonth,
+    shiftDay,
+    shiftKind,
   });
 
   batch.set(
     shiftClaimDoc(db, claimId),
     {
-      schemaVersion: 1,
+      schemaVersion: claimSchemaVersion,
       userId: participantUserId,
       callId: '1',
       calledByUserId,
       createdAt: serverTimestamp(),
-      shiftYear: 2026,
-      shiftMonth: 8,
-      shiftDay: 31,
-      shiftKind: 'night',
+      shiftYear,
+      shiftMonth,
+      shiftDay,
+      shiftKind,
     },
   );
 }
@@ -2071,6 +2146,26 @@ async function setParticipantStatusWithoutRules({
         ),
         {
           status,
+        },
+      );
+    },
+  );
+}
+
+async function setAssignedCrewWithoutRules({
+  userId,
+  assignedCrew,
+}) {
+  await testEnvironment.withSecurityRulesDisabled(
+    async (context) => {
+      await updateDoc(
+        doc(
+          context.firestore(),
+          'users',
+          userId,
+        ),
+        {
+          assignedCrew,
         },
       );
     },

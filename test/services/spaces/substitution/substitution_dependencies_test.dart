@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:epistola/domain/models/shift_cycle.dart';
 import 'package:epistola/domain/models/substitution_call_receipt.dart';
 import 'package:epistola/domain/models/substitution_participant.dart';
 import 'package:epistola/domain/models/substitution_shift.dart';
@@ -8,9 +9,8 @@ import 'package:epistola/services/spaces/substitution/substitution_participant_s
 import 'package:epistola/services/spaces/substitution/substitution_rotation_edit_firestore_gateway.dart';
 import 'package:epistola/services/spaces/substitution/substitution_statistics_firestore_gateway.dart';
 import 'package:epistola/services/spaces/substitution/substitution_work_display_name_firestore_gateway.dart';
-import 'package:flutter_test/flutter_test.dart';
-import 'package:epistola/domain/models/shift_cycle.dart';
 import 'package:epistola/services/spaces/substitution/substitution_work_profile_firestore_gateway.dart';
+import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('participant actions dependencies', () {
@@ -245,6 +245,9 @@ void main() {
             'status': 'active',
           },
         },
+        users: <String, Map<String, dynamic>>{
+          'user-1': <String, dynamic>{'assignedCrew': 3},
+        },
       );
 
       final service = createSubstitutionCallService(
@@ -410,12 +413,17 @@ final class _FakeCallTransactionContext
     required Map<String, Map<String, dynamic>> participants,
     Map<String, Map<String, dynamic>> pendingCalls =
         const <String, Map<String, dynamic>>{},
+    Map<String, Map<String, dynamic>> users =
+        const <String, Map<String, dynamic>>{},
   }) : _moduleData = Map<String, dynamic>.from(moduleData),
        _participants = participants.map(
          (userId, data) => MapEntry(userId, Map<String, dynamic>.from(data)),
        ),
        _pendingCalls = pendingCalls.map(
          (callId, data) => MapEntry(callId, Map<String, dynamic>.from(data)),
+       ),
+       _users = users.map(
+         (userId, data) => MapEntry(userId, Map<String, dynamic>.from(data)),
        );
 
   final Map<String, dynamic> _moduleData;
@@ -423,6 +431,8 @@ final class _FakeCallTransactionContext
   final Map<String, Map<String, dynamic>> _participants;
 
   final Map<String, Map<String, dynamic>> _pendingCalls;
+
+  final Map<String, Map<String, dynamic>> _users;
 
   final List<Map<String, dynamic>> moduleUpdates = <Map<String, dynamic>>[];
 
@@ -450,6 +460,24 @@ final class _FakeCallTransactionContext
     }
 
     return Map<String, dynamic>.from(data);
+  }
+
+  @override
+  Future<Map<String, dynamic>?> readUser({required String userId}) async {
+    final data = _users[userId];
+
+    if (data == null) {
+      return null;
+    }
+
+    return Map<String, dynamic>.from(data);
+  }
+
+  @override
+  Future<Map<String, dynamic>?> readVacationPeriod({
+    required String documentId,
+  }) async {
+    return null;
   }
 
   @override

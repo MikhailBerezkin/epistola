@@ -4,11 +4,20 @@ import '../../../domain/models/substitution_call_receipt.dart';
 import 'substitution_pending_call_mapper.dart';
 import 'substitution_shift_call_claim.dart';
 import '../../../domain/models/substitution_shift.dart';
+import '../../../domain/models/shift_cycle.dart';
+import '../../../domain/models/vacation_period.dart';
+import '../calendar/vacation_period_mapper.dart';
+import 'substitution_call_eligibility_resolver.dart';
 
 abstract interface class SubstitutionCallTransactionContext {
   Future<Map<String, dynamic>?> readModule();
 
   Future<Map<String, dynamic>?> readParticipant({required String userId});
+  Future<Map<String, dynamic>?> readUser({required String userId});
+
+  Future<Map<String, dynamic>?> readVacationPeriod({
+    required String documentId,
+  });
   Future<Map<String, dynamic>?> readPendingCall({required String callId});
   Future<Map<String, dynamic>?> readShiftClaim({required String claimId});
 
@@ -68,6 +77,8 @@ final class SubstitutionCallFirestoreGateway {
   static const String lastCallPreviousRotationOrderField =
       'previousRotationOrder';
   static const String lastCallRevisionField = 'revision';
+  static const SubstitutionCallEligibilityResolver _eligibilityResolver =
+      SubstitutionCallEligibilityResolver();
 
   Future<SubstitutionCallReceipt> callParticipant({
     required String userId,
@@ -133,6 +144,30 @@ final class SubstitutionCallFirestoreGateway {
         throw SubstitutionShiftAlreadyCalledException(
           userId: normalizedUserId,
           shift: shift,
+        );
+      }
+
+      final userData = await context.readUser(userId: normalizedUserId);
+
+      final crew = _readAssignedCrew(userData);
+
+      final vacationPeriods = await _readVacationPeriods(
+        context: context,
+        userId: normalizedUserId,
+      );
+
+      final eligibility = _eligibilityResolver.resolve(
+        userId: normalizedUserId,
+        crew: crew,
+        shift: shift,
+        vacationPeriods: vacationPeriods,
+      );
+
+      if (!eligibility.isEligible) {
+        throw SubstitutionCallUnavailableException(
+          userId: normalizedUserId,
+          shift: shift,
+          reason: eligibility.reason!,
         );
       }
 
@@ -278,6 +313,51 @@ final class SubstitutionCallFirestoreGateway {
     });
   }
 
+  static ShiftCrew? _readAssignedCrew(Map<String, dynamic>? userData) {
+    final value = userData?['assignedCrew'];
+
+    if (value is! int) {
+      return null;
+    }
+
+    for (final crew in ShiftCrew.values) {
+      if (crew.number == value) {
+        return crew;
+      }
+    }
+
+    return null;
+  }
+
+  static Future<List<VacationPeriod>> _readVacationPeriods({
+    required SubstitutionCallTransactionContext context,
+    required String userId,
+  }) async {
+    final periods = <VacationPeriod>[];
+
+    for (var slot = 1; slot <= 6; slot += 1) {
+      final documentId = '${userId}__$slot';
+
+      final data = await context.readVacationPeriod(documentId: documentId);
+
+      if (data == null) {
+        continue;
+      }
+
+      final period = VacationPeriodMapper.fromMap(data);
+
+      if (period == null ||
+          period.userId != userId ||
+          period.documentId != documentId) {
+        throw StateError('Vacation period document contains invalid data.');
+      }
+
+      periods.add(period);
+    }
+
+    return periods;
+  }
+
   static int _readNonNegativeInt(
     Map<String, dynamic> data,
     String field, {
@@ -325,6 +405,7 @@ final class _FirebaseSubstitutionCallTransactionRunner
       final context = _FirebaseSubstitutionCallTransactionContext(
         transaction,
         moduleReference,
+        _firestore,
       );
 
       return action(context);
@@ -337,13 +418,29 @@ final class _FirebaseSubstitutionCallTransactionContext
   _FirebaseSubstitutionCallTransactionContext(
     this._transaction,
     this._moduleReference,
+    this._firestore,
   );
 
   final Transaction _transaction;
   final DocumentReference<Map<String, dynamic>> _moduleReference;
+  final FirebaseFirestore _firestore;
 
   DocumentReference<Map<String, dynamic>> _participantReference(String userId) {
     return _moduleReference.collection('participants').doc(userId);
+  }
+
+  DocumentReference<Map<String, dynamic>> _userReference(String userId) {
+    return _firestore.collection('users').doc(userId);
+  }
+
+  DocumentReference<Map<String, dynamic>> _vacationPeriodReference(
+    String documentId,
+  ) {
+    return _firestore
+        .collection('spaces')
+        .doc('calendar')
+        .collection('vacationPeriods')
+        .doc(documentId);
   }
 
   DocumentReference<Map<String, dynamic>> _pendingCallReference(String callId) {
@@ -383,6 +480,32 @@ final class _FirebaseSubstitutionCallTransactionContext
     required String userId,
   }) async {
     final snapshot = await _transaction.get(_participantReference(userId));
+
+    if (!snapshot.exists) {
+      return null;
+    }
+
+    return snapshot.data();
+  }
+
+  @override
+  Future<Map<String, dynamic>?> readUser({required String userId}) async {
+    final snapshot = await _transaction.get(_userReference(userId));
+
+    if (!snapshot.exists) {
+      return null;
+    }
+
+    return snapshot.data();
+  }
+
+  @override
+  Future<Map<String, dynamic>?> readVacationPeriod({
+    required String documentId,
+  }) async {
+    final snapshot = await _transaction.get(
+      _vacationPeriodReference(documentId),
+    );
 
     if (!snapshot.exists) {
       return null;
