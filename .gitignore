@@ -46,3 +46,6 @@ app.*.map.json
 
 # Firebase Rules tests
 /test/rules/node_modules/
+
+# Firebase Hosting cache
+/.firebase/

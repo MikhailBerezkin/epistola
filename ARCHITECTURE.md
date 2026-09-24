@@ -1,175 +1,47 @@
 # Epistola — Architecture
 
-Основной технический документ проекта Epistola.
-
-При конфликте информации:
-
-```text
-текущий исходный код feature-ветки
-→ PROJECT_CONTEXT.md
-→ ARCHITECTURE.md
-→ README.md
-```
-
-`PROJECT_CONTEXT.md` хранит operational handoff/current checkpoint.
-
-`ARCHITECTURE.md` фиксирует устойчивые технические решения.
-
-`README.md` предназначен для краткого обзора.
+> Detailed technical handoff for the current `v0.8.0` feature branch.
+>
+> Source priority:
+>
+> current code
+> → `PROJECT_CONTEXT.md`
+> → `ARCHITECTURE.md`
+> → `README.md`
 
 ---
 
-# 1. Status
+# 1. Repository / branch / checkpoint
 
-| Параметр | Значение |
-|---|---|
-| Current target | `v0.8.0` |
-| Stage | `Spaces / Substitution / EpiLite / Calendar / Vacation / Local Agenda` |
-| Feature branch | `feat/v0.8.0-spaces-substitution-foundation` |
-| Latest functional checkpoint | `27cce8e` |
-| Web chats/performance checkpoint | `764d3de` |
-| Push installation ownership | `67800f0` |
-| Stable baseline before v0.8.0 | `v0.7.4` |
-| Full platform | Android / `Epistola` |
-| Lightweight Web/PWA | `EpiLite` |
-| Pilot target | 40–50 users |
+Repository:
 
-`v0.8.0` ещё не declared merged/released.
+`MikhailBerezkin/epistola`
 
-Docs-only commit may move `HEAD` beyond `27cce8e`.
+Current feature branch:
 
----
+`feat/v0.8.0-spaces-substitution-foundation`
 
-# 2. Canonical layers
+Current functional checkpoint:
 
-```text
-Flutter UI
-    ↓
-Presentation / Screen orchestration
-    ↓
-Controllers / Application Services
-    ↓
-Domain Models / Contracts
-    ↓
-Firebase / Local persistence gateways
-    ↓
-Firebase or device-local storage
-```
+`63da029 — feat(substitution): enforce shift call eligibility`
 
-UI owns:
+Previous major checkpoint:
 
-```text
-rendering
-gestures
-navigation
-dialogs
-loading/error states
-animations
-local visual preferences
-responsive layout
-platform-specific presentation branching
-```
+`3358bc5 — feat(substitution): integrate crew and vacation status`
 
-UI must not own:
+Stable baseline before v0.8.0:
 
-```text
-Firestore transaction invariants
-authoritative security
-server ownership invariants
-backend schema derived from visual state
-role authorization copied into widgets
-```
+`v0.7.4`
 
-Application services own orchestration/validation.
-
-Gateways/adapters own persistence reads/writes, mapping and transactions.
-
-Domain must not depend on Flutter visual state.
+`v0.8.0` is not yet considered merged/released.
 
 ---
 
-# 3. Firebase infrastructure
+# 2. Product topology
 
-```text
-Repository: MikhailBerezkin/epistola
-Firebase project: epistola-434b7
-Firestore: eur3
-Realtime Database: europe-west1
-Cloud Functions: europe-west1
-Functions runtime: Node.js 22
-Android package: com.epistola.app
-Hosting: https://epistola-434b7.web.app
-```
+Epistola is one Flutter/Firebase codebase with platform-specific capability gates.
 
-Pilot principles:
-
-```text
-40–50 users
-avoid per-widget Firestore reads
-parallelize independent reads
-cache reusable user/role data by UID
-keep personal/local presentation data off Firestore when server authority is unnecessary
-persist reorder only on Apply
-reuse canonical business events for multiple projections
-```
-
----
-
-# 4. Platform capability boundary
-
-Centralized in:
-
-`lib/platform/epistola_platform_capabilities.dart`
-
-Critical separation:
-
-```text
-platform capability
-≠ business authorization
-≠ Firestore security
-```
-
-Current policy:
-
-```text
-supportsPushNotifications
-→ Android true
-→ Web false
-
-supportsChats
-→ Android true
-→ Web true
-```
-
-Known Web presentation gap:
-
-`chat avatars may fail to render`
-
----
-
-# 5. Runtime Test Mode boundary
-
-File:
-
-`lib/platform/epistola_runtime_mode.dart`
-
-Enable:
-
-```powershell
-flutter.bat run --dart-define=EPISTOLA_TEST_MODE=true
-```
-
-Invariant:
-
-```text
-Test Mode != full Firebase sandbox
-```
-
-Do not assume unrelated Firebase/FCM writes are isolated unless explicitly guarded.
-
----
-
-# 6. Products
+Products:
 
 ```text
 Epistola
@@ -179,177 +51,363 @@ EpiLite
 → Flutter Web / PWA
 ```
 
-Shared backend:
+Shared:
 
 ```text
 Firebase Auth
 Firestore
-Firebase Storage where supported
-Cloud Functions where applicable
+Realtime Database where already used
+Cloud Functions
+Storage
+domain models
+application services
+business rules
+most Spaces UI
 ```
 
-Do not create separate business collections only for Web presentation.
-
-Web push remains unsupported.
+Platform differences are isolated through capability/runtime helpers.
 
 ---
 
-# 7. Web user loading
+# 3. Core layering
 
-Current optimization:
+Preferred layering:
 
 ```text
-ChatMembersService
-SubstitutionUserCache
-→ independent user fetches use Future.wait
+Flutter UI
+→ screen / presentation orchestration
+→ application service
+→ domain model/resolver
+→ Firebase gateway or device-local persistence
 ```
 
-Goal:
+Rules:
 
 ```text
-reduce perceived latency
-avoid serialized network round trips
-keep same data contract
+UI must not be sole business/security boundary
+Firebase Rules must protect server-authoritative state
+local-only personal data should not be pushed to Firestore without reason
+deterministic business logic should stay in pure/testable services
 ```
 
 ---
 
-# 8. Root navigation
+# 4. Firebase projects / regions
 
-Root:
+Firebase project:
 
-`lib/screens/home_screen.dart`
+`epistola-434b7`
 
-Indexes:
+Firestore:
 
-```text
-0 Contacts
-1 Spaces
-2 Profile
-```
+`eur3`
 
-Default:
+Cloud Functions:
 
-`Spaces`
+`europe-west1`
 
-Back:
+Android package:
 
-```text
-Contacts → Spaces
-Profile → Spaces
-Spaces → exit
-```
+`com.epistola.app`
 
-Messenger:
+Production Hosting:
 
-`Spaces → Чаты`
+`https://epistola-434b7.web.app`
 
 ---
 
-# 9. Spaces roles
+# 5. Main navigation
 
-Roles:
-
-```text
-member
-brigadier
-owner
-```
-
-`owner` remains highest priority.
-
-Substitution managers:
+Root product areas:
 
 ```text
-brigadier
-owner
+Контакты
+Пространства
+Профиль
 ```
 
-SpacesBar managers:
+Current Home starts on:
+
+`Пространства`
+
+Spaces tiles include:
 
 ```text
-brigadier
-owner
+Чаты
+Список / Подсменка
+Судозаходы
+Календарь смен
+Автобусы
+ОТ и ТБ
 ```
 
-UI visibility is not a security boundary.
+Some tiles remain skeleton/future product areas.
+
+Owner remains highest-priority role.
 
 ---
 
-# 10. SpacesBar domain/backend
+# 6. Platform capability layer
 
-Authoritative document:
-
-`spaces/spacesBar`
-
-Schema v1:
+Files:
 
 ```text
+lib/platform/epistola_platform_capabilities.dart
+lib/platform/epistola_runtime_mode.dart
+```
+
+Current semantics:
+
+```text
+isWebLite → kIsWeb
+
+supportsPushNotifications
+→ Android/native true
+→ Web false
+
+supportsChats
+→ true
+
+supportsContacts
+→ Web false
+
+supportsSpacesBarManagement
+→ true
+
+supportsSubstitutionManagement
+→ true
+
+supportsSubstitutionAvailabilityChanges
+→ true
+```
+
+Web product title:
+
+`EpiLite`
+
+Android product title:
+
+`Epistola`
+
+Do not scatter raw `kIsWeb` decisions throughout business code when a platform capability belongs in the capability abstraction.
+
+---
+
+# 7. Authentication / user document
+
+Authoritative user profile:
+
+`users/{uid}`
+
+Relevant fields include:
+
+```text
+uid
+email
+name
+phone
+about
+avatar metadata
+workDisplayName?
+assignedCrew?
+```
+
+`assignedCrew` is optional until selected.
+
+Valid value:
+
+```text
+1..4
+```
+
+Missing crew must remain distinguishable from any actual crew.
+
+---
+
+# 8. Work schedule domain
+
+File:
+
+`lib/domain/models/shift_cycle.dart`
+
+Phases:
+
+```text
+day1
+day2
+offBeforeNight
+night1
+night2
+recovery
+offAfterRecovery1
+offAfterRecovery2
+```
+
+Cycle length:
+
+`8`
+
+Crews:
+
+```text
+crew1
+crew2
+crew3
+crew4
+```
+
+Anchor indexes on `14.09.2026`:
+
+```text
+crew1 → 7
+crew2 → 5
+crew3 → 3
+crew4 → 1
+```
+
+Therefore:
+
+```text
+14.09.2026
+crew4 = day2
+crew3 = night1
+crew1 = offAfterRecovery2
+```
+
+---
+
+# 9. ShiftScheduleCalculator
+
+File:
+
+`lib/services/spaces/calendar/shift_schedule_calculator.dart`
+
+Single authoritative application calculation:
+
+```dart
+phaseFor(date, crew)
+phaseIndexFor(date, crew)
+```
+
+Anchor:
+
+`DateTime.utc(2026, 9, 14)`
+
+Math:
+
+```text
+dayOffset = normalizedDate - anchorDate
+phaseIndex = positiveModulo(crew.anchorPhaseIndex + dayOffset, 8)
+```
+
+Do not reproduce this calculation in random UI code.
+
+Firestore Rules contain a separate equivalent only because Rules must independently validate protected server writes.
+
+---
+
+# 10. Assigned crew architecture
+
+Implemented components:
+
+```text
+UserAssignedCrewService
+UserAssignedCrewReader
+AssignedCrewSelector
+AssignedCrewSetupScreen
+SubstitutionWorkProfileService
+SubstitutionWorkProfileFirestoreGateway
+```
+
+Responsibilities:
+
+```text
+UserAssignedCrewService
+→ write/validation policy for own selection
+
+UserAssignedCrewReader
+→ read/watch assignedCrew
+
+AssignedCrewSelector
+→ reusable crew UI
+
+AssignedCrewSetupScreen
+→ onboarding/setup route
+
+SubstitutionWorkProfileService
+→ manager editing work display name + crew
+
+SubstitutionWorkProfileFirestoreGateway
+→ Firestore persistence
+```
+
+Calendar subscribes to authoritative assignedCrew.
+
+Substitution manager UI displays and can update participant crew under role rules.
+
+---
+
+# 11. Registration / onboarding
+
+Current registration/profile flow supports assigned crew selection.
+
+Business policy:
+
+```text
+ordinary user
+→ can select own crew under allowed initial-selection semantics
+
+manager/owner
+→ can correct participant crew for active Substitution participants
+```
+
+Direct UI prompts exist where missing crew blocks work features.
+
+Spaces prompt:
+
+```text
+Вам необходимо выбрать звено!
+```
+
+Calendar has direct crew setup action.
+
+---
+
+# 12. Substitution root model
+
+Firestore root:
+
+`spaces/substitution`
+
+Module state:
+
+```text
+nextRotationOrder
 revision
-messages
-updatedAt
+lastCall?
 ```
 
-Capacity:
+Participant collection:
 
-`3 active general messages`
+`spaces/substitution/participants/{uid}`
 
-Presentation IDs:
+Participant state fields:
 
 ```text
-general:<messageId>
-substitution:<callId>
+rotationOrder
+availability
+status
 ```
 
-Do not persist presentation-only state:
+Typical availability:
 
 ```text
-Color
-glow
-carousel page
-local hide state
+green
+yellow
+red
 ```
 
-Local hide:
-
-```text
-SharedPreferences
-spaces_bar.hidden_message_ids.v1.<uid>
-```
-
----
-
-# 11. SpacesBar presentation
-
-Current UI contract:
-
-```text
-stationary neutral outer frame
-colored inner glow near frame
-neutral center
-true cyclic/infinite PageView
-manual drag interpolates glow
-auto rotation uses same PageController
-```
-
-Timing:
-
-```text
-dwell = 10 sec
-slide = 1000 ms
-```
-
-Personal substitution items merge into same presentation model but do not consume general `3/3`.
-
----
-
-# 12. Substitution participant model
-
-Path:
-
-`spaces/substitution/participants/{userId}`
-
-Statuses:
+Status values include:
 
 ```text
 active
@@ -358,407 +416,56 @@ sick
 removed
 ```
 
-Canonical rotation contains active and inactive participants.
-
-Inactive states retain hidden `rotationOrder` anchors.
-
-`removed` is soft membership removal.
+Some visible effective status is derived from VacationPeriod rather than blindly persisted.
 
 ---
 
-# 13. Substitution gateway separation
+# 13. Canonical rotation
 
-Keep separate write contracts:
+`rotationOrder` is the authoritative queue position.
 
-```text
-SubstitutionParticipantStateFirestoreGateway
-SubstitutionRotationMembershipFirestoreGateway
-SubstitutionRotationEditFirestoreGateway
-SubstitutionCallFirestoreGateway
-```
+Hidden/non-active participants preserve queue anchors where appropriate.
 
-Do not merge distinct transaction invariants into one generic gateway.
+Manager rotation edits are atomic with module metadata required by Rules.
+
+Do not rebuild queue order from UI list index.
 
 ---
 
-# 14. Rotation editor
+# 14. Effective Vacation status
 
-Editing local until Apply.
+Service:
 
-Apply:
-
-```text
-read canonical state
-validate revision/conflict
-normalize rotationOrder
-persist atomically
-```
-
-Conflict UI:
-
-```text
-Список изменился. Откройте режим редактирования заново.
-```
-
----
-
-# 15. Call transaction with shiftClaims
-
-Path:
-
-`spaces/substitution/shiftClaims/{claimId}`
+`SubstitutionEffectiveStatusResolver`
 
 Purpose:
 
 ```text
-one concrete work shift
-→ cannot be called twice
+participant stored state
++
+current date
++
+VacationPeriods
+→ effective presentation status
 ```
 
-Atomic call transaction:
+Current VacationPeriod can project user into Vacation UI/state.
 
-```text
-pendingCalls/{callId}
-shiftClaims/{claimId}
-participants/{userId}.rotationOrder
-spaces/substitution revision/lastCall/nextRotationOrder
-```
+Deleting/ending the effective period returns participant to ordinary list while preserving canonical rotation.
 
-Standalone pendingCall/shiftClaim is invalid.
+Sick behavior remains separate; do not auto-conflate sick and vacation.
 
 ---
 
-# 16. Undo / finalize
+# 15. Vacation persistence
 
-Undo window:
-
-`3 seconds`
-
-Undo atomic operation:
-
-```text
-delete pendingCall
-delete shiftClaim
-restore participant rotation
-restore allowed module state
-```
-
-Finalize transaction:
-
-```text
-read pendingCall
-validate expiry
-calculate statistics
-write/update statistics
-write immutable confirmedCall
-delete pendingCall
-```
-
-Confirmed event:
-
-`spaces/substitution/confirmedCalls/{callId}`
-
-Exactly-once protected by pendingCall deletion in same transaction.
-
----
-
-# 17. Self-return from sick
-
-Repository behavior:
-
-```text
-ordinary participant:
-own sick → active
-```
-
-Cannot change:
-
-```text
-rotationOrder
-another participant
-unrelated fields
-```
-
-Vacation remains separate.
-
-This repository change is not yet part of the production transition migration.
-
----
-
-# 18. Push deep links
-
-Types:
-
-```text
-chat
-spacesBar
-```
-
-Unified field:
-
-`spacesBarPresentationId`
-
-Values:
-
-```text
-general:<messageId>
-substitution:<callId>
-```
-
-Legacy internal `*MessageId` names remain technical debt.
-
----
-
-# 19. Push installation ownership
-
-Stable identity:
-
-`SharedPreferences → push_installation_id`
-
-Format:
-
-```text
-16 secure random bytes
-→ 32 lowercase hex
-```
-
-Invariant:
-
-```text
-one installationId
-→ one current authenticated user
-
-one user
-→ multiple installationIds
-```
-
-FCM token is delivery address, not installation identity.
-
-Registry:
-
-`pushInstallations/{installationId}`
-
-Schema v2:
-
-```text
-schemaVersion
-userId
-token
-platform
-updatedAt
-```
-
-Callables:
-
-```text
-claimPushInstallation
-releasePushInstallation
-```
-
-Region:
-
-`europe-west1`
-
----
-
-# 20. Production Rules migration state
-
-Repository target:
-
-```text
-users/{uid}/devices/{deviceId}
-read own → allowed
-client create/update/delete → denied
-```
-
-Production transition currently contains:
-
-```text
-shiftClaims
-VacationPeriod Rules
-legacy old-APK own device writes
-```
-
-Legacy write schema:
-
-```text
-token
-platform
-updatedAt
-```
-
-Production intentionally does not yet equal repository rules.
-
-Do not blindly deploy repository `firestore.rules`.
-
----
-
-# 21. Calendar base schedule
-
-Base model:
-
-```text
-4 crews
-8-day repeating cycle
-```
-
-Crew 4:
-
-```text
-День 1
-День 2
-Вых
-Ночь 1
-Ночь 2
-О
-Вых
-Вых
-```
-
-Anchor:
-
-`14.09.2026 = День 2`
-
-Base schedule is immutable/deterministic.
-
-Exceptions = overlays.
-
----
-
-# 22. ShiftCyclePhase presentation
-
-`ShiftCyclePhase` keeps compact `displayLabel` for tiles.
-
-Added human-readable `displayTitle` for selected-day header:
-
-```text
-day1 → День 1
-day2 → День 2
-night1 → Ночь 1
-night2 → Ночь 2
-recovery → Отсыпной
-all off variants → Выходной
-```
-
-Business phase identity remains unchanged.
-
----
-
-# 23. Calendar presentation modes
-
-Modes:
-
-```text
-full
-medium
-compact
-```
-
-Persistence:
-
-```text
-SharedPreferences
-shift_calendar_view_mode
-```
-
-Default:
-
-`medium`
-
-Crew + mode load before render.
-
-Selected digit is red.
-
-Selected shift title is emphasized in header.
-
----
-
-# 24. Calendar selection/navigation model
-
-State separation:
-
-```text
-visibleMonth
-selectedDate
-compact focused/center date
-```
-
-Full/medium month change:
-
-```text
-visible month changes
-explicit selected date is cleared
-same day number is not auto-carried into next month
-```
-
-Compact:
-
-```text
-stationary central frame
-PageView scroll underneath
-scroll start cancels pending commit
-scroll end schedules commit
-settle delay = 250 ms
-tap side day animates to center
-```
-
-Phase is always computed by:
-
-`ShiftScheduleCalculator.phaseFor(date, crew)`
-
-Never infer shift phase from visual position.
-
----
-
-# 25. Calendar header/menu
-
-Header:
-
-```text
-Month Year
-selected shift title
-Today/replay action
-⋮
-```
-
-Menu:
-
-```text
-current crew
-Отпуска
-Будильники
-Темы календаря
-```
-
-Vacation action is implemented.
-
-Other menu actions remain future orchestration.
-
----
-
-# 26. Calendar overlay architecture
-
-Effective work-day concept:
-
-```text
-baseShift
-+ vacationOverlay
-+ sickOverlay
-+ substitutionOverlay
-+ additionalShiftOverlay
-```
-
-Never rewrite base 8-day schedule for exceptions.
-
-Personal local entries are a separate presentation layer and do not change work-schedule truth.
-
----
-
-# 27. VacationPeriod domain
-
-Persistence:
+Collection:
 
 `spaces/calendar/vacationPeriods/{userId}__{slot}`
+
+Slot range:
+
+`1..6`
 
 Schema v1:
 
@@ -771,68 +478,33 @@ endDay
 updatedAt
 ```
 
-Date storage:
+Dates are day-based UTC-oriented encoded values as defined by the existing mapper/service.
 
-`YYYYMMDD integer`
-
-Document ID:
-
-`<userId>__<slot>`
-
-Technical capacity:
-
-`1..6`
-
-Slots are persistence capacity only.
-
----
-
-# 28. Vacation ownership Rules
-
-Signed-in:
+Services:
 
 ```text
-get/list vacationPeriods → allowed
-```
-
-Write:
-
-```text
-user create/update/delete only own vacation period
-```
-
-No manager override.
-
-Validation:
-
-```text
-exact field set
-schemaVersion = 1
-valid userId
-slot 1..6
-valid YYYYMMDD
-endDay >= startDay
-updatedAt timestamp
-updatedAt == request.time
-document ID matches userId + slot
-```
-
-Vacation Rules are deployed in production on top of transition compatibility.
-
----
-
-# 29. Vacation parser/service/UI
-
-Implemented:
-
-```text
-VacationDateParser
 VacationPeriodService
-VacationPeriodEditorScreen
-VacationPeriodsScreen
+VacationPeriodFirestoreGateway
+VacationPeriodMapper
+VacationDateParser
 ```
 
-Accepted input:
+UI:
+
+```text
+VacationPeriodsScreen
+VacationPeriod editor
+```
+
+Calendar watches only current user's periods.
+
+Substitution can watch all relevant participant periods for manager presentation.
+
+---
+
+# 16. Vacation parser
+
+Friendly input supports examples:
 
 ```text
 18.09.2026
@@ -843,80 +515,555 @@ Accepted input:
 18 сентября 2026
 ```
 
-No year:
+Missing year uses current Calendar year.
 
-`use current Calendar year`
-
-Cross-year:
+Cross-year example:
 
 ```text
+Calendar year = 2026
 20.12 → 10.01
-Calendar year 2026
 → 20.12.2026 .. 10.01.2027
 ```
 
-UI:
-
-```text
-show actual saved periods
-+ Добавить отпуск
-edit pencil
-delete in editor
-```
-
-Calendar watches current user's periods and draws pink inclusive markers.
-
 ---
 
-# 30. Vacation history invariant
+# 17. Vacation history invariant
 
-Do not auto-recycle slots with data loss.
+Slots are persistence capacity, not visual history model.
 
-Desired future model:
+Do not auto-recycle completed slots in a way that destroys calendar history.
+
+Preferred future model:
 
 ```text
-working current/future slots
+current/future working slots
 +
-recent server history ≈ 1–2 years
+recent server history
 +
 optional local long-term archive
 ```
 
-Historical Calendar coloring must remain reconstructable.
-
-Visible History screen is not required now.
-
 ---
 
-# 31. Vacation → Substitution automation
+# 18. Substitution shift model
 
-Not implemented.
+File:
 
-Desired:
+`lib/domain/models/substitution_shift.dart`
+
+Kinds:
 
 ```text
-startDate → if applicable status = vacation
-already vacation → no-op
-day after endDate → if still vacation, status = active
+day
+night
 ```
 
-Sick automation must remain untouched.
+Time semantics:
 
-Known pilot limitation: user-owned VacationPeriod dates can influence auto-return until stronger manager-confirmation semantics are introduced.
+```text
+day
+08:00 → 20:00
+same calendar day
+
+night
+20:00 → 08:00
+ends next calendar day
+```
+
+Important helpers:
+
+```text
+startHour
+endHour
+endsOnNextCalendarDay
+calendarDateUtc
+```
 
 ---
 
-# 32. Personal CalendarEntry domain
+# 19. Substitution call eligibility resolver
 
-Personal entries are device-local only.
+File:
 
-No Firestore collection is used or planned for first version.
+`lib/services/spaces/substitution/substitution_call_eligibility_resolver.dart`
+
+Output:
+
+```text
+SubstitutionCallEligibility
+```
+
+Unavailable reasons:
+
+```text
+missingCrew
+vacation
+workShift
+```
+
+Exception used by transaction:
+
+```text
+SubstitutionCallUnavailableException
+```
+
+Reason priority:
+
+```text
+1. missingCrew
+2. vacation overlap
+3. own work phase
+4. eligible
+```
+
+---
+
+# 20. Eligibility table
+
+Allowed additional call by own cycle:
+
+| Own phase | Day 08–20 | Night 20–08 |
+|---|---:|---:|
+| day1 | no | no |
+| day2 | no | no |
+| offBeforeNight | yes | yes |
+| night1 | no | no |
+| night2 | no | no |
+| recovery | no | yes |
+| offAfterRecovery1 | yes | yes |
+| offAfterRecovery2 | yes | no |
+
+Business meaning:
+
+```text
+recovery night
+→ third night allowed
+
+offAfterRecovery2 day
+→ zero day allowed
+
+offAfterRecovery2 night
+→ forbidden because it enters next Day1
+```
+
+---
+
+# 21. Vacation overlap semantics
+
+Resolver compares user-specific VacationPeriods.
+
+Day:
+
+```text
+check shift date
+```
+
+Night:
+
+```text
+check shift start date
+check next date because night crosses midnight
+```
+
+Any overlap blocks additional call.
+
+Other users' VacationPeriods are ignored.
+
+---
+
+# 22. UI call selection
+
+Screen:
+
+`lib/screens/substitution_space_screen.dart`
+
+Before call dialog:
+
+```text
+resolve user from cache or refresh
+require user data
+require VacationPeriod stream not in error
+construct today-night
+construct tomorrow-day
+resolve each independently
+```
+
+Dialog behavior:
+
+```text
+eligible option → enabled
+ineligible option → disabled
+red reason below disabled action
+```
+
+Current messages:
+
+```text
+Недоступно: не указано звено
+Недоступно: отпуск
+Недоступно: рабочая смена
+```
+
+Duplicate call has separate message:
+
+```text
+<displayName> уже вызван на эту смену
+```
+
+---
+
+# 23. Transaction-level eligibility
+
+File:
+
+`lib/services/spaces/substitution/substitution_call_firestore_gateway.dart`
+
+Transaction context now supports:
+
+```text
+readModule
+readParticipant
+readUser
+readVacationPeriod
+readPendingCall
+readShiftClaim
+...
+```
+
+Call order is intentional:
+
+```text
+read module
+read participant
+read duplicate claim
+read user
+read deterministic vacation documents
+resolve eligibility
+then writes
+```
+
+All reads before writes preserve Firestore transaction rules.
+
+Vacation documents read:
+
+```text
+{uid}__1
+...
+{uid}__6
+```
+
+This is bounded/deterministic.
+
+---
+
+# 24. Atomic call documents
+
+Call transaction coordinates:
+
+```text
+spaces/substitution
+spaces/substitution/participants/{uid}
+spaces/substitution/pendingCalls/{callId}
+spaces/substitution/shiftClaims/{claimId}
+```
+
+`pendingCall` stores:
+
+```text
+callId
+userId
+revision
+calledByUserId
+calledAt
+shiftYear
+shiftMonth
+shiftDay
+shiftKind
+```
+
+`shiftClaim` stores:
+
+```text
+schemaVersion
+userId
+callId
+calledByUserId
+createdAt
+shiftYear
+shiftMonth
+shiftDay
+shiftKind
+```
+
+---
+
+# 25. shiftClaim v2
+
+File:
+
+`substitution_shift_call_claim.dart`
+
+Current create schema:
+
+```text
+schemaVersion = 2
+```
+
+Historical `v1` claim documents may remain readable/valid as historical records.
+
+Rules for new create require:
+
+```text
+schemaVersion == 2
+```
+
+This deliberately makes old call protocol incompatible after production cutover.
+
+---
+
+# 26. Duplicate protection
+
+Claim ID:
+
+```text
+{uid}__{year}_{month}_{day}__{kind}
+```
+
+If claim already exists:
+
+```text
+SubstitutionShiftAlreadyCalledException
+```
+
+Same participant can still be called for a different exact shift.
+
+---
+
+# 27. Firestore Rules — Substitution call security
+
+Repository Rules now deployed to production.
+
+New shiftClaim create requires:
+
+```text
+isSpacesManager()
+valid shiftClaim shape
+schemaVersion == 2
+calledByUserId == request.auth.uid
+server timestamp
+atomic pendingCall relationship
+valid participant/module relationship
+valid assignedCrew
+allowed work-cycle phase
+```
+
+Rules compute crew phase from the same anchor semantics:
+
+```text
+14.09.2026
+8-day modulo
+crew anchor index
+```
+
+Why Rules duplicate phase math:
+
+```text
+client resolver improves UX
+transaction resolver protects current app races/stale UI
+Rules protect Firebase from bypass/old client writes
+```
+
+Vacation overlap is not duplicated through six document reads inside Rules to avoid unnecessary access-call pressure; it remains enforced by the current transaction path.
+
+---
+
+# 28. Old APK boundary
+
+After `schemaVersion = 2` Rules deploy:
+
+```text
+old APK
+→ attempts new v1 shiftClaim create
+→ denied
+```
+
+This is intentional for Substitution calls.
+
+Historical content is not deleted.
+
+Any previous documentation that says production is still transition-compatible with old Substitution calls is stale.
+
+---
+
+# 29. Undo
+
+Call is temporarily undoable for roughly:
+
+`3 seconds`
+
+Undo contract:
+
+```text
+restore participant rotationOrder
+remove module lastCall
+delete pendingCall
+delete shiftClaim
+```
+
+Rules enforce the atomic relationships and time window.
+
+---
+
+# 30. Call finalization / statistics
+
+Existing pipeline keeps:
+
+```text
+confirmed calls
+statistics
+month/year call counts
+shift-kind history
+```
+
+Finalization uses pending call data as source.
+
+Do not count a call twice from SpacesBar or Calendar projection.
+
+---
+
+# 31. Participant overlay
+
+Overlay shows participant details and management actions.
+
+Recent layout change:
+
+```text
+content made scrollable
+Substitution IdentityOverlay heightFactor ≈ 0.68
+```
+
+Reason:
+
+```text
+assignedCrew line increased vertical content
+old fixed layout overflowed
+```
+
+Manual UI verification passed after change.
+
+---
+
+# 32. Calendar architecture
+
+Calendar composition:
+
+```text
+base shift
++
+Vacation overlay
++
+additional shift projection
++
+personal local agenda markers
+```
+
+Each layer has separate source/ownership.
+
+Do not mutate base cycle to encode overlays.
+
+---
+
+# 33. Calendar authoritative crew
+
+Current user schedule source:
+
+```text
+users/{uid}.assignedCrew
+```
+
+Reader:
+
+`UserAssignedCrewReader`
+
+Calendar can have temporary preview crew for settings UX, but preview is not authoritative profile state.
+
+---
+
+# 34. Calendar UI state
+
+Modes:
+
+```text
+full
+medium
+compact
+```
+
+State concepts:
+
+```text
+baseMonth
+visibleMonth
+selectedDate
+compactFocusedDate
+hasSelectedDate
+viewMode
+```
+
+Month paging and selected-day state are intentionally separate.
+
+Compact central selection uses a stationary frame with moving date strip.
+
+---
+
+# 35. Additional shift domain
 
 Model:
 
+`CalendarAdditionalShiftEvent`
+
+Service:
+
+`CalendarAdditionalShiftService`
+
+Projection:
+
+`CalendarAdditionalShiftProjection`
+
+Source should be existing structured Substitution data.
+
+No extra "calendar events" Firestore collection is required if authoritative Substitution source can be projected directly.
+
+---
+
+# 36. Additional shift presentation
+
+Calendar day presentation:
+
 ```text
-CalendarEntry
+violet marker/frame
 ```
+
+Agenda/system row can represent structured additional shift separately from personal `CalendarEntry`.
+
+Historical marker remains tied to authoritative call history.
+
+Current production manual check:
+
+```text
+call for 25th
+→ violet frame visible on 25th
+```
+
+---
+
+# 37. Personal CalendarEntry
+
+Personal data is local-only.
+
+Model:
+
+`CalendarEntry`
 
 Kinds:
 
@@ -925,7 +1072,7 @@ task
 note
 ```
 
-Fields:
+Fields include:
 
 ```text
 id
@@ -943,569 +1090,565 @@ createdAt
 updatedAt
 ```
 
-Date is normalized to day-only.
-
-Time values are minutes from midnight.
-
-Reminder time is independent from task time.
+Do not persist this domain to Firestore in current product architecture.
 
 ---
 
-# 33. Personal entry persistence
+# 38. CalendarEntry persistence
 
-Persistence:
+Store:
+
+`CalendarEntryLocalStore`
+
+Backend:
 
 `SharedPreferences`
 
-Storage is namespaced by authenticated `uid`.
-
-Components:
+Key namespace:
 
 ```text
-CalendarEntryMapper
-CalendarEntryLocalStore
-CalendarEntryService
+calendar_entries_v1_<uid>
 ```
 
-Service owns:
+Payload includes:
 
 ```text
-create
-update
-delete
+schemaVersion
+entries[]
+```
+
+This prevents different accounts on same device/browser profile from mixing personal entries.
+
+---
+
+# 39. CalendarEntry service
+
+`CalendarEntryService` owns:
+
+```text
 loadForUser
 loadForDay
+create
+update
 setCompleted
-sorting
+delete
+reconcileReminders
 ```
 
-Duplicate `id` save updates existing entry.
+Sorting:
 
-Different users on one device are isolated.
+```text
+active before completed
+timed active sorted by time
+untimed after timed
+completed ordered by completion timestamp where applicable
+```
 
 ---
 
-# 34. Personal entry sorting
+# 40. Calendar local reminders
 
-For selected day:
+Service:
 
-```text
-active entries first
-completed tasks below active
-timed active entries sorted ascending by time
-entries without time after timed
-```
+`CalendarEntryReminderService`
 
-Completed tasks may be returned to active state.
+Native integration:
 
-Notes cannot be completed.
+`NotificationService`
 
----
-
-# 35. Personal entry editor
-
-Screen:
-
-`lib/screens/calendar_entry_editor_screen.dart`
-
-Create/edit uses same screen.
-
-Supports:
-
-```text
-title
-optional scheduled time
-priority
-description / note text
-bell switch
-optional independent reminder time
-delete with confirmation in edit mode
-```
-
-Edit preserves existing completed state when service update remains task.
-
----
-
-# 36. Time wheel architecture
-
-Time input uses:
-
-`CupertinoPicker`
-
-Two wheels:
-
-```text
-hours 00..23
-minutes 00..59
-```
-
-Both:
-
-`looping: true`
-
-This replaces circular Material clock selection.
-
----
-
-# 37. Agenda panel architecture
-
-Selected date opens agenda panel.
-
-Bottom action bar:
-
-```text
-[ Дело ]   Добавить   [ Заметка ]
-```
-
-No intermediate “Что добавить?” sheet.
-
-Entries render in scrollable list.
-
-Bottom Add bar remains fixed.
-
-Task checkbox completion and row tap are independent interactions.
-
-Row tap opens editor.
-
----
-
-# 38. CalendarEntry day markers
-
-Derived helper:
-
-`CalendarEntryDayMarkers`
-
-Active-entry projection:
-
-```text
-plain entry without reminder → note icon
-entry with reminder → bell icon
-highest active priority → priority dot
-completed task → ignored
-```
-
-Priority order:
-
-```text
-none < low < medium < high
-```
-
-Current visual colors:
-
-```text
-low → green
-medium → amber
-high → red
-```
-
-Full/medium marker integration is present.
-
-Compact final marker layout still needs tuning.
-
----
-
-# 39. Local reminder scheduling architecture
-
-Implemented at:
-
-`27cce8e — feat(calendar): add exact local reminders`
-
-Ownership:
-
-```text
-CalendarEntryService
-→ entry persistence lifecycle
-→ delegates reminder lifecycle
-
-CalendarEntryReminderService
-→ stable notification identity
-→ permission orchestration
-→ schedule/cancel/reconcile policy
-
-NotificationService
-→ Android notification plugin integration
-→ timezone initialization
-→ exact scheduling/cancel operations
-```
-
-The editor UI does not own Android scheduling directly.
-
-Stable identity:
+Stable Android notification ID:
 
 ```text
 CalendarEntry.id
-→ deterministic 32-bit FNV-style hash
-→ positive signed Android notification ID
+→ deterministic FNV-style 32-bit hash
+→ positive signed ID
 ```
 
-Lifecycle contract:
+Lifecycle:
 
 ```text
 create with reminder → schedule
-edit reminder/date → reschedule same notification identity
+update → resync
 bell off → cancel
+completion → cancel
 delete → cancel
-complete task → cancel
-restore completed task → schedule again when applicable
-Calendar load → reconcile persisted local entries
+reopen Calendar → reconcile
 ```
 
-Local persistence remains authoritative for personal Calendar entries. Firestore is not involved.
+---
 
-Timezone stack:
+# 41. Exact reminder platform boundary
 
-```text
-flutter_timezone
-→ device timezone identifier
-→ timezone package
-→ tz.local
-```
-
-Android dependencies/configuration:
+Android configuration:
 
 ```text
-flutter_local_notifications
-timezone ^0.11.1
-flutter_timezone ^5.1.0
-RECEIVE_BOOT_COMPLETED
 SCHEDULE_EXACT_ALARM
+RECEIVE_BOOT_COMPLETED
 ScheduledNotificationReceiver
 ScheduledNotificationBootReceiver
-```
-
-Scheduling mode:
-
-```text
 AndroidScheduleMode.alarmClock
 ```
 
-Reason for mode choice:
+Web:
+
+```text
+exact local Android reminders are unsupported
+```
+
+`NotificationService` native code must remain behind platform-safe call paths.
+
+---
+
+# 42. Why alarmClock mode
+
+Manual device observation:
 
 ```text
 exactAllowWhileIdle
-→ real-device delay observed around 1–2 minutes
+→ roughly 1–2 minute delay
 
 alarmClock
-→ delivered in requested minute during manual testing
+→ delivered in requested minute
 ```
 
-Calendar channel uses ordinary system notification sound and vibration. It intentionally does not reuse the custom Epistola seagull sound.
+Calendar reminder uses ordinary system notification sound, not custom seagull messaging sound.
 
-Permission policy:
+---
+
+# 43. EpiLite Web architecture
+
+Web config:
 
 ```text
-check exact-alarm permission
-→ request when absent
-→ if denied, preserve/save CalendarEntry but disable that reminder and inform user
+web/index.html
+web/manifest.json
+lib/firebase_options.dart
+firebase.json
 ```
 
-Reconciliation boundary:
+Firebase Web app already configured.
 
-```text
-native scheduled alarms survive app process restart
-Calendar screen load reconciles reminders from local CalendarEntry storage
+`firebase.json` Hosting:
+
+```json
+{
+  "public": "build/web",
+  "rewrites": [
+    {
+      "source": "**",
+      "destination": "/index.html"
+    }
+  ]
+}
 ```
 
-Do not overstate this as a global application-start reconciliation.
+Build:
 
-Boot receiver infrastructure is present, but full physical-device reboot survival has not yet been manually verified.
+```powershell
+flutter.bat build web
+```
 
-Current notification tap behavior:
+Deploy:
+
+```powershell
+firebase.cmd deploy --only hosting
+```
+
+Production URL:
+
+`https://epistola-434b7.web.app`
+
+---
+
+# 44. EpiLite verification
+
+Current production checks:
 
 ```text
-Calendar reminder has no Calendar deep-link payload
+desktop Chrome
+→ Auth works
+→ Spaces works
+→ SpacesBar works
+→ Calendar works
+→ Substitution works
+
+mobile browser
+→ same core flow works
+→ layout usable
+```
+
+Earlier Web checkpoint verified text chat flow and improved parallel user loading.
+
+Web push remains unsupported.
+
+---
+
+# 45. Web local data semantics
+
+Personal Calendar entries still use local platform persistence.
+
+On Web this is browser-local persistence through the plugin/platform implementation.
+
+Do not interpret this as cross-device sync.
+
+If future product requires cross-device personal Calendar sync, that is a new privacy/product decision, not a hidden migration.
+
+---
+
+# 46. SpacesBar
+
+SpacesBar is realtime presentation for work/general messages.
+
+Sources can include:
+
+```text
+general manager messages
+Substitution call events
+chat unread integration
+```
+
+User can hide relevant items according to current service rules.
+
+Manager editing/publishing is role-gated.
+
+---
+
+# 47. Push notifications
+
+Cloud messaging foundation:
+
+```text
+Firebase Messaging
+NotificationService
+PushTokenService
+```
+
+Cloud Function region:
+
+`europe-west1`
+
+Deep links can open chat destinations.
+
+Active chat suppression exists.
+
+Image messages use expected custom notification semantics from v0.7.x.
+
+Substitution call can produce push + SpacesBar event.
+
+---
+
+# 48. Push installation ownership
+
+Registry:
+
+`pushInstallations/{installationId}`
+
+Schema includes:
+
+```text
+schemaVersion
+userId
+token
+platform
+updatedAt
+```
+
+Cloud callables:
+
+```text
+claimPushInstallation
+releasePushInstallation
+```
+
+Invariant:
+
+```text
+installation belongs to one current authenticated user
+user can own multiple installations
 ```
 
 ---
 
-# 40. Additional shift / халтура projection
+# 49. Avatars / media
 
-Future system work event is separate from personal entry.
-
-Preferred source:
+Existing foundations remain:
 
 ```text
-authoritative Substitution call / confirmed-call structured data
+UserAvatar
+AvatarView
+UserAvatarView
+GroupAvatarView
+ChatAvatarView
 ```
 
-Avoid parsing display text if structured fields exist.
+Storage paths use versioned thumbnails/full images.
 
-Desired presentation:
+Known Web issue:
 
 ```text
-violet day-tile border
-violet vertical strip in agenda
-upcoming/occurred derived from startAt
-historical marker remains
+chat avatar rendering may still require polish
 ```
 
-Dedupe by stable source/call ID.
-
-Compact should not render a second conflicting frame over central selector.
+Do not regress current Android caching behavior.
 
 ---
 
-# 41. Repeating local entries — future
+# 50. Messaging
 
-Do not create hundreds of physical copies by default.
-
-Preferred concept:
-
-`CalendarEntryTemplate`
-
-Potential fields:
+Existing features from v0.7.x include:
 
 ```text
-cycle position 1..8
-validFrom?
-validUntil?
-title
-time?
-reminder?
-priority?
+private/group chat
+pagination = 20
+image messages
+push deep link
+date separators
+private read receipts
+group reactions
+private typing indicator
+message deletion states
 ```
 
-Calendar derives matching dates through `ShiftScheduleCalculator`.
+Known bug backlog:
 
-Occurrence-specific completion should be stored separately from template.
+```text
+private chat
+long-press peer message
+Удалить у себя
+may still fail
+```
 
 ---
 
-# 42. Calendar themes — future
+# 51. Performance discipline
 
-Theme roles should remain separate:
-
-```text
-8 shift cycle positions
-vacation marker
-additional shift marker
-selection/focus
-grid/background
-priority marker roles
-```
-
-Suggested presets:
+Prefer:
 
 ```text
-Standard
-Dark
-Contrast
-Custom/Advanced
+pagination
+bounded reads
+cache
+parallel independent reads
+central summaries
+local persistence for private UI state
 ```
-
-Do not encode business phase by UI position.
-
----
-
-# 43. Web Calendar direction
-
-Reuse:
-
-```text
-ShiftScheduleCalculator
-Vacation Firestore data
-```
-
-Personal tasks stay local-only.
-
-For Web, use browser-local persistence rather than Firestore for personal entries.
-
-Web push remains unsupported unless separately designed.
-
----
-
-# 44. Performance/read discipline
 
 Examples:
 
 ```text
-pagination page size = 20
-central unread summary
-UID caches
-Future.wait for independent user loads
-local-only presentation preferences
-local-only personal agenda
-```
-
-Avoid:
-
-```text
-one Firestore stream per decorative widget
-serial independent reads
-server writes for local personal state
+ChatMembersService Future.wait
+SubstitutionUserCache
+page size 20
+deterministic six VacationPeriod reads only at call transaction
 ```
 
 ---
 
-# 45. Deleted Auth user cleanup
+# 52. Firestore security principles
 
-Existing cleanup includes:
+Server-authoritative state:
 
 ```text
-users/{uid}
-users/{uid}/devices/*
-spaces/substitution/participants/{uid}
-spaces_access/{uid}
+validate shape
+validate actor role
+validate relationship between atomic writes
+use getAfter for batch invariants
+prevent standalone forged writes
 ```
 
-Follow-up:
+Current Rules suite is essential before any deploy.
 
-`pushInstallations/{installationId}`
+Recent Substitution Rules run:
 
-whose `userId` points to deleted user.
+`74/74 passed`
 
 ---
 
-# 46. Buses boundary
+# 53. Testing layers
 
-Known names:
-
-```text
-Управление
-Медпункт
-Раздевалка
-Автово
-```
-
-Two buses run cyclically.
-
-Weekday/weekend service differs.
-
-Wait for newer authoritative schedule before implementation.
-
----
-
-# 47. Verification discipline
-
-Flutter:
+Pure domain/service tests:
 
 ```text
-dart.bat format
-flutter.bat analyze
-targeted tests
-full flutter.bat test at checkpoint
+fast
+deterministic
+no emulator
 ```
 
-Rules:
+Gateway tests:
 
 ```text
-targeted emulator tests
-relevant full group before deploy
+fake transaction context
+verify reads/writes/exceptions
 ```
 
-Production Rules:
+Rules tests:
 
 ```text
-identify exact production ruleset
-verify transition compatibility
-deploy only intended delta
+Firebase Emulator
+assertSucceeds/assertFails
 ```
 
-Generated plugin files:
+Full checkpoint:
 
-`restore once after final Flutter command`
-
----
-
-# 48. Windows encoding discipline
-
-`Set-Content -Encoding utf8` may prepend BOM:
-
-`EF-BB-BF`
-
-Preferred no-BOM write:
-
-```powershell
-$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
-[System.IO.File]::WriteAllText($path, $content, $utf8NoBom)
+```text
+flutter test → 1161/1161
+flutter analyze → clean
 ```
 
 ---
 
-# 49. Current verification evidence
+# 54. Production verification
 
-Functional checkpoint:
-
-`27cce8e — feat(calendar): add exact local reminders`
-
-Flutter:
+2026-09-24:
 
 ```text
-analyze → No issues found
-full test → 1083/1083
-Calendar local agenda + reminders targeted → 53/53
-Vacation parser/service targeted → 18/18
+Firestore Rules deploy → success
+release APK build → 61.0 MB
+Android blocked-work-shift UI → success
+Android allowed Substitution call → success
+queue movement → success
+Calendar violet marker → success
+push → success
+SpacesBar → success
+Web build → success
+Hosting deploy → success
+desktop Web → success
+mobile Web → success
 ```
 
-Manual Android reminder lifecycle:
-
-```text
-exact time → passed
-system sound → passed
-reschedule → passed
-bell off cancel → passed
-completion cancel → passed
-delete cancel → passed
-app close/reopen survival → passed
-```
-
-Release APK:
-
-`60.7 MB`
-
-Vacation production Rules:
-
-`12/12 before deploy`
-
-Earlier relevant Rules group:
-
-```text
-Substitution / Vacation / Push targeted group → 91/91
-```
-
-Generated files excluded from functional commit.
+This is the current strongest integration checkpoint.
 
 ---
 
-# 50. Next architecture focus
+# 55. Firebase Hosting cache
 
-Completed:
+Local directory:
+
+`.firebase/`
+
+This is generated deploy cache.
+
+Do not commit.
+
+`.gitignore` should contain:
 
 ```text
-real local reminder scheduling → 27cce8e
+# Firebase Hosting cache
+/.firebase/
 ```
 
-Next Calendar blocks:
+---
+
+# 56. Generated Flutter files
+
+Restore after last Flutter command before commit:
 
 ```text
-compact marker polish
-Calendar UI polish
-additional shift / халтура projection
+linux/flutter/generated_plugin_registrant.cc
+linux/flutter/generated_plugins.cmake
+macos/Flutter/GeneratedPluginRegistrant.swift
+windows/flutter/generated_plugin_registrant.cc
+windows/flutter/generated_plugins.cmake
 ```
 
-Their order is a product decision; additional shift / халтура may be taken before cosmetic polish.
+This is expected workflow noise.
 
-Then:
+---
+
+# 57. Build outputs
+
+Android:
 
 ```text
-Vacation → Substitution automation
-history-safe Vacation archive/slot reuse
-Calendar themes
-Web Calendar
+build/app/outputs/flutter-apk/app-release.apk
+61.0 MB at current release pass
 ```
 
-Security migration:
+Web:
 
 ```text
-after broad APK rollout
-→ remove legacy production device writes
-→ deploy exact strict migration
+build/web
+```
+
+Build directories are generated and excluded from Git.
+
+---
+
+# 58. Current security state vs older docs
+
+Older docs may mention:
+
+```text
+transition-compatible production Rules
+legacy old-APK device writes
+do not deploy repository firestore.rules
+```
+
+At current checkpoint these statements are obsolete because repository Rules were intentionally tested and deployed on 2026-09-24.
+
+Current truth:
+
+```text
+production Rules = current deployed repository ruleset
+new Substitution call requires shiftClaim v2
+old Substitution call protocol is rejected
+```
+
+---
+
+# 59. Current feature backlog
+
+High-value future blocks:
+
+```text
+finish v0.8.0 release/merge/tag
+private chat delete bug
+Attachment Composer
+voice messages
+file transfer
+Calendar compact marker polish
+Calendar theme system
+Vacation history/archive
+repeating cycle-linked local entries
+Web chat avatar polish
+bus schedule when new authoritative timetable is available
 ```
 
 Technical debt:
 
 ```text
-Web chat avatars
-pushInstallations cleanup
-legacy *MessageId names
+legacy *MessageId naming
+pushInstallations cleanup after deleted Auth users
 ```
+
+---
+
+# 60. New-chat protocol
+
+First commands:
+
+```powershell
+git.exe branch --show-current
+git.exe status --short
+git.exe rev-parse --short HEAD
+git.exe rev-parse --short origin/feat/v0.8.0-spaces-substitution-foundation
+```
+
+Then read:
+
+```text
+PROJECT_CONTEXT.md
+ARCHITECTURE.md
+README.md
+```
+
+Source priority remains:
+
+```text
+code
+→ PROJECT_CONTEXT
+→ ARCHITECTURE
+→ README
+```
+
+If docs update has just been applied locally, commit/push that docs checkpoint before starting the next feature block.
