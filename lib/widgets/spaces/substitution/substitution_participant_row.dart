@@ -20,6 +20,7 @@ class SubstitutionParticipantRow extends StatelessWidget {
     this.showRotationControls = false,
     this.onMoveUp,
     this.onMoveDown,
+    this.onTap,
   });
 
   final SubstitutionParticipant participant;
@@ -35,6 +36,7 @@ class SubstitutionParticipantRow extends StatelessWidget {
   final bool showRotationControls;
   final VoidCallback? onMoveUp;
   final VoidCallback? onMoveDown;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -47,42 +49,36 @@ class SubstitutionParticipantRow extends StatelessWidget {
 
     final subtitle = _buildSubtitle();
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 56),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            SubstitutionQueueBadge(
-              avatar: avatar,
-              queuePosition: queuePosition,
-              availability: participant.availability,
-              displayMode: queueDisplayMode,
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    displayName,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  if (subtitle != null) ...[
-                    const SizedBox(height: 2),
-                    subtitle,
-                  ],
-                ],
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 56),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              SubstitutionQueueBadge(
+                avatar: avatar,
+                queuePosition: queuePosition,
+                availability: participant.availability,
+                displayMode: queueDisplayMode,
               ),
-            ),
-            const SizedBox(width: 8),
-            showRotationControls
-                ? _buildRotationControls()
-                : _buildNormalControls(),
-          ],
+              const SizedBox(width: 16),
+              Expanded(
+                child: Text(
+                  displayName,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              if (subtitle != null) ...[const SizedBox(width: 8), subtitle],
+              const SizedBox(width: 4),
+              showRotationControls
+                  ? _buildRotationControls()
+                  : _buildNormalControls(),
+            ],
+          ),
         ),
       ),
     );

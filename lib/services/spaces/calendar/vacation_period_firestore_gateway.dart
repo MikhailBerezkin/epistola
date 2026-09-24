@@ -11,6 +11,9 @@ typedef VacationPeriodDocumentsLoader =
 typedef VacationPeriodDocumentsWatcher =
     Stream<List<VacationPeriodDocument>> Function({required String userId});
 
+typedef VacationPeriodAllDocumentsWatcher =
+    Stream<List<VacationPeriodDocument>> Function();
+
 typedef VacationPeriodDocumentSaver =
     Future<void> Function({
       required String documentId,
@@ -24,11 +27,13 @@ final class VacationPeriodFirestoreGateway {
   VacationPeriodFirestoreGateway({
     required VacationPeriodDocumentsLoader documentsLoader,
     VacationPeriodDocumentsWatcher? documentsWatcher,
+    VacationPeriodAllDocumentsWatcher? allDocumentsWatcher,
     required VacationPeriodDocumentSaver documentSaver,
     required VacationPeriodDocumentDeleter documentDeleter,
   }) : this._(
          documentsLoader,
          documentsWatcher,
+         allDocumentsWatcher,
          documentSaver,
          documentDeleter,
        );
@@ -36,6 +41,7 @@ final class VacationPeriodFirestoreGateway {
   VacationPeriodFirestoreGateway._(
     this._documentsLoader,
     this._documentsWatcher,
+    this._allDocumentsWatcher,
     this._documentSaver,
     this._documentDeleter,
   );
@@ -70,6 +76,13 @@ final class VacationPeriodFirestoreGateway {
                   .toList(growable: false),
             );
       },
+      allDocumentsWatcher: () {
+        return vacationPeriodsCollection.snapshots().map(
+          (snapshot) => snapshot.docs
+              .map((document) => (id: document.id, data: document.data()))
+              .toList(growable: false),
+        );
+      },
       documentSaver:
           ({required String documentId, required Map<String, dynamic> data}) {
             return vacationPeriodsCollection.doc(documentId).set(data);
@@ -82,6 +95,7 @@ final class VacationPeriodFirestoreGateway {
 
   final VacationPeriodDocumentsLoader _documentsLoader;
   final VacationPeriodDocumentsWatcher? _documentsWatcher;
+  final VacationPeriodAllDocumentsWatcher? _allDocumentsWatcher;
   final VacationPeriodDocumentSaver _documentSaver;
   final VacationPeriodDocumentDeleter _documentDeleter;
 
@@ -103,6 +117,20 @@ final class VacationPeriodFirestoreGateway {
 
     await for (final documents in documentsWatcher(userId: normalizedUserId)) {
       yield _mapDocuments(documents, expectedUserId: normalizedUserId);
+    }
+  }
+
+  Stream<List<VacationPeriod>> watchAll() async* {
+    final documentsWatcher = _allDocumentsWatcher;
+
+    if (documentsWatcher == null) {
+      throw StateError(
+        'Vacation period all-documents watcher is not configured.',
+      );
+    }
+
+    await for (final documents in documentsWatcher()) {
+      yield _mapAllDocuments(documents);
     }
   }
 
@@ -167,6 +195,40 @@ final class VacationPeriodFirestoreGateway {
     }
 
     periods.sort((first, second) => first.slot.compareTo(second.slot));
+
+    return List<VacationPeriod>.unmodifiable(periods);
+  }
+
+  List<VacationPeriod> _mapAllDocuments(
+    List<VacationPeriodDocument> documents,
+  ) {
+    final periods = <VacationPeriod>[];
+
+    for (final document in documents) {
+      final period = VacationPeriodMapper.fromMap(document.data);
+
+      if (period == null) {
+        throw StateError('Vacation period document contains invalid data.');
+      }
+
+      if (period.documentId != document.id) {
+        throw StateError(
+          'Vacation period document id does not match userId and slot.',
+        );
+      }
+
+      periods.add(period);
+    }
+
+    periods.sort((first, second) {
+      final userComparison = first.userId.compareTo(second.userId);
+
+      if (userComparison != 0) {
+        return userComparison;
+      }
+
+      return first.slot.compareTo(second.slot);
+    });
 
     return List<VacationPeriod>.unmodifiable(periods);
   }

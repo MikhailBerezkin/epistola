@@ -1,9 +1,6 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-
-import '../models/app_user.dart';
 import '../platform/epistola_runtime_mode.dart';
 import '../services/avatar/avatar_image_dependencies.dart';
 import '../services/avatar/avatar_replacement_controller.dart';
@@ -29,7 +26,6 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   static const int _spacesIndex = 1;
-  static const int _profileIndex = 2;
 
   late final AvatarReplacementController _avatarController;
   int selectedIndex = _spacesIndex;
@@ -74,62 +70,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     return ProfilePage(avatarController: _avatarController);
-  }
-
-  Widget _buildCurrentPageWithCrewNotice() {
-    final currentPage = getCurrentPage();
-
-    if (selectedIndex == _profileIndex) {
-      return currentPage;
-    }
-
-    final userId = FirebaseAuth.instance.currentUser?.uid.trim() ?? '';
-
-    if (userId.isEmpty) {
-      return currentPage;
-    }
-
-    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance
-          .collection('users')
-          .doc(userId)
-          .snapshots(),
-      builder: (context, snapshot) {
-        final document = snapshot.data;
-
-        if (document == null || !document.exists) {
-          return currentPage;
-        }
-
-        final profileUser = AppUser.fromFirestore(document);
-
-        if (profileUser.assignedCrew != null) {
-          return currentPage;
-        }
-
-        return Column(
-          children: [
-            MaterialBanner(
-              leading: const Icon(Icons.groups_2_outlined),
-              content: const Text('Вы не выбрали ваше звено'),
-              actions: [
-                TextButton(
-                  onPressed: () {
-                    HapticFeedback.selectionClick();
-
-                    setState(() {
-                      selectedIndex = _profileIndex;
-                    });
-                  },
-                  child: const Text('Перейти в профиль'),
-                ),
-              ],
-            ),
-            Expanded(child: currentPage),
-          ],
-        );
-      },
-    );
   }
 
   @override
@@ -191,7 +131,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ]
                 : null,
           ),
-          body: _buildCurrentPageWithCrewNotice(),
+          body: getCurrentPage(),
           bottomNavigationBar: NavigationBar(
             selectedIndex: selectedIndex,
             onDestinationSelected: (index) {

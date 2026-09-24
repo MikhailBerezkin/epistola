@@ -13,6 +13,8 @@ import 'substitution_statistics_firestore_gateway.dart';
 import 'substitution_statistics_service.dart';
 import 'substitution_work_display_name_firestore_gateway.dart';
 import 'substitution_work_display_name_service.dart';
+import 'substitution_work_profile_firestore_gateway.dart';
+import 'substitution_work_profile_service.dart';
 import 'substitution_rotation_membership_firestore_gateway.dart';
 
 SubstitutionParticipantActionsService
@@ -125,5 +127,18 @@ SubstitutionWorkDisplayNameService createSubstitutionWorkDisplayNameService({
 
   return SubstitutionWorkDisplayNameService(
     workDisplayNameWriter: resolvedGateway.updateWorkDisplayName,
+  );
+}
+
+SubstitutionWorkProfileService createSubstitutionWorkProfileService({
+  FirebaseFirestore? firestore,
+  SubstitutionWorkProfileFirestoreGateway? gateway,
+}) {
+  final resolvedGateway =
+      gateway ??
+      SubstitutionWorkProfileFirestoreGateway.firebase(firestore: firestore);
+
+  return SubstitutionWorkProfileService(
+    workProfileWriter: resolvedGateway.updateWorkProfile,
   );
 }

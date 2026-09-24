@@ -7,6 +7,7 @@ import '../domain/models/spaces_access_role.dart';
 import '../domain/models/substitution_call_receipt.dart';
 import '../domain/models/substitution_participant.dart';
 import '../domain/models/substitution_rotation_draft.dart';
+import '../domain/models/shift_cycle.dart';
 import '../models/app_user.dart';
 import '../services/spaces/spaces_dependencies.dart';
 import '../services/spaces/substitution/substitution_call_service.dart';
@@ -15,6 +16,7 @@ import '../services/spaces/substitution/substitution_dependencies.dart';
 import '../services/spaces/substitution/substitution_participant_actions_service.dart';
 import '../services/spaces/substitution/substitution_participants_service.dart';
 import '../services/spaces/substitution/substitution_user_cache.dart';
+import '../services/spaces/substitution/substitution_work_profile_service.dart';
 import '../widgets/spaces/substitution/substitution_participant_overlay.dart';
 import '../widgets/spaces/substitution/substitution_participant_row.dart';
 import '../widgets/spaces/substitution/substitution_queue_badge.dart';
@@ -27,6 +29,20 @@ import '../services/spaces/substitution/substitution_statistics_service.dart';
 import '../domain/models/substitution_shift.dart';
 import '../services/spaces/substitution/substitution_rotation_edit_service.dart';
 import '../services/spaces/substitution/substitution_shift_call_claim.dart';
+import '../domain/models/vacation_period.dart';
+import '../services/spaces/calendar/vacation_period_service.dart';
+import '../services/spaces/substitution/substitution_effective_status_resolver.dart';
+import 'vacation_periods_screen.dart';
+
+final class _SubstitutionWorkProfileEditResult {
+  const _SubstitutionWorkProfileEditResult({
+    required this.workDisplayName,
+    required this.crew,
+  });
+
+  final String workDisplayName;
+  final ShiftCrew? crew;
+}
 
 class SubstitutionSpaceScreen extends StatefulWidget {
   const SubstitutionSpaceScreen({super.key});
@@ -37,17 +53,22 @@ class SubstitutionSpaceScreen extends StatefulWidget {
 }
 
 class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late final SubstitutionParticipantsService _participantsService;
   late final SubstitutionUserCache _userCache;
   late final SubstitutionCallService _callService;
   late final SubstitutionCallReconciliationService _callReconciliationService;
   late final SubstitutionParticipantActionsService _participantActionsService;
   late final SubstitutionWorkDisplayNameService _workDisplayNameService;
+  late final SubstitutionWorkProfileService _workProfileService;
   late final SubstitutionUiPreferences _uiPreferences;
   late final SubstitutionStatisticsService _statisticsService;
   late final TabController _tabController;
   late final SubstitutionRotationEditService _rotationEditService;
+  late final VacationPeriodService _vacationPeriodService;
+
+  final SubstitutionEffectiveStatusResolver _effectiveStatusResolver =
+      const SubstitutionEffectiveStatusResolver();
 
   int _currentTabIndex = 0;
   SubstitutionQueueDisplayMode _queueDisplayMode =
@@ -75,6 +96,12 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
   bool _isWorkDisplayNameActionInProgress = false;
 
   StreamSubscription<List<SubstitutionParticipant>>? _participantsSubscription;
+  StreamSubscription<List<VacationPeriod>>? _vacationPeriodsSubscription;
+
+  List<VacationPeriod> _vacationPeriods = const <VacationPeriod>[];
+  Object? _vacationPeriodsError;
+
+  Timer? _dayRolloverTimer;
 
   List<SubstitutionParticipant> _participants =
       const <SubstitutionParticipant>[];
@@ -101,6 +128,7 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
 
     _tabController = TabController(length: 3, vsync: this);
     _tabController.addListener(_handleTabChanged);
@@ -112,12 +140,16 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
     _participantActionsService = createSubstitutionParticipantActionsService();
     _rotationEditService = createSubstitutionRotationEditService();
     _workDisplayNameService = createSubstitutionWorkDisplayNameService();
+    _workProfileService = createSubstitutionWorkProfileService();
     _statisticsService = createSubstitutionStatisticsService();
     _uiPreferences = SubstitutionUiPreferences();
+    _vacationPeriodService = VacationPeriodService.firebase();
 
     unawaited(_loadAccessRole());
     unawaited(_loadUiPreferences());
     _watchParticipants();
+    _watchVacationPeriods();
+    _scheduleDayRollover();
   }
 
   void _handleTabChanged() {
@@ -161,6 +193,15 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
   @override
   void dispose() {
     final subscription = _participantsSubscription;
+    WidgetsBinding.instance.removeObserver(this);
+
+    _dayRolloverTimer?.cancel();
+
+    final vacationPeriodsSubscription = _vacationPeriodsSubscription;
+
+    if (vacationPeriodsSubscription != null) {
+      unawaited(vacationPeriodsSubscription.cancel());
+    }
 
     if (subscription != null) {
       unawaited(subscription.cancel());
@@ -401,6 +442,80 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
     }
 
     return _statistics?.callsForYear(userId) ?? 0;
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed || !mounted) {
+      return;
+    }
+
+    setState(() {});
+
+    _scheduleDayRollover();
+  }
+
+  void _scheduleDayRollover() {
+    _dayRolloverTimer?.cancel();
+
+    final now = DateTime.now();
+
+    final nextDay = DateTime(now.year, now.month, now.day + 1);
+
+    _dayRolloverTimer = Timer(
+      nextDay.difference(now) + const Duration(milliseconds: 100),
+      () {
+        if (!mounted) {
+          return;
+        }
+
+        setState(() {});
+
+        _scheduleDayRollover();
+      },
+    );
+  }
+
+  void _watchVacationPeriods() {
+    final subscription = _vacationPeriodsSubscription;
+
+    _vacationPeriodsSubscription = null;
+
+    if (subscription != null) {
+      unawaited(subscription.cancel());
+    }
+
+    _vacationPeriodsSubscription = _vacationPeriodService.watchAll().listen(
+      (periods) {
+        if (!mounted) {
+          return;
+        }
+
+        setState(() {
+          _vacationPeriods = periods;
+          _vacationPeriodsError = null;
+        });
+      },
+      onError: (Object error, StackTrace stackTrace) {
+        debugPrint('VACATION WATCH ERROR: $error');
+
+        if (!mounted) {
+          return;
+        }
+
+        setState(() {
+          _vacationPeriodsError = error;
+        });
+      },
+    );
+  }
+
+  void _retryVacationPeriods() {
+    setState(() {
+      _vacationPeriodsError = null;
+    });
+
+    _watchVacationPeriods();
   }
 
   void _watchParticipants() {
@@ -768,7 +883,7 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
     );
   }
 
-  Future<void> _editParticipantWorkDisplayName(
+  Future<void> _editParticipantWorkProfile(
     SubstitutionParticipant participant,
     AppUser user,
   ) async {
@@ -777,57 +892,100 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
     }
 
     var editedName = user.workDisplayName.trim();
-    final defaultName = user.name.trim();
+    var editedCrew = user.assignedCrew;
 
-    final newWorkDisplayName = await showDialog<String>(
+    final result = await showDialog<_SubstitutionWorkProfileEditResult>(
       context: context,
       builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('Рабочее имя'),
-          content: TextFormField(
-            initialValue: editedName,
-            autofocus: true,
-            maxLength:
-                SubstitutionWorkDisplayNameService.maxWorkDisplayNameLength,
-            decoration: InputDecoration(
-              labelText: 'Имя в подсменке',
-              hintText: defaultName.isEmpty ? null : defaultName,
-              helperText: 'Пустое поле вернёт обычное имя пользователя',
-            ),
-            textCapitalization: TextCapitalization.words,
-            textInputAction: TextInputAction.done,
-            onChanged: (value) {
-              editedName = value;
-            },
-            onFieldSubmitted: (value) {
-              Navigator.of(dialogContext).pop(value);
-            },
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(dialogContext).pop();
-              },
-              child: const Text('Отмена'),
-            ),
-            FilledButton(
-              onPressed: () {
-                Navigator.of(dialogContext).pop(editedName);
-              },
-              child: const Text('Сохранить'),
-            ),
-          ],
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Рабочий профиль'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    TextFormField(
+                      initialValue: editedName,
+                      autofocus: true,
+                      maxLength: SubstitutionWorkProfileService
+                          .maxWorkDisplayNameLength,
+                      decoration: InputDecoration(
+                        labelText: 'Имя в подсменке',
+                        hintText: user.name.trim().isEmpty
+                            ? null
+                            : user.name.trim(),
+                        helperText:
+                            'Пустое поле вернёт обычное имя пользователя',
+                      ),
+                      textCapitalization: TextCapitalization.words,
+                      onChanged: (value) {
+                        editedName = value;
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<ShiftCrew>(
+                      initialValue: editedCrew,
+                      decoration: const InputDecoration(
+                        labelText: 'Звено',
+                        border: OutlineInputBorder(),
+                      ),
+                      hint: const Text('Не выбрано'),
+                      items: ShiftCrew.values
+                          .map(
+                            (crew) => DropdownMenuItem<ShiftCrew>(
+                              value: crew,
+                              child: Text(crew.displayName),
+                            ),
+                          )
+                          .toList(growable: false),
+                      onChanged: (crew) {
+                        setDialogState(() {
+                          editedCrew = crew;
+                        });
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(dialogContext).pop();
+                  },
+                  child: const Text('Отмена'),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    Navigator.of(dialogContext).pop(
+                      _SubstitutionWorkProfileEditResult(
+                        workDisplayName: editedName,
+                        crew: editedCrew,
+                      ),
+                    );
+                  },
+                  child: const Text('Сохранить'),
+                ),
+              ],
+            );
+          },
         );
       },
     );
 
-    if (!mounted || newWorkDisplayName == null) {
+    if (!mounted || result == null) {
       return;
     }
 
-    final normalizedName = newWorkDisplayName.trim();
+    final normalizedName = result.workDisplayName.trim();
+    final selectedCrew = result.crew;
 
-    if (normalizedName == user.workDisplayName.trim()) {
+    final nameChanged = normalizedName != user.workDisplayName.trim();
+    final crewChanged =
+        selectedCrew != null && selectedCrew != user.assignedCrew;
+
+    if (!nameChanged && !crewChanged) {
       return;
     }
 
@@ -836,10 +994,18 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
     });
 
     try {
-      await _workDisplayNameService.updateWorkDisplayName(
-        userId: participant.userId,
-        workDisplayName: normalizedName,
-      );
+      if (selectedCrew == null) {
+        await _workDisplayNameService.updateWorkDisplayName(
+          userId: participant.userId,
+          workDisplayName: normalizedName,
+        );
+      } else {
+        await _workProfileService.updateWorkProfile(
+          userId: participant.userId,
+          workDisplayName: normalizedName,
+          crew: selectedCrew,
+        );
+      }
 
       await _userCache.refresh(participant.userId);
 
@@ -854,7 +1020,7 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Не удалось изменить рабочее имя')),
+        const SnackBar(content: Text('Не удалось изменить рабочий профиль')),
       );
     } finally {
       if (mounted) {
@@ -1133,6 +1299,52 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
     }
   }
 
+  Future<void> _openParticipantVacationPeriods(
+    SubstitutionParticipant participant,
+  ) async {
+    if (_isActionInProgress || !_accessRole.canManageSubstitution) {
+      return;
+    }
+
+    final participantPeriods = _vacationPeriods
+        .where((period) => period.userId == participant.userId)
+        .toList(growable: false);
+
+    final now = DateTime.now();
+
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) {
+          return VacationPeriodsScreen(
+            calendarYear: now.year,
+            userId: participant.userId,
+            initialPeriods: participantPeriods,
+            service: _vacationPeriodService,
+            onPeriodsChanged: (updatedPeriods) {
+              if (!mounted) {
+                return;
+              }
+
+              setState(() {
+                _vacationPeriods = <VacationPeriod>[
+                  ..._vacationPeriods.where(
+                    (period) => period.userId != participant.userId,
+                  ),
+                  ...updatedPeriods,
+                ];
+
+                _vacationPeriodsError = null;
+              });
+            },
+          );
+        },
+      ),
+    );
+    if (mounted) {
+      _watchVacationPeriods();
+    }
+  }
+
   Future<void> _updateParticipantStatus(
     SubstitutionParticipant participant,
     SubstitutionParticipantStatus status,
@@ -1266,6 +1478,69 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
     }
   }
 
+  List<SubstitutionParticipant> _applyEffectiveStatuses(
+    Iterable<SubstitutionParticipant> participants,
+  ) {
+    final now = DateTime.now();
+
+    return participants
+        .map((participant) {
+          final status = _effectiveStatusResolver.resolve(
+            participant: participant,
+            vacationPeriods: _vacationPeriods,
+            date: now,
+          );
+
+          if (status == participant.status) {
+            return participant;
+          }
+
+          return participant.withStatus(status);
+        })
+        .toList(growable: false);
+  }
+
+  bool _isOnCalendarVacation(String userId) {
+    final normalizedUserId = userId.trim();
+    final now = DateTime.now();
+
+    return _vacationPeriods.any(
+      (period) => period.userId == normalizedUserId && period.contains(now),
+    );
+  }
+
+  String? _currentVacationTextFor(String userId) {
+    final normalizedUserId = userId.trim();
+    final now = DateTime.now();
+
+    VacationPeriod? currentPeriod;
+
+    for (final period in _vacationPeriods) {
+      if (period.userId != normalizedUserId || !period.contains(now)) {
+        continue;
+      }
+
+      if (currentPeriod == null ||
+          period.startDateOnly.isBefore(currentPeriod.startDateOnly)) {
+        currentPeriod = period;
+      }
+    }
+
+    if (currentPeriod == null) {
+      return null;
+    }
+
+    return '${_formatShortDate(currentPeriod.startDateOnly)}–'
+        '${_formatShortDate(currentPeriod.endDateOnly)}';
+  }
+
+  String _formatShortDate(DateTime date) {
+    final day = date.day.toString().padLeft(2, '0');
+    final month = date.month.toString().padLeft(2, '0');
+
+    return '$day.$month';
+  }
+
   void _openParticipantCard(SubstitutionParticipant participant) {
     setState(() {
       _selectedParticipantId = participant.userId;
@@ -1283,12 +1558,17 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
     });
   }
 
-  SubstitutionParticipant? _participantById(String? userId) {
+  SubstitutionParticipant? _participantById(
+    String? userId, {
+    Iterable<SubstitutionParticipant>? participants,
+  }) {
     if (userId == null || userId.isEmpty) {
       return null;
     }
 
-    for (final participant in _participants) {
+    final source = participants ?? _participants;
+
+    for (final participant in source) {
       if (participant.userId == userId) {
         return participant;
       }
@@ -1340,7 +1620,9 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
 
   @override
   Widget build(BuildContext context) {
-    final displayedParticipants = _rotationDraft?.participants ?? _participants;
+    final sourceParticipants = _rotationDraft?.participants ?? _participants;
+
+    final displayedParticipants = _applyEffectiveStatuses(sourceParticipants);
 
     final activeParticipants = displayedParticipants
         .where((participant) => participant.isActive)
@@ -1359,7 +1641,10 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
     final canManageSubstitution =
         !_isAccessRoleLoading && _accessRole.canManageSubstitution;
 
-    final selectedParticipant = _participantById(_selectedParticipantId);
+    final selectedParticipant = _participantById(
+      _selectedParticipantId,
+      participants: displayedParticipants,
+    );
 
     final selectedUser = selectedParticipant == null
         ? null
@@ -1465,6 +1750,7 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
             yearCallCount: selectedParticipant != null
                 ? _currentYearStatisticsCountFor(selectedParticipant.userId)
                 : null,
+            showAssignedCrew: canManageSubstitution,
             onClose: _closeParticipantCard,
             onEditName:
                 canManageSubstitution &&
@@ -1473,7 +1759,7 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
                     !_isActionInProgress
                 ? () {
                     unawaited(
-                      _editParticipantWorkDisplayName(
+                      _editParticipantWorkProfile(
                         selectedParticipant,
                         selectedUser,
                       ),
@@ -1493,14 +1779,12 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
             onVacation:
                 canManageSubstitution &&
                     selectedParticipant != null &&
-                    selectedParticipant.isActive &&
+                    (selectedParticipant.isActive ||
+                        selectedParticipant.isOnVacation) &&
                     !_isActionInProgress
                 ? () {
                     unawaited(
-                      _updateParticipantStatus(
-                        selectedParticipant,
-                        SubstitutionParticipantStatus.vacation,
-                      ),
+                      _openParticipantVacationPeriods(selectedParticipant),
                     );
                   }
                 : null,
@@ -1521,7 +1805,11 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
             onReturnToList:
                 selectedParticipant != null &&
                     !_isActionInProgress &&
-                    ((canManageSubstitution && !selectedParticipant.isActive) ||
+                    ((canManageSubstitution &&
+                            !selectedParticipant.isActive &&
+                            !_isOnCalendarVacation(
+                              selectedParticipant.userId,
+                            )) ||
                         (selectedParticipant.userId == _currentUserId &&
                             selectedParticipant.isSick))
                 ? () {
@@ -1567,6 +1855,19 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
 
     return Column(
       children: [
+        if (_vacationPeriodsError != null)
+          Material(
+            color: Theme.of(context).colorScheme.errorContainer,
+            child: ListTile(
+              dense: true,
+              leading: const Icon(Icons.warning_amber_rounded),
+              title: const Text('Не удалось загрузить данные отпусков'),
+              trailing: TextButton(
+                onPressed: _retryVacationPeriods,
+                child: const Text('Повторить'),
+              ),
+            ),
+          ),
         if (_usersError != null)
           Material(
             color: Theme.of(context).colorScheme.errorContainer,
@@ -1639,8 +1940,17 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
                 emptyText: 'В отпуске никого нет',
                 showQueueNumber: false,
                 queueDisplayMode: _queueDisplayMode,
-                showStatistics: _showStatistics && !_isRotationEditing,
+                showStatistics: false,
                 statisticsCountFor: _currentMonthStatisticsCountFor,
+                secondaryTextFor: _currentVacationTextFor,
+                onTap:
+                    !_isRotationEditing &&
+                        canManageSubstitution &&
+                        !_isActionInProgress
+                    ? (participant) {
+                        unawaited(_openParticipantVacationPeriods(participant));
+                      }
+                    : null,
                 onOpenCard: _isRotationEditing ? null : _openParticipantCard,
               ),
               _ParticipantListTab(
@@ -1649,7 +1959,7 @@ class _SubstitutionSpaceScreenState extends State<SubstitutionSpaceScreen>
                 emptyText: 'На больничном никого нет',
                 showQueueNumber: false,
                 queueDisplayMode: _queueDisplayMode,
-                showStatistics: _showStatistics && !_isRotationEditing,
+                showStatistics: false,
                 statisticsCountFor: _currentMonthStatisticsCountFor,
                 onOpenCard: _isRotationEditing ? null : _openParticipantCard,
               ),
@@ -1670,6 +1980,7 @@ class _ParticipantListTab extends StatefulWidget {
     required this.queueDisplayMode,
     required this.showStatistics,
     required this.statisticsCountFor,
+    this.secondaryTextFor,
     this.onOpenCard,
     this.onCall,
     this.showRotationControls = false,
@@ -1677,6 +1988,7 @@ class _ParticipantListTab extends StatefulWidget {
     this.canMoveDown,
     this.onMoveUp,
     this.onMoveDown,
+    this.onTap,
   });
 
   final List<SubstitutionParticipant> participants;
@@ -1687,6 +1999,7 @@ class _ParticipantListTab extends StatefulWidget {
   final SubstitutionQueueDisplayMode queueDisplayMode;
   final bool showStatistics;
   final int? Function(String userId) statisticsCountFor;
+  final String? Function(String userId)? secondaryTextFor;
 
   final ValueChanged<SubstitutionParticipant>? onOpenCard;
   final ValueChanged<SubstitutionParticipant>? onCall;
@@ -1699,6 +2012,7 @@ class _ParticipantListTab extends StatefulWidget {
 
   final ValueChanged<SubstitutionParticipant>? onMoveUp;
   final ValueChanged<SubstitutionParticipant>? onMoveDown;
+  final ValueChanged<SubstitutionParticipant>? onTap;
 
   @override
   State<_ParticipantListTab> createState() => _ParticipantListTabState();
@@ -1875,9 +2189,17 @@ class _ParticipantListTabState extends State<_ParticipantListTab> {
                 user: user,
                 queuePosition: widget.showQueueNumber ? index + 1 : null,
                 queueDisplayMode: widget.queueDisplayMode,
+                secondaryText: widget.secondaryTextFor?.call(
+                  participant.userId,
+                ),
                 statisticsCount: widget.showStatistics
                     ? widget.statisticsCountFor(participant.userId)
                     : null,
+                onTap: widget.onTap == null
+                    ? null
+                    : () {
+                        widget.onTap!(participant);
+                      },
                 onCall: widget.onCall == null
                     ? null
                     : () {

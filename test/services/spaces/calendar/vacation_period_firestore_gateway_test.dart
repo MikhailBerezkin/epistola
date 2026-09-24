@@ -174,6 +174,84 @@ void main() {
       );
     });
 
+    test('watch all maps periods for multiple users', () async {
+      final gateway = VacationPeriodFirestoreGateway(
+        documentsLoader: ({required String userId}) async {
+          return const <VacationPeriodDocument>[];
+        },
+        allDocumentsWatcher: () {
+          return Stream<List<VacationPeriodDocument>>.value(
+            <VacationPeriodDocument>[
+              (
+                id: 'user-2__2',
+                data: _vacationPeriodData(
+                  userId: 'user-2',
+                  slot: 2,
+                  startDay: 20261101,
+                  endDay: 20261110,
+                ),
+              ),
+              (
+                id: 'user-1__3',
+                data: _vacationPeriodData(
+                  userId: 'user-1',
+                  slot: 3,
+                  startDay: 20261005,
+                  endDay: 20261018,
+                ),
+              ),
+              (
+                id: 'user-1__1',
+                data: _vacationPeriodData(
+                  userId: 'user-1',
+                  slot: 1,
+                  startDay: 20260901,
+                  endDay: 20260914,
+                ),
+              ),
+            ],
+          );
+        },
+        documentSaver: _noOpSaver,
+        documentDeleter: _noOpDeleter,
+      );
+
+      final periods = await gateway.watchAll().first;
+
+      expect(periods.map((period) => period.documentId), <String>[
+        'user-1__1',
+        'user-1__3',
+        'user-2__2',
+      ]);
+    });
+
+    test('watch all rejects mismatched document id', () async {
+      final gateway = VacationPeriodFirestoreGateway(
+        documentsLoader: ({required String userId}) async {
+          return const <VacationPeriodDocument>[];
+        },
+        allDocumentsWatcher: () {
+          return Stream<List<VacationPeriodDocument>>.value(
+            <VacationPeriodDocument>[
+              (
+                id: 'wrong-id',
+                data: _vacationPeriodData(
+                  userId: 'user-1',
+                  slot: 1,
+                  startDay: 20261005,
+                  endDay: 20261018,
+                ),
+              ),
+            ],
+          );
+        },
+        documentSaver: _noOpSaver,
+        documentDeleter: _noOpDeleter,
+      );
+
+      await expectLater(gateway.watchAll().toList(), throwsStateError);
+    });
+
     test('save normalizes user id and calendar dates', () async {
       String? savedDocumentId;
       Map<String, dynamic>? savedData;

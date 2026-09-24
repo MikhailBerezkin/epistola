@@ -9,6 +9,8 @@ import 'package:epistola/services/spaces/substitution/substitution_rotation_edit
 import 'package:epistola/services/spaces/substitution/substitution_statistics_firestore_gateway.dart';
 import 'package:epistola/services/spaces/substitution/substitution_work_display_name_firestore_gateway.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:epistola/domain/models/shift_cycle.dart';
+import 'package:epistola/services/spaces/substitution/substitution_work_profile_firestore_gateway.dart';
 
 void main() {
   group('participant actions dependencies', () {
@@ -129,6 +131,48 @@ void main() {
         ),
       ]);
     });
+  });
+
+  group('work profile dependencies', () {
+    test(
+      'wires work name and assigned crew through one firestore update',
+      () async {
+        final updates = <_Update>[];
+
+        final gateway = SubstitutionWorkProfileFirestoreGateway(
+          documentUpdater:
+              ({
+                required String userId,
+                required Map<String, dynamic> data,
+              }) async {
+                updates.add(
+                  _Update(
+                    userId: userId,
+                    data: Map<String, dynamic>.from(data),
+                  ),
+                );
+              },
+        );
+
+        final service = createSubstitutionWorkProfileService(gateway: gateway);
+
+        await service.updateWorkProfile(
+          userId: ' user-1 ',
+          workDisplayName: '  Михаил  ',
+          crew: ShiftCrew.crew3,
+        );
+
+        expect(updates, const <_Update>[
+          _Update(
+            userId: 'user-1',
+            data: <String, dynamic>{
+              'workDisplayName': 'Михаил',
+              'assignedCrew': 3,
+            },
+          ),
+        ]);
+      },
+    );
   });
 
   group('production statistics dependencies', () {

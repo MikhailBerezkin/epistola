@@ -24,6 +24,10 @@ final class VacationPeriodService {
     return _gateway.watchForUser(userId: userId);
   }
 
+  Stream<List<VacationPeriod>> watchAll() {
+    return _gateway.watchAll();
+  }
+
   Future<VacationPeriod> create({
     required String userId,
     required DateTime startDate,

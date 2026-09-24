@@ -18,6 +18,9 @@ import 'shift_calendar_screen.dart';
 import '../platform/epistola_platform_capabilities.dart';
 import '../domain/models/spaces_bar_message.dart';
 import '../platform/epistola_runtime_mode.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../models/app_user.dart';
+import 'assigned_crew_setup_screen.dart';
 
 class SpacesPage extends StatefulWidget {
   const SpacesPage({super.key, this.spacesBarTargetMessageId});
@@ -45,6 +48,22 @@ class _SpacesPageState extends State<SpacesPage> with WidgetsBindingObserver {
 
   String get _currentUserId {
     return FirebaseAuth.instance.currentUser?.uid.trim() ?? '';
+  }
+
+  Future<void> _openAssignedCrewSetup() async {
+    final userId = _currentUserId;
+
+    if (userId.isEmpty) {
+      return;
+    }
+
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) {
+          return AssignedCrewSetupScreen(userId: userId);
+        },
+      ),
+    );
   }
 
   @override
@@ -487,6 +506,52 @@ class _SpacesPageState extends State<SpacesPage> with WidgetsBindingObserver {
                 ),
               ),
             ),
+            if (_currentUserId.isNotEmpty)
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                sliver: SliverToBoxAdapter(
+                  child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+                    stream: FirebaseFirestore.instance
+                        .collection('users')
+                        .doc(_currentUserId)
+                        .snapshots(),
+                    builder: (context, snapshot) {
+                      final document = snapshot.data;
+
+                      if (document == null || !document.exists) {
+                        return const SizedBox.shrink();
+                      }
+
+                      final user = AppUser.fromFirestore(document);
+
+                      if (user.assignedCrew != null) {
+                        return const SizedBox.shrink();
+                      }
+
+                      return MaterialBanner(
+                        leading: Icon(
+                          Icons.groups_2_outlined,
+                          color: Theme.of(context).colorScheme.error,
+                        ),
+                        content: Text(
+                          'Вам необходимо выбрать звено!',
+                          style: Theme.of(context).textTheme.bodyLarge
+                              ?.copyWith(
+                                color: Theme.of(context).colorScheme.error,
+                                fontWeight: FontWeight.w700,
+                              ),
+                        ),
+                        actions: [
+                          FilledButton(
+                            onPressed: _openAssignedCrewSetup,
+                            child: const Text('Выбрать звено'),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+              ),
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
               sliver: SliverGrid(

@@ -20,6 +20,7 @@ class SubstitutionParticipantOverlay extends StatelessWidget {
     this.statisticsMonth,
     this.monthShifts = const <SubstitutionShiftKind>[],
     this.yearCallCount,
+    this.showAssignedCrew = false,
     this.onEditName,
     this.onAvailabilityChanged,
     this.onVacation,
@@ -36,6 +37,7 @@ class SubstitutionParticipantOverlay extends StatelessWidget {
   final int? statisticsMonth;
   final List<SubstitutionShiftKind> monthShifts;
   final int? yearCallCount;
+  final bool showAssignedCrew;
   final VoidCallback onClose;
   final VoidCallback? onEditName;
   final ValueChanged<SubstitutionAvailability>? onAvailabilityChanged;
@@ -98,6 +100,15 @@ class SubstitutionParticipantOverlay extends StatelessWidget {
                   participant: currentParticipant,
                   queuePosition: queuePosition,
                 ),
+                if (showAssignedCrew) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    'Звено: ${currentUser?.assignedCrew?.displayName ?? 'Не выбрано'}',
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                      color: Colors.white.withValues(alpha: 0.88),
+                    ),
+                  ),
+                ],
                 if (monthlyCallCount != null &&
                     statisticsMonth != null &&
                     yearCallCount != null) ...[
@@ -156,6 +167,15 @@ class SubstitutionParticipantOverlay extends StatelessWidget {
                       ],
                     ),
                 ] else ...[
+                  if (currentParticipant.isOnVacation &&
+                      onVacation != null) ...[
+                    FilledButton.tonalIcon(
+                      onPressed: onVacation,
+                      icon: const Icon(Icons.edit_outlined),
+                      label: const Text('Редактировать отпуск'),
+                    ),
+                    if (onReturnToList != null) const SizedBox(height: 12),
+                  ],
                   if (onReturnToList != null)
                     FilledButton.tonal(
                       onPressed: onReturnToList,
@@ -232,7 +252,7 @@ class _ParticipantHeader extends StatelessWidget {
         ),
         if (onEditName != null)
           IconButton(
-            tooltip: 'Изменить рабочее имя',
+            tooltip: 'Изменить рабочий профиль',
             onPressed: onEditName,
             color: Colors.white,
             icon: const Icon(Icons.edit_outlined),

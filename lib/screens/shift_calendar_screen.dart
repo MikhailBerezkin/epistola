@@ -18,6 +18,7 @@ import '../services/spaces/calendar/calendar_entry_day_markers.dart';
 import '../domain/models/calendar_additional_shift_event.dart';
 import '../services/spaces/calendar/calendar_additional_shift_service.dart';
 import '../services/work_schedule/user_assigned_crew_reader.dart';
+import 'assigned_crew_setup_screen.dart';
 
 enum ShiftCalendarViewMode { full, compact }
 
@@ -239,6 +240,33 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
       _hasSelectedDate = true;
       _viewMode = ShiftCalendarViewMode.compact;
       _compactStripRevision++;
+    });
+  }
+
+  Future<void> _openAssignedCrewSetup() async {
+    final userId = _currentUserId;
+
+    if (userId.isEmpty) {
+      return;
+    }
+
+    final selectedCrew = await Navigator.of(context).push<ShiftCrew>(
+      MaterialPageRoute<ShiftCrew>(
+        builder: (_) {
+          return AssignedCrewSetupScreen(userId: userId);
+        },
+      ),
+    );
+
+    if (!mounted || selectedCrew == null) {
+      return;
+    }
+
+    setState(() {
+      _assignedCrew = selectedCrew;
+      _previewCrew = null;
+      _assignedCrewLoadFailed = false;
+      _isAssignedCrewLoaded = true;
     });
   }
 
@@ -595,13 +623,48 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
     if (crew == null) {
       return Scaffold(
         appBar: AppBar(title: const Text('Календарь смен')),
-        body: const Center(
-          child: Padding(
-            padding: EdgeInsets.all(24),
-            child: Text(
-              'Вы не выбрали ваше звено.\n'
-              'Выберите звено в профиле, чтобы открыть рабочий календарь.',
-              textAlign: TextAlign.center,
+        body: SafeArea(
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 420),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Icon(
+                      Icons.groups_2_outlined,
+                      size: 52,
+                      color: theme.colorScheme.primary,
+                    ),
+                    const SizedBox(height: 20),
+                    Text(
+                      'Вы не выбрали ваше звено',
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      'Звено нужно, чтобы показать ваш рабочий график.',
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.bodyLarge?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    FilledButton.icon(
+                      onPressed: () {
+                        unawaited(_openAssignedCrewSetup());
+                      },
+                      icon: const Icon(Icons.groups_2_outlined),
+                      label: const Text('Выбрать звено'),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
         ),

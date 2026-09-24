@@ -1613,6 +1613,39 @@ function isOwnVacationPeriodWrite(
           == request.time;
 }
 
+function isManagedVacationPeriodWrite(
+  vacationPeriodId
+) {
+  return isSpacesManager()
+
+      && exists(
+        /databases/$(database)/documents/spaces/substitution/participants/$(request.resource.data.userId)
+      )
+
+      && hasValidVacationPeriodData(
+        request.resource.data,
+        vacationPeriodId
+      )
+
+      && request.resource.data.updatedAt
+          == request.time;
+}
+
+function isManagedVacationPeriodDelete(
+  vacationPeriodId
+) {
+  return isSpacesManager()
+
+      && hasValidVacationPeriodData(
+        resource.data,
+        vacationPeriodId
+      )
+
+      && exists(
+        /databases/$(database)/documents/spaces/substitution/participants/$(resource.data.userId)
+      );
+}
+
 function hasValidSubstitutionParticipantData(data) {
   return data.keys().hasAll([
         'rotationOrder',
@@ -3236,14 +3269,19 @@ match /spaces/calendar {
   allow create, update, delete: if false;
 
   match /vacationPeriods/{vacationPeriodId} {
-    allow get, list: if signedIn();
+  allow get, list: if signedIn();
 
-    allow create, update: if
-        isOwnVacationPeriodWrite(
-          vacationPeriodId
-        );
+  allow create, update: if
+      isOwnVacationPeriodWrite(
+        vacationPeriodId
+      )
 
-    allow delete: if
+      || isManagedVacationPeriodWrite(
+        vacationPeriodId
+      );
+
+  allow delete: if
+      (
         signedIn()
 
         && request.auth.uid
@@ -3252,8 +3290,13 @@ match /spaces/calendar {
         && hasValidVacationPeriodData(
           resource.data,
           vacationPeriodId
-        );
-  }
+        )
+      )
+
+      || isManagedVacationPeriodDelete(
+        vacationPeriodId
+      );
+}
 }
 
 match /spaces/substitution {
