@@ -9,6 +9,7 @@ import '../domain/models/substitution_shift.dart';
 import '../services/spaces/calendar/shift_schedule_calculator.dart';
 import '../services/spaces/calendar/vacation_period_service.dart';
 import 'shift_calendar_settings_screen.dart';
+import 'shift_alarm_settings_screen.dart';
 import 'vacation_periods_screen.dart';
 import '../domain/models/calendar_entry.dart';
 import 'calendar_entry_editor_screen.dart';
@@ -19,6 +20,7 @@ import '../domain/models/calendar_additional_shift_event.dart';
 import '../services/spaces/calendar/calendar_additional_shift_service.dart';
 import '../services/work_schedule/user_assigned_crew_reader.dart';
 import 'assigned_crew_setup_screen.dart';
+import '../services/spaces/calendar/shift_alarm_scheduling_service.dart';
 
 enum ShiftCalendarViewMode { full, compact }
 
@@ -67,6 +69,7 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
 
   late final VacationPeriodService _vacationPeriodService;
   late final CalendarAdditionalShiftService _additionalShiftService;
+  late final ShiftAlarmSchedulingService _shiftAlarmSchedulingService;
 
   StreamSubscription<List<VacationPeriod>>? _vacationPeriodsSubscription;
   StreamSubscription<List<CalendarAdditionalShiftEvent>>?
@@ -75,6 +78,8 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
   List<VacationPeriod> _vacationPeriods = const <VacationPeriod>[];
   List<CalendarAdditionalShiftEvent> _additionalShiftEvents =
       const <CalendarAdditionalShiftEvent>[];
+
+  Future<void> _shiftAlarmReconcileQueue = Future<void>.value();
 
   @override
   void initState() {
@@ -91,6 +96,7 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
     _vacationPeriodService = VacationPeriodService.firebase();
     _additionalShiftService = CalendarAdditionalShiftService.firebase();
     _assignedCrewReader = UserAssignedCrewReader.firebase();
+    _shiftAlarmSchedulingService = ShiftAlarmSchedulingService();
 
     _watchAssignedCrew();
     _watchVacationPeriods();
@@ -292,6 +298,46 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
     });
   }
 
+  Future<void> _reconcileShiftAlarms() {
+    final reconcile = _shiftAlarmReconcileQueue.then((_) async {
+      final userId = _currentUserId;
+      final crew = _assignedCrew;
+
+      if (userId.isEmpty || crew == null) {
+        return;
+      }
+
+      await _shiftAlarmSchedulingService.reconcile(
+        userId: userId,
+        crew: crew,
+        vacationPeriods: _vacationPeriods,
+      );
+    });
+
+    _shiftAlarmReconcileQueue = reconcile.catchError((Object _) {});
+
+    return reconcile;
+  }
+
+  Future<void> _openShiftAlarms() async {
+    final userId = _currentUserId;
+
+    if (userId.isEmpty) {
+      return;
+    }
+
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) {
+          return ShiftAlarmSettingsScreen(
+            userId: userId,
+            onScheduleChanged: _reconcileShiftAlarms,
+          );
+        },
+      ),
+    );
+  }
+
   String get _currentUserId {
     return FirebaseAuth.instance.currentUser?.uid.trim() ?? '';
   }
@@ -329,6 +375,7 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
                 _previewCrew = null;
               }
             });
+            unawaited(_reconcileShiftAlarms());
           },
           onError: (Object error, StackTrace stackTrace) {
             if (!mounted) {
@@ -361,6 +408,7 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
             setState(() {
               _vacationPeriods = periods;
             });
+            unawaited(_reconcileShiftAlarms());
           },
           onError: (Object error, StackTrace stackTrace) {
             // Ошибка Firestore не должна ломать сам календарь.
@@ -553,6 +601,7 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
         break;
 
       case _CalendarMenuAction.alarms:
+        unawaited(_openShiftAlarms());
         break;
 
       case _CalendarMenuAction.themes:

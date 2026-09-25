@@ -9,6 +9,8 @@ import 'package:timezone/timezone.dart' as tz;
 import 'package:vibration/vibration.dart';
 
 import '../domain/models/push_deep_link_request.dart';
+import '../domain/models/shift_alarm.dart';
+import '../domain/models/shift_alarm_occurrence.dart';
 import 'chat/active_chat_tracker.dart';
 import 'push/push_deep_link_coordinator.dart';
 import 'push_token_service.dart';
@@ -62,6 +64,17 @@ class NotificationService {
         enableVibration: true,
       );
 
+  static const AndroidNotificationChannel _shiftAlarmChannel =
+      AndroidNotificationChannel(
+        'epistola_shift_alarms_v1',
+        'Будильники смен Epistola',
+        description: 'Будильники и короткие сигналы рабочего календаря',
+        importance: Importance.max,
+        playSound: true,
+        enableVibration: true,
+        audioAttributesUsage: AudioAttributesUsage.alarm,
+      );
+
   static const String _silentNotificationMode = 'silent';
 
   static final FlutterLocalNotificationsPlugin _localNotifications =
@@ -96,6 +109,8 @@ class NotificationService {
     await androidPlugin?.createNotificationChannel(_spacesBarChannel);
 
     await androidPlugin?.createNotificationChannel(_calendarReminderChannel);
+
+    await androidPlugin?.createNotificationChannel(_shiftAlarmChannel);
   }
 
   static AndroidFlutterLocalNotificationsPlugin? get _androidPlugin {
@@ -259,6 +274,114 @@ class NotificationService {
 
     if (kDebugMode) {
       debugPrint('Calendar reminder cancelled: id=$notificationId');
+    }
+  }
+
+  static Future<bool> scheduleShiftAlarmOccurrence({
+    required int notificationId,
+    required ShiftAlarmOccurrence occurrence,
+  }) async {
+    if (!_calendarTimezoneReady) {
+      if (kDebugMode) {
+        debugPrint('Shift alarm was not scheduled: timezone is unavailable');
+      }
+
+      return false;
+    }
+
+    final canScheduleExact = await canScheduleExactCalendarReminders();
+
+    if (!canScheduleExact) {
+      if (kDebugMode) {
+        debugPrint(
+          'Shift alarm was not scheduled: '
+          'exact alarm permission is unavailable',
+        );
+      }
+
+      return false;
+    }
+
+    final alarm = occurrence.alarm;
+
+    final scheduledDate = tz.TZDateTime(
+      tz.local,
+      occurrence.date.year,
+      occurrence.date.month,
+      occurrence.date.day,
+      alarm.minutesOfDay ~/ 60,
+      alarm.minutesOfDay % 60,
+    );
+
+    final now = tz.TZDateTime.now(tz.local);
+
+    if (!scheduledDate.isAfter(now)) {
+      await cancelShiftAlarmOccurrence(notificationId: notificationId);
+
+      return false;
+    }
+
+    final isShortNotification = alarm.type == ShiftAlarmType.notification;
+
+    final durationMilliseconds = isShortNotification
+        ? alarm.durationSeconds! * 1000
+        : null;
+
+    await _localNotifications.zonedSchedule(
+      id: notificationId,
+      title: alarm.title,
+      body: isShortNotification
+          ? 'Оповещение рабочего календаря'
+          : 'Будильник рабочего календаря',
+      scheduledDate: scheduledDate,
+      notificationDetails: NotificationDetails(
+        android: AndroidNotificationDetails(
+          _shiftAlarmChannel.id,
+          _shiftAlarmChannel.name,
+          channelDescription: _shiftAlarmChannel.description,
+          importance: Importance.max,
+          priority: Priority.high,
+          icon: '@mipmap/ic_launcher',
+          playSound: true,
+          enableVibration: true,
+          audioAttributesUsage: AudioAttributesUsage.alarm,
+          category: AndroidNotificationCategory.alarm,
+
+          // Android FLAG_INSISTENT = 4.
+          // Звук повторяется, пока notification не будет отменён.
+          additionalFlags: Int32List.fromList(<int>[4]),
+
+          // Для короткого оповещения Android сам отменит notification.
+          timeoutAfter: durationMilliseconds,
+
+          // Полноценный будильник пока оставляем активным.
+          ongoing: !isShortNotification,
+          autoCancel: isShortNotification,
+        ),
+      ),
+      androidScheduleMode: AndroidScheduleMode.alarmClock,
+    );
+
+    if (kDebugMode) {
+      debugPrint(
+        'Shift alarm scheduled: '
+        'id=$notificationId, '
+        'at=$scheduledDate, '
+        'type=${alarm.type.name}, '
+        'duration=${alarm.durationSeconds}',
+      );
+    }
+
+    return true;
+  }
+
+  static Future<void> cancelShiftAlarmOccurrence({
+    required int notificationId,
+  }) async {
+    await _localNotifications.cancel(id: notificationId);
+
+    if (kDebugMode) {
+      debugPrint('Shift alarm cancelled: id=$notificationId');
     }
   }
 
