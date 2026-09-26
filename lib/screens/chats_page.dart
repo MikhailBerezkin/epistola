@@ -14,7 +14,7 @@ import '../widgets/system_chat/epistola_system_chat_tile.dart';
 import 'chat_screen.dart';
 import 'epistola_system_chat_screen.dart';
 
-enum ChatFilter { private, group }
+enum ChatFilter { all, private }
 
 class ChatsPage extends StatefulWidget {
   const ChatsPage({super.key, required this.unreadController});
@@ -26,13 +26,15 @@ class ChatsPage extends StatefulWidget {
 }
 
 class _ChatsPageState extends State<ChatsPage> {
-  ChatFilter _selectedFilter = ChatFilter.private;
+  ChatFilter _selectedFilter = ChatFilter.all;
+
   late final ChatService _chatService;
   late final ChatPeerUserCache _peerUserCache;
 
   @override
   void initState() {
     super.initState();
+
     _chatService = ChatService();
     _peerUserCache = ChatPeerUserCache(_chatService.getUsersByIds);
   }
@@ -69,6 +71,53 @@ class _ChatsPageState extends State<ChatsPage> {
     return peerUser.email.isNotEmpty ? peerUser.email : storedName;
   }
 
+  bool _isPrivateChatVisible({
+    required Map<String, dynamic> data,
+    required String currentUserId,
+  }) {
+    if (currentUserId.isEmpty) {
+      return false;
+    }
+
+    final clearedAtByUser =
+        (data['clearedAtByUser'] as Map<String, dynamic>?) ?? {};
+
+    final clearedAt = clearedAtByUser[currentUserId];
+    final lastMessageAt = data['lastMessageAt'];
+
+    if (clearedAt is Timestamp) {
+      if (lastMessageAt is! Timestamp) {
+        return false;
+      }
+
+      final hasNewMessage = lastMessageAt.toDate().isAfter(clearedAt.toDate());
+
+      if (!hasNewMessage) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  bool _matchesSelectedFilter({
+    required Map<String, dynamic> data,
+    required String currentUserId,
+  }) {
+    final type = data['type'] ?? 'group';
+
+    if (type == 'private') {
+      if (_selectedFilter == ChatFilter.all ||
+          _selectedFilter == ChatFilter.private) {
+        return _isPrivateChatVisible(data: data, currentUserId: currentUserId);
+      }
+
+      return false;
+    }
+
+    return _selectedFilter == ChatFilter.all;
+  }
+
   Future<void> _confirmClearPrivateChat({
     required ChatService chatService,
     required String chatId,
@@ -100,18 +149,24 @@ class _ChatsPageState extends State<ChatsPage> {
       },
     );
 
-    if (shouldClear != true || !mounted) return;
+    if (shouldClear != true || !mounted) {
+      return;
+    }
 
     try {
       await chatService.clearPrivateChatForCurrentUser(chatId);
 
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
 
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Чат скрыт только для вас')));
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
 
       ScaffoldMessenger.of(
         context,
@@ -149,14 +204,14 @@ class _ChatsPageState extends State<ChatsPage> {
           SegmentedButton<ChatFilter>(
             segments: const [
               ButtonSegment(
+                value: ChatFilter.all,
+                label: Text('Все чаты'),
+                icon: Icon(Icons.forum_outlined),
+              ),
+              ButtonSegment(
                 value: ChatFilter.private,
                 label: Text('Личные'),
                 icon: Icon(Icons.person_outline),
-              ),
-              ButtonSegment(
-                value: ChatFilter.group,
-                label: Text('Группы'),
-                icon: Icon(Icons.groups_outlined),
               ),
             ],
             selected: {_selectedFilter},
@@ -191,48 +246,20 @@ class _ChatsPageState extends State<ChatsPage> {
                 final filteredChats = chats.where((chat) {
                   final data = chat.data() as Map<String, dynamic>;
 
-                  final type = data['type'] ?? 'group';
-
-                  if (_selectedFilter == ChatFilter.private) {
-                    if (type != 'private') {
-                      return false;
-                    }
-
-                    if (currentUserId.isEmpty) {
-                      return false;
-                    }
-
-                    final clearedAtByUser =
-                        (data['clearedAtByUser'] as Map<String, dynamic>?) ??
-                        {};
-
-                    final clearedAt = clearedAtByUser[currentUserId];
-
-                    final lastMessageAt = data['lastMessageAt'];
-
-                    if (clearedAt is Timestamp) {
-                      if (lastMessageAt is! Timestamp) {
-                        return false;
-                      }
-
-                      final hasNewMessage = lastMessageAt.toDate().isAfter(
-                        clearedAt.toDate(),
-                      );
-
-                      if (!hasNewMessage) {
-                        return false;
-                      }
-                    }
-
-                    return true;
-                  }
-
-                  return type == 'group';
+                  return _matchesSelectedFilter(
+                    data: data,
+                    currentUserId: currentUserId,
+                  );
                 }).toList();
 
-                if (_selectedFilter == ChatFilter.group &&
+                if (_selectedFilter == ChatFilter.all &&
                     filteredChats.isEmpty) {
-                  return const Center(child: Text('Пока нет групп'));
+                  return const Center(child: Text('Пока нет чатов'));
+                }
+
+                if (_selectedFilter == ChatFilter.private &&
+                    filteredChats.isEmpty) {
+                  return const Center(child: Text('Пока нет личных чатов'));
                 }
 
                 final peerUserIds = ChatPeerResolver.collectOtherUserIds(
@@ -244,28 +271,24 @@ class _ChatsPageState extends State<ChatsPage> {
 
                 _loadMissingPeerUsers(peerUserIds);
 
-                final showEpistolaSystemChat =
-                    _selectedFilter == ChatFilter.private;
-
-                final itemCount =
-                    filteredChats.length + (showEpistolaSystemChat ? 1 : 0);
+                final itemCount = filteredChats.length + 1;
 
                 return ListView.builder(
                   itemCount: itemCount,
                   itemBuilder: (context, index) {
-                    if (showEpistolaSystemChat && index == 0) {
+                    if (index == 0) {
                       return EpistolaSystemChatTile(
                         onTap: _openEpistolaSystemChat,
                       );
                     }
 
-                    final chatIndex = showEpistolaSystemChat
-                        ? index - 1
-                        : index;
+                    final chatIndex = index - 1;
 
                     final chat = filteredChats[chatIndex];
 
                     final data = chat.data() as Map<String, dynamic>;
+
+                    final isPrivateChat = data['type'] == 'private';
 
                     final lastMessage = data['lastMessage'] is String
                         ? data['lastMessage'] as String
@@ -341,7 +364,7 @@ class _ChatsPageState extends State<ChatsPage> {
                         return ChatTile(
                           chatId: chat.id,
                           chatName: chatName,
-                          isPrivateChat: data['type'] == 'private',
+                          isPrivateChat: isPrivateChat,
                           peerUser: peerUser,
                           groupAvatar: groupAvatar,
                           lastMessage: effectiveLastMessage,
@@ -359,14 +382,12 @@ class _ChatsPageState extends State<ChatsPage> {
                                 builder: (_) => ChatScreen(
                                   chatId: chat.id,
                                   chatName: chatName,
-                                  peerUser: data['type'] == 'private'
-                                      ? peerUser
-                                      : null,
+                                  peerUser: isPrivateChat ? peerUser : null,
                                 ),
                               ),
                             );
                           },
-                          onLongPress: _selectedFilter == ChatFilter.private
+                          onLongPress: isPrivateChat
                               ? () {
                                   _confirmClearPrivateChat(
                                     chatService: _chatService,

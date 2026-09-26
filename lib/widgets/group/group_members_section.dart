@@ -41,22 +41,11 @@ class GroupMembersSection extends StatelessWidget {
             return ListTile(
               leading: UserAvatarView(user: user, radius: 20),
               title: Text(user.name.isNotEmpty ? user.name : 'Без имени'),
-              subtitle: RichText(
-                text: TextSpan(
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.outline,
-                    fontSize: 14,
-                  ),
-                  children: [
-                    TextSpan(
-                      text: RoleHelper.title(role),
-                      style: TextStyle(
-                        color: RoleHelper.color(role),
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    TextSpan(text: ' • ${user.email}'),
-                  ],
+              subtitle: Text(
+                RoleHelper.title(role),
+                style: TextStyle(
+                  color: RoleHelper.color(role),
+                  fontWeight: FontWeight.w600,
                 ),
               ),
               onTap: () {
