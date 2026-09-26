@@ -144,10 +144,10 @@ service cloud.firestore {
     }
 
     function messagePreview(message) {
-      return message.get('messageType', 'text') == 'image'
-          ? 'Р¤РѕС‚РѕРіСЂР°С„РёСЏ'
-          : message.text;
-    }
+  return message.get('messageType', 'text') == 'image'
+      ? 'Фотография'
+      : message.text;
+}
 
     function isValidMessageData(chatId, messageId, message) {
       let profile = currentUserDoc().data;
@@ -301,8 +301,8 @@ function isValidPrivateChatCreate(chatId) {
       && chat.firstMessageId.size() > 0
       && chat.lastMessageId == chat.firstMessageId
 
-      // РџРѕР»РЅРѕРµ СЃРѕРґРµСЂР¶РёРјРѕРµ РїРµСЂРІРѕРіРѕ СЃРѕРѕР±С‰РµРЅРёСЏ РїСЂРѕРІРµСЂСЏРµС‚СЃСЏ РѕС‚РґРµР»СЊРЅРѕ
-      // РІ allow create РІР»РѕР¶РµРЅРЅРѕРіРѕ РґРѕРєСѓРјРµРЅС‚Р° messages/{messageId}.
+      // Полное содержимое первого сообщения проверяется отдельно
+// в allow create вложенного документа messages/{messageId}.
       && messagePreview(firstMessage) == chat.lastMessage
       && firstMessage.createdAt is timestamp
       && firstMessage.createdAt == chat.lastMessageAt;
@@ -1215,7 +1215,7 @@ function isDeleteLastMessageForEveryoneUpdate(chatId) {
           ])
           && request.resource.data.memberRoles is map
           && request.resource.data.lastMessage
-              == 'РџСЂР°РІР° Р°РґРјРёРЅРёСЃС‚СЂР°С‚РѕСЂР° РїРµСЂРµРґР°РЅС‹'
+    == 'Права администратора переданы'
           && request.resource.data.lastMessageAt is timestamp
           && request.resource.data.lastMessageAt == request.time
           && !request.resource.data.keys().hasAny(['lastMessageId']);
@@ -1247,7 +1247,7 @@ function isDeleteLastMessageForEveryoneUpdate(chatId) {
           && request.resource.data.dissolvedBy == request.auth.uid
           && request.resource.data.dissolvedAt is timestamp
           && request.resource.data.dissolvedAt == request.time
-          && request.resource.data.lastMessage == 'Р“СЂСѓРїРїР° СЂР°СЃРїСѓС‰РµРЅР°'
+          && request.resource.data.lastMessage == 'Группа распущена'
           && request.resource.data.lastMessageAt is timestamp
           && request.resource.data.lastMessageAt == request.time
           && request.resource.data.memberIds is list
