@@ -22,6 +22,9 @@ import '../services/work_schedule/user_assigned_crew_reader.dart';
 import 'assigned_crew_setup_screen.dart';
 import '../services/spaces/calendar/shift_alarm_scheduling_service.dart';
 import '../services/spaces/calendar/shift_month_hours_calculator.dart';
+import '../domain/models/shift_calendar_theme.dart';
+import '../services/spaces/calendar/shift_calendar_theme_preferences.dart';
+import 'shift_calendar_theme_screen.dart';
 
 enum ShiftCalendarViewMode { full, compact }
 
@@ -40,6 +43,15 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
   final ShiftScheduleCalculator _calculator = const ShiftScheduleCalculator();
   final ShiftMonthHoursCalculator _monthHoursCalculator =
       const ShiftMonthHoursCalculator();
+  final ShiftCalendarThemePreferences _calendarThemePreferences =
+      ShiftCalendarThemePreferences();
+
+  ShiftCalendarThemeState _calendarThemeState = const ShiftCalendarThemeState(
+    mode: ShiftCalendarThemeMode.light,
+    customSlot: ShiftCalendarCustomThemeSlot.first,
+    customFirst: ShiftCalendarThemePalette.customFirstDefault,
+    customSecond: ShiftCalendarThemePalette.customSecondDefault,
+  );
 
   final CalendarEntryService _calendarEntryService = CalendarEntryService(
     const CalendarEntryLocalStore(),
@@ -105,6 +117,7 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
     _watchVacationPeriods();
     _watchAdditionalShifts();
 
+    unawaited(_loadCalendarTheme());
     unawaited(_loadCalendarEntries());
     unawaited(_reconcileCalendarReminders());
   }
@@ -277,6 +290,38 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
       _assignedCrewLoadFailed = false;
       _isAssignedCrewLoaded = true;
     });
+  }
+
+  Future<void> _loadCalendarTheme() async {
+    try {
+      final state = await _calendarThemePreferences.load();
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _calendarThemeState = state;
+      });
+    } catch (_) {
+      // Ошибка локальной темы не должна мешать работе календаря.
+    }
+  }
+
+  Future<void> _openCalendarThemeSettings() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) {
+          return ShiftCalendarThemeScreen(initialState: _calendarThemeState);
+        },
+      ),
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    await _loadCalendarTheme();
   }
 
   Future<void> _openCalendarSettings() async {
@@ -608,6 +653,7 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
         break;
 
       case _CalendarMenuAction.themes:
+        unawaited(_openCalendarThemeSettings());
         break;
     }
   }
@@ -649,6 +695,8 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final calendarPalette = _calendarThemeState.activePalette;
+    final calendarColors = _CalendarColors.fromPalette(calendarPalette);
     final crew = _effectiveCrew;
 
     if (!_isAssignedCrewLoaded) {
@@ -784,13 +832,14 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
             onDateSelected: _openDateInCompact,
             entryMarkersForDate: _entryMarkersForDate,
             hasAdditionalShiftForDate: _hasAdditionalShiftForDate,
-            colorScheme: _CalendarColors.fromTheme(theme),
+            colorScheme: calendarColors,
           );
         },
       );
     }
 
     return Scaffold(
+      backgroundColor: calendarColors.background,
       body: SafeArea(
         child: GestureDetector(
           behavior: HitTestBehavior.translucent,
@@ -804,6 +853,7 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
                 crew: crew,
                 isPreviewingCrew: _isPreviewingCrew,
                 showToday: showToday,
+                foregroundColor: calendarColors.foreground,
                 onBackTap: () {
                   Navigator.of(context).maybePop();
                 },
@@ -840,7 +890,9 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
                       ShiftCalendarViewMode.full => Column(
                         children: [
                           const SizedBox(height: 4),
-                          const _WeekdayHeader(),
+                          _WeekdayHeader(
+                            foregroundColor: calendarColors.foreground,
+                          ),
                           const SizedBox(height: 4),
                           Expanded(child: buildMonthPager()),
                         ],
@@ -855,6 +907,7 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
                             calculator: _calculator,
                             crew: crew,
                             vacationPeriods: _vacationPeriods,
+                            colors: calendarColors,
                             onDateSelected: (date) {
                               setState(() {
                                 _selectedDate = date;
@@ -874,6 +927,7 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
                               selectedDate: _selectedDate,
                               userId: _currentUserId,
                               service: _calendarEntryService,
+                              backgroundColor: calendarColors.background,
                               additionalShiftEvents: _additionalShiftsForDate(
                                 _selectedDate,
                               ),
@@ -889,7 +943,10 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
               ),
               const SizedBox(height: 6),
 
-              _MonthHoursSummaryBar(summary: monthHoursSummary),
+              _MonthHoursSummaryBar(
+                summary: monthHoursSummary,
+                colors: calendarColors,
+              ),
 
               const SizedBox(height: 8),
             ],
@@ -901,20 +958,21 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
 }
 
 class _MonthHoursSummaryBar extends StatelessWidget {
-  const _MonthHoursSummaryBar({required this.summary});
+  const _MonthHoursSummaryBar({required this.summary, required this.colors});
 
   final ShiftMonthHoursSummary summary;
+  final _CalendarColors colors;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final foreground = _calendarContrastColor(colors.monthHoursBar);
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
-          color: theme.colorScheme.surfaceContainerHighest,
+          color: colors.monthHoursBar,
           borderRadius: BorderRadius.circular(16),
         ),
         child: Row(
@@ -923,21 +981,24 @@ class _MonthHoursSummaryBar extends StatelessWidget {
               child: _MonthHoursValue(
                 label: 'Основные',
                 minutes: summary.regularMinutes,
+                foregroundColor: foreground,
               ),
             ),
-            _MonthHoursDivider(color: theme.colorScheme.outlineVariant),
+            _MonthHoursDivider(color: foreground.withValues(alpha: 0.24)),
             Expanded(
               child: _MonthHoursValue(
                 label: 'Халтуры',
                 minutes: summary.additionalMinutes,
+                foregroundColor: foreground,
               ),
             ),
-            _MonthHoursDivider(color: theme.colorScheme.outlineVariant),
+            _MonthHoursDivider(color: foreground.withValues(alpha: 0.24)),
             Expanded(
               child: _MonthHoursValue(
                 label: 'Всего',
                 minutes: summary.totalMinutes,
                 emphasize: true,
+                foregroundColor: foreground,
               ),
             ),
           ],
@@ -951,11 +1012,13 @@ class _MonthHoursValue extends StatelessWidget {
   const _MonthHoursValue({
     required this.label,
     required this.minutes,
+    required this.foregroundColor,
     this.emphasize = false,
   });
 
   final String label;
   final int minutes;
+  final Color foregroundColor;
   final bool emphasize;
 
   @override
@@ -970,7 +1033,7 @@ class _MonthHoursValue extends StatelessWidget {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: theme.textTheme.labelMedium?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
+            color: foregroundColor.withValues(alpha: 0.68),
           ),
         ),
         const SizedBox(height: 2),
@@ -978,6 +1041,7 @@ class _MonthHoursValue extends StatelessWidget {
           _formatHours(minutes),
           maxLines: 1,
           style: theme.textTheme.titleMedium?.copyWith(
+            color: foregroundColor,
             fontWeight: emphasize ? FontWeight.w800 : FontWeight.w600,
           ),
         ),
@@ -1030,6 +1094,7 @@ class _CalendarHeader extends StatelessWidget {
     required this.onTodayTap,
     required this.onMenuSelected,
     required this.isPreviewingCrew,
+    required this.foregroundColor,
   });
 
   final DateTime visibleMonth;
@@ -1042,6 +1107,7 @@ class _CalendarHeader extends StatelessWidget {
   final VoidCallback onBackTap;
   final VoidCallback onTodayTap;
   final ValueChanged<_CalendarMenuAction> onMenuSelected;
+  final Color foregroundColor;
 
   static const _months = <String>[
     'Январь',
@@ -1076,7 +1142,6 @@ class _CalendarHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-
     final date = activeDate;
 
     return Padding(
@@ -1091,7 +1156,7 @@ class _CalendarHeader extends StatelessWidget {
                   onPressed: onBackTap,
                   tooltip: 'Назад',
                   visualDensity: VisualDensity.compact,
-                  icon: const Icon(Icons.arrow_back),
+                  icon: Icon(Icons.arrow_back, color: foregroundColor),
                 ),
                 const SizedBox(width: 2),
                 Expanded(
@@ -1102,6 +1167,7 @@ class _CalendarHeader extends StatelessWidget {
                               TextSpan(
                                 text: '${date.day}',
                                 style: theme.textTheme.headlineSmall?.copyWith(
+                                  color: foregroundColor,
                                   fontWeight: FontWeight.w800,
                                 ),
                               ),
@@ -1110,6 +1176,7 @@ class _CalendarHeader extends StatelessWidget {
                                     ' ${_monthsGenitive[date.month - 1]} '
                                     '${date.year}',
                                 style: theme.textTheme.titleLarge?.copyWith(
+                                  color: foregroundColor,
                                   fontWeight: FontWeight.w700,
                                 ),
                               ),
@@ -1124,40 +1191,11 @@ class _CalendarHeader extends StatelessWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: theme.textTheme.titleLarge?.copyWith(
+                            color: foregroundColor,
                             fontWeight: FontWeight.w700,
                           ),
                         ),
                 ),
-              ],
-            ),
-          ),
-          SizedBox(
-            height: 36,
-            child: Row(
-              children: [
-                const SizedBox(width: 48),
-                Expanded(
-                  child: selectedPhase == null
-                      ? const SizedBox.shrink()
-                      : Text(
-                          selectedPhase!.displayTitle,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                ),
-                if (showToday)
-                  TextButton(
-                    onPressed: onTodayTap,
-                    style: TextButton.styleFrom(
-                      visualDensity: VisualDensity.compact,
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                    ),
-                    child: const Text('Сегодня'),
-                  ),
                 PopupMenuButton<_CalendarMenuAction>(
                   tooltip: 'Настройки календаря',
                   onSelected: onMenuSelected,
@@ -1184,8 +1222,39 @@ class _CalendarHeader extends StatelessWidget {
                       child: Text('Темы календаря'),
                     ),
                   ],
-                  icon: const Icon(Icons.more_vert),
+                  icon: Icon(Icons.settings_outlined, color: foregroundColor),
                 ),
+              ],
+            ),
+          ),
+          SizedBox(
+            height: 36,
+            child: Row(
+              children: [
+                const SizedBox(width: 48),
+                Expanded(
+                  child: selectedPhase == null
+                      ? const SizedBox.shrink()
+                      : Text(
+                          selectedPhase!.displayTitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: foregroundColor.withValues(alpha: 0.72),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                ),
+                if (showToday)
+                  TextButton(
+                    onPressed: onTodayTap,
+                    style: TextButton.styleFrom(
+                      foregroundColor: foregroundColor,
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                    ),
+                    child: const Text('Сегодня'),
+                  ),
               ],
             ),
           ),
@@ -1196,12 +1265,12 @@ class _CalendarHeader extends StatelessWidget {
 }
 
 class _WeekdayHeader extends StatelessWidget {
-  const _WeekdayHeader();
+  const _WeekdayHeader({required this.foregroundColor});
+
+  final Color foregroundColor;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
     const weekdays = <String>['ПН', 'ВТ', 'СР', 'ЧТ', 'ПТ', 'СБ', 'ВС'];
 
     return Padding(
@@ -1213,8 +1282,8 @@ class _WeekdayHeader extends StatelessWidget {
               child: Center(
                 child: Text(
                   weekday,
-                  style: theme.textTheme.labelMedium?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: foregroundColor.withValues(alpha: 0.72),
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -1313,6 +1382,7 @@ class _CompactDateStrip extends StatefulWidget {
     required this.vacationPeriods,
     required this.onDateSelected,
     required this.onFocusedDateChanged,
+    required this.colors,
   });
 
   final DateTime selectedDate;
@@ -1321,6 +1391,7 @@ class _CompactDateStrip extends StatefulWidget {
   final List<VacationPeriod> vacationPeriods;
   final ValueChanged<DateTime> onDateSelected;
   final ValueChanged<DateTime> onFocusedDateChanged;
+  final _CalendarColors colors;
 
   @override
   State<_CompactDateStrip> createState() => _CompactDateStripState();
@@ -1433,7 +1504,7 @@ class _CompactDateStripState extends State<_CompactDateStrip> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final colors = _CalendarColors.fromTheme(theme);
+    final colors = widget.colors;
 
     return SizedBox(
       height: 96,
@@ -1457,6 +1528,11 @@ class _CompactDateStripState extends State<_CompactDateStrip> {
                       crew: widget.crew,
                     );
 
+                    final tileBackground = colors.forPhase(phase);
+                    final tileForeground = _calendarContrastColor(
+                      tileBackground,
+                    );
+
                     final isSelected = _isSameDay(date, widget.selectedDate);
 
                     final isFocused = _isSameDay(date, _focusedDate);
@@ -1473,7 +1549,7 @@ class _CompactDateStripState extends State<_CompactDateStrip> {
                         onTap: () => _handleDateTap(date),
                         child: Container(
                           decoration: BoxDecoration(
-                            color: colors.forPhase(phase),
+                            color: tileBackground,
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
                               color: colors.gridLine,
@@ -1494,9 +1570,9 @@ class _CompactDateStripState extends State<_CompactDateStrip> {
                                       _weekdays[date.weekday - 1],
                                       style: theme.textTheme.labelSmall
                                           ?.copyWith(
-                                            color: theme
-                                                .colorScheme
-                                                .onSurfaceVariant,
+                                            color: tileForeground.withValues(
+                                              alpha: 0.72,
+                                            ),
                                             fontWeight: FontWeight.w600,
                                           ),
                                     ),
@@ -1505,19 +1581,16 @@ class _CompactDateStripState extends State<_CompactDateStrip> {
                                       '${date.day}',
                                       style: theme.textTheme.titleMedium
                                           ?.copyWith(
-                                            fontSize: isSelected
-                                                ? 20
-                                                : isFocused
-                                                ? 17
-                                                : 16,
+                                            fontSize:
+                                                (isSelected
+                                                    ? 20
+                                                    : isFocused
+                                                    ? 17
+                                                    : 16) *
+                                                colors.textScale,
                                             color: isSelected
-                                                ? const Color.fromARGB(
-                                                    255,
-                                                    196,
-                                                    8,
-                                                    39,
-                                                  )
-                                                : null,
+                                                ? colors.selectedDay
+                                                : tileForeground,
                                             fontWeight: isSelected || isFocused
                                                 ? FontWeight.w800
                                                 : FontWeight.w600,
@@ -1531,7 +1604,10 @@ class _CompactDateStripState extends State<_CompactDateStrip> {
                                       softWrap: false,
                                       style: theme.textTheme.labelSmall
                                           ?.copyWith(
-                                            fontSize: 10,
+                                            fontSize: 10 * colors.textScale,
+                                            color: tileForeground.withValues(
+                                              alpha: 0.82,
+                                            ),
                                             fontWeight: FontWeight.w600,
                                           ),
                                     ),
@@ -1633,6 +1709,7 @@ class _CalendarAgendaPanel extends StatefulWidget {
     required this.onAddEntry,
     required this.onEntriesChanged,
     required this.additionalShiftEvents,
+    required this.backgroundColor,
   });
 
   final DateTime selectedDate;
@@ -1641,6 +1718,7 @@ class _CalendarAgendaPanel extends StatefulWidget {
   final Future<void> Function(CalendarEntryKind kind) onAddEntry;
   final Future<void> Function() onEntriesChanged;
   final List<CalendarAdditionalShiftEvent> additionalShiftEvents;
+  final Color backgroundColor;
 
   @override
   State<_CalendarAgendaPanel> createState() => _CalendarAgendaPanelState();
@@ -1824,13 +1902,28 @@ class _CalendarAgendaPanelState extends State<_CalendarAgendaPanel> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isDarkPanel =
+        ThemeData.estimateBrightnessForColor(widget.backgroundColor) ==
+        Brightness.dark;
+
+    final panelBackground = isDarkPanel
+        ? const Color(0xFF1D1F22)
+        : theme.colorScheme.surfaceContainerLow;
+
+    final panelForeground = _calendarContrastColor(panelBackground);
+
+    final panelSecondary = panelForeground.withValues(alpha: 0.72);
 
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.fromLTRB(8, 0, 8, 8),
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerLow,
+        color:
+            ThemeData.estimateBrightnessForColor(widget.backgroundColor) ==
+                Brightness.dark
+            ? const Color(0xFF1D1F22)
+            : theme.colorScheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(18),
       ),
       child: Column(
@@ -1841,6 +1934,7 @@ class _CalendarAgendaPanelState extends State<_CalendarAgendaPanel> {
               Text(
                 'Дела',
                 style: theme.textTheme.titleMedium?.copyWith(
+                  color: panelForeground,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -1854,7 +1948,7 @@ class _CalendarAgendaPanelState extends State<_CalendarAgendaPanel> {
                   softWrap: false,
                   textAlign: TextAlign.end,
                   style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
+                    color: panelSecondary,
                   ),
                 ),
               ),
@@ -1896,7 +1990,7 @@ class _CalendarAgendaPanelState extends State<_CalendarAgendaPanel> {
                     child: Text(
                       'На этот день пока ничего не запланировано',
                       style: theme.textTheme.bodyMedium?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
+                        color: panelSecondary,
                       ),
                     ),
                   );
@@ -1909,6 +2003,7 @@ class _CalendarAgendaPanelState extends State<_CalendarAgendaPanel> {
                     if (index < additionalShiftEvents.length) {
                       return _CalendarAdditionalShiftListItem(
                         event: additionalShiftEvents[index],
+                        foregroundColor: panelForeground,
                       );
                     }
 
@@ -1916,6 +2011,7 @@ class _CalendarAgendaPanelState extends State<_CalendarAgendaPanel> {
 
                     return _CalendarEntryListItem(
                       entry: entry,
+                      foregroundColor: panelForeground,
                       onTap: () {
                         _editEntry(entry);
                       },
@@ -2011,9 +2107,13 @@ class _CalendarAgendaPanelState extends State<_CalendarAgendaPanel> {
 }
 
 class _CalendarAdditionalShiftListItem extends StatelessWidget {
-  const _CalendarAdditionalShiftListItem({required this.event});
+  const _CalendarAdditionalShiftListItem({
+    required this.event,
+    required this.foregroundColor,
+  });
 
   final CalendarAdditionalShiftEvent event;
+  final Color foregroundColor;
 
   @override
   Widget build(BuildContext context) {
@@ -2043,7 +2143,10 @@ class _CalendarAdditionalShiftListItem extends StatelessWidget {
       ),
       title: Text(
         title,
-        style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
+        style: theme.textTheme.bodyLarge?.copyWith(
+          color: foregroundColor,
+          fontWeight: FontWeight.w600,
+        ),
       ),
     );
   }
@@ -2052,11 +2155,13 @@ class _CalendarAdditionalShiftListItem extends StatelessWidget {
 class _CalendarEntryListItem extends StatelessWidget {
   const _CalendarEntryListItem({
     required this.entry,
+    required this.foregroundColor,
     required this.onTap,
     required this.onCompletedChanged,
   });
 
   final CalendarEntry entry;
+  final Color foregroundColor;
   final VoidCallback onTap;
   final ValueChanged<bool>? onCompletedChanged;
 
@@ -2099,12 +2204,23 @@ class _CalendarEntryListItem extends StatelessWidget {
         entry.title,
         style: theme.textTheme.bodyLarge?.copyWith(
           decoration: isCompleted ? TextDecoration.lineThrough : null,
-          color: isCompleted ? theme.colorScheme.onSurfaceVariant : null,
+          color: isCompleted
+              ? foregroundColor.withValues(alpha: 0.55)
+              : foregroundColor,
         ),
       ),
-      subtitle: subtitleParts.isEmpty ? null : Text(subtitleParts.join(' · ')),
+      subtitle: subtitleParts.isEmpty
+          ? null
+          : Text(
+              subtitleParts.join(' · '),
+              style: TextStyle(color: foregroundColor.withValues(alpha: 0.72)),
+            ),
       trailing: entry.hasReminder
-          ? const Icon(Icons.notifications_active_outlined, size: 20)
+          ? Icon(
+              Icons.notifications_active_outlined,
+              size: 20,
+              color: foregroundColor.withValues(alpha: 0.82),
+            )
           : null,
     );
   }
@@ -2141,7 +2257,6 @@ class _CalendarDayTile extends StatelessWidget {
   final bool isAdditionalShift;
 
   final CalendarEntryDayMarkers entryMarkers;
-
   final _CalendarColors colors;
   final VoidCallback onTap;
 
@@ -2152,8 +2267,10 @@ class _CalendarDayTile extends StatelessWidget {
     final background = colors.forPhase(phase);
 
     final selectedBackground = isSelected
-        ? Color.lerp(background, Colors.white, 0.25)!
+        ? Color.lerp(background, colors.selectedDay, 0.20)!
         : background;
+
+    final foreground = _calendarContrastColor(selectedBackground);
 
     return Padding(
       padding: const EdgeInsets.all(1.5),
@@ -2179,7 +2296,7 @@ class _CalendarDayTile extends StatelessWidget {
               children: [
                 Positioned.fill(
                   child: Opacity(
-                    opacity: isCurrentMonth ? 1 : 0.20,
+                    opacity: isCurrentMonth ? 1 : 0.30,
                     child: Padding(
                       padding: EdgeInsets.fromLTRB(
                         6,
@@ -2190,25 +2307,40 @@ class _CalendarDayTile extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            '${date.day}',
-                            style: theme.textTheme.labelLarge?.copyWith(
-                              fontSize: isSelected ? 20 : 14,
-                              color: isSelected
-                                  ? const Color.fromARGB(255, 196, 8, 39)
-                                  : null,
-                              fontWeight: isToday || isSelected
-                                  ? FontWeight.w800
-                                  : FontWeight.w600,
+                          SizedBox(
+                            height: 26,
+                            child: Align(
+                              alignment: Alignment.topLeft,
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                alignment: Alignment.topLeft,
+                                child: Text(
+                                  '${date.day}',
+                                  maxLines: 1,
+                                  style: theme.textTheme.labelLarge?.copyWith(
+                                    fontSize:
+                                        (isSelected ? 20 : 14) *
+                                        colors.textScale,
+                                    color: isSelected
+                                        ? colors.selectedDay
+                                        : foreground,
+                                    fontWeight: isToday || isSelected
+                                        ? FontWeight.w800
+                                        : FontWeight.w600,
+                                  ),
+                                ),
+                              ),
                             ),
                           ),
                           const Spacer(),
                           Text(
                             phase.displayLabel,
                             maxLines: 1,
-                            overflow: TextOverflow.fade,
+                            overflow: TextOverflow.ellipsis,
                             softWrap: false,
                             style: theme.textTheme.labelSmall?.copyWith(
+                              fontSize: 11 * colors.textScale,
+                              color: foreground.withValues(alpha: 0.82),
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -2217,7 +2349,6 @@ class _CalendarDayTile extends StatelessWidget {
                     ),
                   ),
                 ),
-
                 if (entryMarkers.hasAnyMarker)
                   Positioned(
                     top: 4,
@@ -2229,9 +2360,7 @@ class _CalendarDayTile extends StatelessWidget {
                           Icon(
                             Icons.sticky_note_2_outlined,
                             size: 11,
-                            color: Theme.of(
-                              context,
-                            ).colorScheme.onSurface.withValues(alpha: 0.82),
+                            color: foreground.withValues(alpha: 0.82),
                           ),
                         if (entryMarkers.hasPlainEntry &&
                             entryMarkers.hasPriority)
@@ -2247,9 +2376,7 @@ class _CalendarDayTile extends StatelessWidget {
                           Icon(
                             Icons.notifications_none_rounded,
                             size: 12,
-                            color: Theme.of(
-                              context,
-                            ).colorScheme.onSurface.withValues(alpha: 0.88),
+                            color: foreground.withValues(alpha: 0.88),
                           ),
                       ],
                     ),
@@ -2300,62 +2427,101 @@ class _CalendarPriorityDot extends StatelessWidget {
 
 class _CalendarColors {
   const _CalendarColors({
-    required this.day,
-    required this.night,
+    required this.day1,
+    required this.day2,
+    required this.offBeforeNight,
+    required this.night1,
+    required this.night2,
     required this.recovery,
-    required this.off,
+    required this.offAfterRecovery1,
+    required this.offAfterRecovery2,
+    required this.background,
+    required this.foreground,
     required this.gridLine,
     required this.vacationMarker,
     required this.additionalShiftMarker,
+    required this.selectedDay,
+    required this.monthHoursBar,
+    required this.textScale,
   });
 
-  final Color day;
-  final Color night;
+  final Color day1;
+  final Color day2;
+  final Color offBeforeNight;
+  final Color night1;
+  final Color night2;
   final Color recovery;
-  final Color off;
+  final Color offAfterRecovery1;
+  final Color offAfterRecovery2;
+
+  final Color background;
+  final Color foreground;
   final Color gridLine;
   final Color vacationMarker;
   final Color additionalShiftMarker;
+  final Color selectedDay;
+  final Color monthHoursBar;
 
-  factory _CalendarColors.fromTheme(ThemeData theme) {
-    if (theme.brightness == Brightness.dark) {
-      return _CalendarColors(
-        day: const Color(0xFF394943),
-        night: const Color(0xFF263E42),
-        recovery: const Color(0xFF383A43),
-        off: const Color(0xFF202327),
-        gridLine: const Color(0xFF34383D),
-        vacationMarker: theme.colorScheme.tertiary,
-        additionalShiftMarker: const Color(0xFFB388FF),
-      );
-    }
+  final double textScale;
+
+  factory _CalendarColors.fromPalette(ShiftCalendarThemePalette palette) {
+    final background = Color(palette.background);
+
+    final isDark =
+        ThemeData.estimateBrightnessForColor(background) == Brightness.dark;
+
+    final foreground = isDark ? Colors.white : Colors.black;
+
+    final gridLine = isDark
+        ? Colors.white.withValues(alpha: 0.16)
+        : Colors.black.withValues(alpha: 0.12);
 
     return _CalendarColors(
-      day: const Color(0xFFDCEBE4),
-      night: const Color(0xFFD5E4E6),
-      recovery: const Color(0xFFE3E2E8),
-      off: const Color(0xFFF3F4F3),
-      gridLine: const Color(0xFFD4D8D6),
-      vacationMarker: theme.colorScheme.tertiary,
-      additionalShiftMarker: const Color(0xFF7C4DFF),
+      day1: Color(palette.day1),
+      day2: Color(palette.day2),
+      offBeforeNight: Color(palette.offBeforeNight),
+      night1: Color(palette.night1),
+      night2: Color(palette.night2),
+      recovery: Color(palette.recovery),
+      offAfterRecovery1: Color(palette.offAfterRecovery1),
+      offAfterRecovery2: Color(palette.offAfterRecovery2),
+      background: background,
+      foreground: foreground,
+      gridLine: gridLine,
+      vacationMarker: Color(palette.vacation),
+      additionalShiftMarker: Color(palette.additionalShift),
+      selectedDay: Color(palette.selectedDay),
+      monthHoursBar: Color(palette.monthHoursBar),
+      textScale: palette.textScale.factor,
     );
   }
 
-  Color forPhase(ShiftCyclePhase phase) {
-    if (phase.isDayShift) {
-      return day;
-    }
+  factory _CalendarColors.fromTheme(ThemeData theme) {
+    final palette = theme.brightness == Brightness.dark
+        ? ShiftCalendarThemePalette.dark
+        : ShiftCalendarThemePalette.light;
 
-    if (phase.isNightShift) {
-      return night;
-    }
-
-    if (phase.isRecovery) {
-      return recovery;
-    }
-
-    return off;
+    return _CalendarColors.fromPalette(palette);
   }
+
+  Color forPhase(ShiftCyclePhase phase) {
+    return switch (phase) {
+      ShiftCyclePhase.day1 => day1,
+      ShiftCyclePhase.day2 => day2,
+      ShiftCyclePhase.offBeforeNight => offBeforeNight,
+      ShiftCyclePhase.night1 => night1,
+      ShiftCyclePhase.night2 => night2,
+      ShiftCyclePhase.recovery => recovery,
+      ShiftCyclePhase.offAfterRecovery1 => offAfterRecovery1,
+      ShiftCyclePhase.offAfterRecovery2 => offAfterRecovery2,
+    };
+  }
+}
+
+Color _calendarContrastColor(Color background) {
+  return ThemeData.estimateBrightnessForColor(background) == Brightness.dark
+      ? Colors.white
+      : Colors.black;
 }
 
 bool _isVacationDate(DateTime date, List<VacationPeriod> periods) {
