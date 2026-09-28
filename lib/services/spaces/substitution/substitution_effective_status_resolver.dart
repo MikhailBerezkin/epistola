@@ -17,10 +17,6 @@ final class SubstitutionEffectiveStatusResolver {
       return SubstitutionParticipantStatus.sick;
     }
 
-    if (participant.isOnVacation) {
-      return SubstitutionParticipantStatus.vacation;
-    }
-
     final isVacationDate = vacationPeriods.any(
       (period) =>
           period.userId.trim() == participant.userId.trim() &&

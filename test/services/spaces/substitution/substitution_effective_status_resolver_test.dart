@@ -81,10 +81,22 @@ void main() {
     expect(status, SubstitutionParticipantStatus.removed);
   });
 
-  test('keeps legacy vacation status without calendar period', () {
+  test('legacy vacation status becomes active outside calendar vacation', () {
     final status = resolver.resolve(
       participant: _participant(status: SubstitutionParticipantStatus.vacation),
       vacationPeriods: const [],
+      date: DateTime(2026, 9, 24),
+    );
+
+    expect(status, SubstitutionParticipantStatus.active);
+  });
+
+  test('legacy vacation status remains vacation during calendar vacation', () {
+    final status = resolver.resolve(
+      participant: _participant(status: SubstitutionParticipantStatus.vacation),
+      vacationPeriods: [
+        _vacation(start: DateTime(2026, 9, 20), end: DateTime(2026, 9, 30)),
+      ],
       date: DateTime(2026, 9, 24),
     );
 
