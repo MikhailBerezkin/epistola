@@ -21,6 +21,7 @@ import '../services/spaces/calendar/calendar_additional_shift_service.dart';
 import '../services/work_schedule/user_assigned_crew_reader.dart';
 import 'assigned_crew_setup_screen.dart';
 import '../services/spaces/calendar/shift_alarm_scheduling_service.dart';
+import '../services/spaces/calendar/shift_month_hours_calculator.dart';
 
 enum ShiftCalendarViewMode { full, compact }
 
@@ -37,6 +38,8 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
   static const _initialPage = 1200;
 
   final ShiftScheduleCalculator _calculator = const ShiftScheduleCalculator();
+  final ShiftMonthHoursCalculator _monthHoursCalculator =
+      const ShiftMonthHoursCalculator();
 
   final CalendarEntryService _calendarEntryService = CalendarEntryService(
     const CalendarEntryLocalStore(),
@@ -738,6 +741,13 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
       ),
     };
 
+    final monthHoursSummary = _monthHoursCalculator.calculate(
+      month: headerMonth,
+      crew: crew,
+      vacationPeriods: _vacationPeriods,
+      additionalShifts: _additionalShiftEvents,
+    );
+
     final ShiftCyclePhase? headerPhase = headerDate == null
         ? null
         : _calculator.phaseFor(date: headerDate, crew: crew);
@@ -877,10 +887,134 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
                   ),
                 ),
               ),
+              const SizedBox(height: 6),
+
+              _MonthHoursSummaryBar(summary: monthHoursSummary),
+
+              const SizedBox(height: 8),
             ],
           ),
         ),
       ),
+    );
+  }
+}
+
+class _MonthHoursSummaryBar extends StatelessWidget {
+  const _MonthHoursSummaryBar({required this.summary});
+
+  final ShiftMonthHoursSummary summary;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: _MonthHoursValue(
+                label: 'Основные',
+                minutes: summary.regularMinutes,
+              ),
+            ),
+            _MonthHoursDivider(color: theme.colorScheme.outlineVariant),
+            Expanded(
+              child: _MonthHoursValue(
+                label: 'Халтуры',
+                minutes: summary.additionalMinutes,
+              ),
+            ),
+            _MonthHoursDivider(color: theme.colorScheme.outlineVariant),
+            Expanded(
+              child: _MonthHoursValue(
+                label: 'Всего',
+                minutes: summary.totalMinutes,
+                emphasize: true,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MonthHoursValue extends StatelessWidget {
+  const _MonthHoursValue({
+    required this.label,
+    required this.minutes,
+    this.emphasize = false,
+  });
+
+  final String label;
+  final int minutes;
+  final bool emphasize;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.labelMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          _formatHours(minutes),
+          maxLines: 1,
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: emphasize ? FontWeight.w800 : FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+
+  static String _formatHours(int minutes) {
+    final wholeHours = minutes ~/ 60;
+    final remainder = minutes % 60;
+
+    if (remainder == 0) {
+      return '$wholeHours ч';
+    }
+
+    if (remainder == 30) {
+      return '$wholeHours,5 ч';
+    }
+
+    final decimalHours = minutes / 60;
+
+    return '${decimalHours.toStringAsFixed(1).replaceAll('.', ',')} ч';
+  }
+}
+
+class _MonthHoursDivider extends StatelessWidget {
+  const _MonthHoursDivider({required this.color});
+
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 1,
+      height: 34,
+      margin: const EdgeInsets.symmetric(horizontal: 6),
+      color: color,
     );
   }
 }

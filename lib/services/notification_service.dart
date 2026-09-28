@@ -15,6 +15,7 @@ import '../domain/models/shift_alarm_occurrence.dart';
 import 'chat/active_chat_tracker.dart';
 import 'push/push_deep_link_coordinator.dart';
 import 'push_token_service.dart';
+import 'spaces/calendar/shift_alarm_native_bridge.dart';
 
 final class ShiftAlarmRingRequest {
   const ShiftAlarmRingRequest({
@@ -442,6 +443,25 @@ class NotificationService {
 
     final isShortNotification = alarm.type == ShiftAlarmType.notification;
 
+    if (!isShortNotification && ShiftAlarmNativeBridge.isSupported) {
+      final scheduled = await ShiftAlarmNativeBridge.schedule(
+        notificationId: notificationId,
+        title: alarm.title,
+        scheduledAt: scheduledDate,
+      );
+
+      if (kDebugMode) {
+        debugPrint(
+          'Native shift alarm scheduled: '
+          'id=$notificationId, '
+          'at=$scheduledDate, '
+          'scheduled=$scheduled',
+        );
+      }
+
+      return scheduled;
+    }
+
     final durationMilliseconds = isShortNotification
         ? alarm.durationSeconds! * 1000
         : null;
@@ -736,6 +756,10 @@ class NotificationService {
   static Future<void> cancelShiftAlarmOccurrence({
     required int notificationId,
   }) async {
+    if (ShiftAlarmNativeBridge.isSupported) {
+      await ShiftAlarmNativeBridge.cancel(notificationId: notificationId);
+    }
+
     await _localNotifications.cancel(id: notificationId);
 
     if (kDebugMode) {
