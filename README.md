@@ -24,245 +24,327 @@ Pilot target:
 |---|---|
 | Target | `v0.8.0` |
 | Branch | `feat/v0.8.0-spaces-substitution-foundation` |
-| Current functional checkpoint | `63da029` |
-| Checkpoint message | `feat(substitution): enforce shift call eligibility` |
+| Last pushed functional checkpoint | `7343528` |
+| Checkpoint message | `feat(calendar): add customizable calendar themes` |
 | Stable baseline before v0.8.0 | `v0.7.4` |
 | Firebase project | `epistola-434b7` |
 | Android package | `com.epistola.app` |
 | Android product | `Epistola` |
 | Web/PWA product | `EpiLite` |
 | Production Hosting | `https://epistola-434b7.web.app` |
-| Release APK | `61.0 MB` |
+| Latest local release APK build | `63.9 MB` |
 
-`v0.8.0` remains in feature branch and is not yet declared merged/released.
+`v0.8.0` remains in the feature branch and is not yet declared merged/released.
 
----
-
-# Current verification
-
-Flutter:
-
-```text
-flutter.bat test
-→ 1161/1161 passed
-
-flutter.bat analyze
-→ No issues found!
-```
-
-Substitution targeted:
-
-```text
-eligibility resolver → 24/24
-Firestore gateway → 22/22
-dependencies → 10/10
-```
-
-Firestore Rules:
-
-```text
-Substitution Rules → 74/74
-```
-
-Production:
-
-```text
-Firestore Rules deploy → passed
-Android allowed/blocked call flow → passed
-Calendar additional-shift marker → passed
-push → passed
-SpacesBar → passed
-flutter build web → passed
-Firebase Hosting deploy → passed
-desktop Web → passed
-mobile Web → passed
-```
+There is local post-`7343528` WIP that should be committed before the next feature block.
 
 ---
 
-# Architecture
+# Source priority
 
-Core layering:
-
-```text
-Flutter UI
-→ screen/presentation orchestration
-→ application services
-→ domain
-→ Firebase gateways or device-local persistence
-```
-
-Principles:
+When docs disagree:
 
 ```text
-server-authoritative work state → Firebase + Rules
-personal local agenda → local persistence
-pure deterministic business rules → isolated/testable resolver
-UI is not the security boundary
+current code
+→ PROJECT_CONTEXT.md
+→ ARCHITECTURE.md
+→ README.md
 ```
+
+Do not use `main` as source of current `v0.8.0` state before merge.
 
 ---
 
-# Products
+# Latest completed blocks
 
-## Epistola / Android
+## Substitution + Work Schedule Identity
 
-Current scope:
+Implemented:
 
 ```text
-Auth
-Contacts
-Spaces
-Chats
-Profile
-avatars/media
-push notifications
-SpacesBar
-Substitution
-Calendar
-Vacation
-Personal Calendar Agenda
-Exact local reminders
+assignedCrew
+crew onboarding
+Calendar authoritative crew
+Vacation integration
+shift eligibility
+transaction re-check
+shiftClaim v2
+Firestore Rules protection
+production call verification
 ```
 
-## EpiLite / Web
+Production Rules were deployed on 2026-09-24.
 
-Production:
+## EpiLite
+
+Production Web/PWA:
 
 `https://epistola-434b7.web.app`
 
-Verified current scope:
+Verified:
 
 ```text
-Firebase Auth
+Auth
 Spaces
 SpacesBar
-Substitution
 Calendar
-Profile/logout
+Substitution
 desktop browser
 mobile browser
-PWA/Hosting
+earlier text chat flow
 ```
 
-Earlier Web work also verified text chats.
+## Calendar / Agenda
 
-Not supported on Web:
+Implemented:
 
 ```text
-Android exact local alarms
-Web push
+base shift Calendar
+Vacation
+additional Substitution shift marker
+personal local tasks/notes
+local reminders
+shift alarms
+monthly hours
+Calendar themes
 ```
 
 ---
 
-# Spaces
-
-Root navigation:
+# Latest commit sequence
 
 ```text
-Контакты | Пространства | Профиль
+53bf805 — feat(calendar): add shift alarm scheduling foundation
+ce22462 — fix(chat): restore lifecycle and image preview rules
+2ae2439 — feat(chat): refine chat filters and group members
+f83ee7c — wip(alarm): add full-screen alarm flow foundation
+83f4ad6 — feat(calendar): finalize native alarms and monthly hours
+a3cbd07 — fix(substitution): return users after vacation ends
+7343528 — feat(calendar): add customizable calendar themes
 ```
-
-Spaces tiles include:
-
-```text
-Чаты
-Список / Подсменка
-Судозаходы
-Календарь смен
-Автобусы
-ОТ и ТБ
-```
-
-Owner remains highest-priority role.
 
 ---
 
-# Work schedule identity
+# Native Shift Alarm
 
-Authoritative crew:
+Functional native alarm is implemented.
 
-`users/{uid}.assignedCrew`
-
-Valid:
+Architecture:
 
 ```text
-1..4
+NotificationService
+→ ShiftAlarmNativeBridge
+→ MainActivity MethodChannel
+→ ShiftAlarmNativeScheduler
+→ AlarmManager.setAlarmClock()
+→ ShiftAlarmReceiver
+→ ShiftAlarmActivity
 ```
 
-Calendar and Substitution use this field.
+Manual Poco tests passed:
 
-Missing crew is not silently defaulted.
+```text
+full-screen ring
++10 minute snooze
+stop
+swipe up/down
+Power button stop
+returns to previous phone state
+```
 
-UI prompts user to choose crew.
-
-Manager can correct crew for Substitution participant.
+These functional behaviors are stable.
 
 ---
 
-# Base shift cycle
+# Shift Alarm visual redesign — current WIP
 
-Four crews, repeating 8-day cycle:
-
-```text
-День 1
-День 2
-Вых
-Ночь 1
-Ночь 2
-Отсыпной
-Вых
-Вых
-```
-
-Anchor:
+Desired screen:
 
 ```text
-14.09.2026
-crew4 = День 2
-crew3 = Ночь 1
-crew1 = последний выходной before next День 1
+dark navy/ocean background
+white Epistola seagull between controls
++10 минут at ~25% height
+Отключить at ~75% height
+same button size
+blue snooze button
+red stop button
+white outline alarm-clock icon
+responsive layout on different Android phones
 ```
 
-Authoritative calculator:
+Current WIP resources:
 
-`ShiftScheduleCalculator`
+```text
+android/app/src/main/res/drawable/shift_alarm_seagull_background.png
+android/app/src/main/res/drawable/shift_alarm_snooze_icon.xml
+android/app/src/main/res/drawable/shift_alarm_stop_icon.xml
+android/app/src/main/kotlin/com/epistola/app/ShiftAlarmActivity.kt
+```
+
+Important:
+
+```text
+current visual implementation is NOT accepted as finished
+```
+
+Problem:
+the original `Аватар Чайки.png` is a square composed image and does not scale cleanly to all portrait screens.
+
+Next attempt should use:
+
+```text
+adaptive full-screen background
++
+separate transparent seagull layer
++
+independent buttons
+```
+
+Prefer checking:
+
+`design/branding/Аватар Чайки трафарет.png`
+
+as a possible separate bird asset.
 
 ---
 
-# Substitution / Список
+# Monthly hours
 
-Current foundation includes:
+Calculator:
+
+`ShiftMonthHoursCalculator`
+
+Accounting:
 
 ```text
-participants
-canonical rotation
-availability
-vacation/sick/removed states
-participant management
-rotation editor
-call flow
-3-second Undo
-pending calls
-shiftClaims
-duplicate-shift protection
-exactly-once finalization
-statistics
-confirmed call history
-personal SpacesBar
-push
-assigned crew
-Vacation integration
-shift eligibility
-Firestore Rules
+12h physical shift → 11.5 accounted
+day → 11.5
+night → 4h on start date/month + 7.5h next date/month
+additional shifts follow same accounting
+```
+
+UI:
+
+```text
+Основные
+Халтуры
+Всего
+```
+
+Manual September example accepted:
+
+```text
+180 ч
+57,5 ч
+237,5 ч
+```
+
+---
+
+# Vacation return fix
+
+Checkpoint:
+
+`a3cbd07`
+
+Fix:
+
+```text
+user is no longer kept in Vacation state
+after current VacationPeriod ends/disappears
+because of legacy raw vacation status
+```
+
+Manual real-user verification passed.
+
+---
+
+# Calendar themes
+
+Checkpoint:
+
+`7343528`
+
+Theme tabs:
+
+```text
+Светлая
+Тёмная
+Своя
+```
+
+Custom slots:
+
+```text
+Своя 1
+Своя 2
+```
+
+Configurable:
+
+```text
+8 cycle tile colors
+background
+Vacation
+additional-shift border
+selected day
+monthly-hours bar
+text scale
+```
+
+Text scale:
+
+```text
+Compact
+Normal
+Large
+```
+
+Color editor:
+
+```text
+HEX
+RGB sliders
+RGB +/-1 precision
+```
+
+Preferences tests:
+
+```text
+6/6 passed
+```
+
+A post-commit systemic theme audit also updated Calendar agenda/editor/time picker so custom Calendar themes propagate consistently.
+Phone visual test passed.
+
+---
+
+# Chat refinements
+
+Latest chat checkpoints:
+
+```text
+ce22462
+→ Rules lifecycle/image preview fix
+
+2ae2439
+→ chat filters and group-member presentation refinement
+```
+
+Known backlog:
+
+```text
+private chat
+peer message
+Удалить у себя
+may still fail
 ```
 
 ---
 
 # Substitution eligibility
 
-Reasons:
+Unavailable reasons:
 
 ```text
 missingCrew
@@ -278,7 +360,7 @@ Messages:
 Недоступно: рабочая смена
 ```
 
-Allowed extra shifts:
+Allowed additional shifts:
 
 | Own phase | Day | Night |
 |---|---:|---:|
@@ -291,113 +373,19 @@ Allowed extra shifts:
 | offAfterRecovery1 | ✅ | ✅ |
 | offAfterRecovery2 | ✅ | ❌ |
 
-Night shift also checks next calendar day for Vacation overlap.
-
----
-
-# Call protection
-
-Layers:
+Protection:
 
 ```text
-UI resolver
-→ transaction resolver
+UI
+→ transaction
 → Firestore Rules
 ```
 
-Current new-call claim:
+New shiftClaim:
 
 ```text
-shiftClaim schemaVersion = 2
+schemaVersion = 2
 ```
-
-Production Rules require v2 and validate assignedCrew + work-cycle eligibility.
-
-Old APK new-call protocol using v1 is rejected after the 2026-09-24 Rules deploy.
-
----
-
-# Vacation
-
-Persistence:
-
-`spaces/calendar/vacationPeriods/{userId}__{slot}`
-
-Slots:
-
-`1..6`
-
-Implemented:
-
-```text
-friendly parser
-editor/list
-create/update/delete
-Firestore persistence
-realtime Calendar watch
-pink markers
-Substitution effective Vacation status
-manager editing
-call eligibility overlap checks
-```
-
-Deleting current VacationPeriod returns participant to ordinary list while preserving canonical queue position.
-
-History-safe archive/reuse remains future work.
-
----
-
-# Calendar
-
-Base schedule is immutable.
-
-Presentation layers:
-
-```text
-base 8-day shift
-Vacation
-additional Substitution shift
-personal local agenda markers
-```
-
-Authoritative crew comes from user profile.
-
-Modes:
-
-```text
-full
-medium
-compact
-```
-
----
-
-# Additional shift / халтура
-
-Implemented from structured Substitution data.
-
-Components:
-
-```text
-CalendarAdditionalShiftEvent
-CalendarAdditionalShiftProjection
-CalendarAdditionalShiftService
-```
-
-Presentation:
-
-```text
-violet day marker/frame
-```
-
-Production manual verification:
-
-```text
-successful call for 25th
-→ violet frame appeared on 25th
-```
-
-Do not parse free-form SpacesBar text when structured Substitution data exists.
 
 ---
 
@@ -416,35 +404,33 @@ Storage:
 
 Not stored in Firestore.
 
-Implemented:
+Supports:
 
 ```text
 create
 edit
 delete
-task completion
-active/completed sorting
-time sorting
+completion
 priority
 description
+scheduled time
 separate reminder time
-local day markers
+local markers
 ```
 
 ---
 
-# Exact local Calendar reminders
+# Exact local reminders
 
-Android architecture:
+One-off Calendar reminders use:
 
 ```text
-CalendarEntryService
-→ CalendarEntryReminderService
+CalendarEntryReminderService
 → NotificationService
 → flutter_local_notifications
 ```
 
-Uses:
+Android:
 
 ```text
 SCHEDULE_EXACT_ALARM
@@ -452,120 +438,92 @@ RECEIVE_BOOT_COMPLETED
 AndroidScheduleMode.alarmClock
 ```
 
-Manual checks passed:
-
-```text
-exact requested minute
-system sound
-reschedule
-bell-off cancel
-completion cancel
-delete cancel
-app close/reopen
-```
-
-Exact local reminders are Android-only in current product.
+Web exact Android reminders are unsupported.
 
 ---
 
-# Firestore Rules production state
+# Firestore production state
 
-Current repository Rules were tested and deployed on 2026-09-24.
-
-This supersedes older transition-Rules notes.
-
-Current call protection includes:
+Current Substitution Rules production state:
 
 ```text
-manager role
-atomic module/participant/pendingCall/shiftClaim relationships
-shiftClaim v2
-assignedCrew validation
-8-day cycle eligibility
-duplicate protection
+repository ruleset deployed
+new calls require shiftClaim v2
+assignedCrew + cycle eligibility validated
+duplicate exact-shift calls protected
 ```
 
-Recent Substitution Rules suite:
-
-`74/74 passed`
+Older transition-compatible notes are obsolete.
 
 ---
 
-# EpiLite Hosting
+# Build / verification
 
-Build:
-
-```powershell
-flutter.bat build web
-```
-
-Deploy:
-
-```powershell
-firebase.cmd deploy --only hosting
-```
-
-Production URL:
-
-`https://epistola-434b7.web.app`
-
-`firebase.json` serves:
-
-`build/web`
-
-with SPA rewrite to:
-
-`/index.html`
-
-Local Hosting cache:
-
-`.firebase/`
-
-should be ignored by Git:
+Latest local:
 
 ```text
-/.firebase/
+flutter analyze
+→ No issues found
+
+Calendar theme preferences
+→ 6/6 passed
+
+release APK
+→ 63.9 MB
 ```
+
+Older full-suite release checkpoint:
+
+```text
+flutter test
+→ 1161/1161 passed
+
+Substitution Rules
+→ 74/74 passed
+```
+
+Do not claim 1161/1161 as a fresh test after the current dirty visual WIP unless the full suite is run again.
 
 ---
 
-# Build commands
+# Roadmap
 
-Flutter:
+Immediate:
 
-```powershell
-dart.bat format <files>
-flutter.bat analyze
-flutter.bat test
-flutter.bat build apk --release
-flutter.bat build web
+```text
+1. Finish Shift Alarm visual layout correctly.
+2. Re-test on phone.
+3. Finalize/commit Calendar theme audit + RGB +/-1.
+4. Run targeted tests + analyze.
+5. Restore generated plugin files.
+6. Commit/push.
+7. Large Text + SpaceBar layout/padding.
+8. Substitution Call Basket + Shift Cohort.
+9. Remaining polish.
+10. v0.8.0 release/merge/tag decision.
+11. Achievements if time.
 ```
 
-Firebase:
+Backlog:
 
-```powershell
-firebase.cmd deploy --only firestore:rules
-firebase.cmd deploy --only hosting
-```
-
-Rules test:
-
-```powershell
-firebase.cmd emulators:exec --only firestore "node --test test/rules/firestore/substitution_space_rules.test.mjs"
-```
-
-Git:
-
-```powershell
-git.exe status --short
-git.exe diff --check
+```text
+private chat "Удалить у себя"
+Attachment Composer
+voice messages
+file transfer
+Vacation history/archive
+repeating cycle-linked local entries
+Web chat avatar polish
+legacy *MessageId cleanup
+pushInstallations cleanup
+Bus schedule after authoritative timetable
 ```
 
 ---
 
 # Generated files workflow
 
-After the last Flutter command before commit, restore once:
+After the final Flutter command before commit restore once:
 
 ```text
 linux/flutter/generated_plugin_registrant.cc
@@ -575,29 +533,7 @@ windows/flutter/generated_plugin_registrant.cc
 windows/flutter/generated_plugins.cmake
 ```
 
-Do not commit these incidental changes.
-
----
-
-# Known backlog
-
-Current candidates:
-
-```text
-finish v0.8.0 release/merge/tag
-private chat "Удалить у себя" bug
-Attachment Composer Foundation
-voice messages
-small file transfer
-Calendar compact marker/UI polish
-Calendar themes
-Vacation history/archive
-repeating cycle-linked local entries
-Web chat avatar polish
-legacy *MessageId cleanup
-pushInstallations cleanup for deleted users
-Bus schedule after authoritative new timetable
-```
+Do not commit incidental generated changes.
 
 ---
 
@@ -620,17 +556,9 @@ ARCHITECTURE.md
 README.md
 ```
 
-Expected functional checkpoint before docs commit:
+Expected last pushed checkpoint before current local changes:
 
-`63da029`
+`7343528`
 
-Expected source priority:
-
-```text
-current code
-→ PROJECT_CONTEXT.md
-→ ARCHITECTURE.md
-→ README.md
-```
-
-If docs and `.gitignore` are still only local changes, commit/push that documentation checkpoint before starting the next feature block.
+Next work:
+finish the Shift Alarm visual screen without regressing its already-passed native behavior.
