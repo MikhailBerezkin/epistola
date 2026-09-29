@@ -16,6 +16,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import kotlin.math.abs
@@ -131,6 +132,20 @@ class ShiftAlarmActivity : Activity() {
             WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
         )
 
+        window.statusBarColor =
+            Color.rgb(
+                3,
+                11,
+                20,
+            )
+
+        window.navigationBarColor =
+            Color.rgb(
+                3,
+                10,
+                18,
+            )
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(true)
             setTurnScreenOn(true)
@@ -144,25 +159,76 @@ class ShiftAlarmActivity : Activity() {
     }
 
     private fun buildContent(): View {
+        val width = screenWidth()
+        val height = screenHeight()
+
         val root =
             FrameLayout(this).apply {
-                setBackgroundColor(
-                    Color.rgb(
-                        18,
-                        18,
-                        20,
-                    ),
-                )
+                background =
+                    GradientDrawable(
+                        GradientDrawable.Orientation.TOP_BOTTOM,
+                        intArrayOf(
+                            Color.rgb(
+                                3,
+                                12,
+                                22,
+                            ),
+                            Color.rgb(
+                                5,
+                                20,
+                                34,
+                            ),
+                            Color.rgb(
+                                5,
+                                18,
+                                31,
+                            ),
+                            Color.rgb(
+                                3,
+                                10,
+                                18,
+                            ),
+                        ),
+                    )
             }
+
+        addArtwork(
+            root = root,
+            screenWidth = width,
+            screenHeight = height,
+        )
 
         val snoozeButton =
             actionButton(
                 text = "+10 минут",
-                backgroundColor =
+                iconResId =
+                    R.drawable.shift_alarm_snooze_icon,
+                startColor =
+                    Color.argb(
+                        232,
+                        40,
+                        82,
+                        132,
+                    ),
+                endColor =
+                    Color.argb(
+                        238,
+                        15,
+                        43,
+                        76,
+                    ),
+                strokeColor =
                     Color.rgb(
-                        56,
-                        88,
-                        138,
+                        132,
+                        202,
+                        255,
+                    ),
+                glowColor =
+                    Color.argb(
+                        90,
+                        70,
+                        165,
+                        255,
                     ),
                 action = {
                     snoozeAlarm()
@@ -171,144 +237,43 @@ class ShiftAlarmActivity : Activity() {
 
         root.addView(
             snoozeButton,
-            FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(76),
-            ).apply {
-                gravity =
-                    Gravity.TOP or
-                        Gravity.CENTER_HORIZONTAL
-
-                leftMargin = dp(24)
-                rightMargin = dp(24)
-
-                topMargin =
-                    screenHeightQuarter() -
-                        dp(38)
-            },
-        )
-
-        val center =
-            LinearLayout(this).apply {
-                orientation =
-                    LinearLayout.VERTICAL
-
-                gravity =
-                    Gravity.CENTER
-
-                setPadding(
-                    dp(28),
-                    0,
-                    dp(28),
-                    0,
-                )
-            }
-
-        root.addView(
-            center,
-            FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-            ).apply {
-                gravity =
-                    Gravity.CENTER
-            },
-        )
-
-        center.addView(
-            TextView(this).apply {
-                text = "⏰"
-
-                textSize = 60f
-
-                gravity =
-                    Gravity.CENTER
-
-                setTextColor(
-                    Color.WHITE,
-                )
-            },
-        )
-
-        center.addView(
-            TextView(this).apply {
-                text =
-                    alarmTitle
-
-                textSize = 28f
-
-                gravity =
-                    Gravity.CENTER
-
-                setTextColor(
-                    Color.WHITE,
-                )
-
-                setPadding(
-                    0,
-                    dp(20),
-                    0,
-                    dp(8),
-                )
-            },
-        )
-
-        center.addView(
-            TextView(this).apply {
-                text =
-                    "Будильник рабочего календаря"
-
-                textSize = 18f
-
-                gravity =
-                    Gravity.CENTER
-
-                setTextColor(
-                    Color.rgb(
-                        190,
-                        190,
-                        195,
-                    ),
-                )
-            },
-        )
-
-        center.addView(
-            TextView(this).apply {
-                text =
-                    "Свайп вверх — +10 минут\n" +
-                        "Свайп вниз — остановить"
-
-                textSize = 15f
-
-                gravity =
-                    Gravity.CENTER
-
-                setTextColor(
-                    Color.rgb(
-                        150,
-                        150,
-                        156,
-                    ),
-                )
-
-                setPadding(
-                    0,
-                    dp(24),
-                    0,
-                    0,
-                )
-            },
+            alarmButtonLayoutParams(
+                centerY =
+                    (height * 0.25f).toInt(),
+            ),
         )
 
         val stopButton =
             actionButton(
-                text = "Остановить",
-                backgroundColor =
+                text = "Отключить",
+                iconResId =
+                    R.drawable.shift_alarm_stop_icon,
+                startColor =
+                    Color.argb(
+                        238,
+                        145,
+                        32,
+                        43,
+                    ),
+                endColor =
+                    Color.argb(
+                        242,
+                        78,
+                        16,
+                        25,
+                    ),
+                strokeColor =
                     Color.rgb(
-                        58,
-                        62,
-                        70,
+                        255,
+                        91,
+                        101,
+                    ),
+                glowColor =
+                    Color.argb(
+                        105,
+                        255,
+                        55,
+                        67,
                     ),
                 action = {
                     stopAlarmAndFinish()
@@ -317,74 +282,375 @@ class ShiftAlarmActivity : Activity() {
 
         root.addView(
             stopButton,
-            FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(76),
-            ).apply {
-                gravity =
-                    Gravity.TOP or
-                        Gravity.CENTER_HORIZONTAL
-
-                leftMargin = dp(24)
-                rightMargin = dp(24)
-
-                topMargin =
-                    screenHeightThreeQuarters() -
-                        dp(38)
-            },
+            alarmButtonLayoutParams(
+                centerY =
+                    (height * 0.75f).toInt(),
+            ),
         )
 
         return root
     }
 
-    private fun actionButton(
-        text: String,
-        backgroundColor: Int,
-        action: () -> Unit,
-    ): TextView {
-        return TextView(this).apply {
-            this.text = text
+    private fun addArtwork(
+        root: FrameLayout,
+        screenWidth: Int,
+        screenHeight: Int,
+    ) {
+        /*
+         * Исходная картинка квадратная.
+         *
+         * Поэтому не растягиваем её на весь портретный экран
+         * и не используем CENTER_CROP.
+         *
+         * Высота изображения равна ширине экрана:
+         * квадрат всегда показывается полностью.
+         */
+        val artworkSize =
+            screenWidth
 
-            textSize = 22f
+        /*
+         * Центр всей квадратной картинки.
+         *
+         * Сама чайка в исходнике находится немного ниже
+         * геометрического центра, поэтому 55.5% даёт
+         * визуальный центр чайки примерно на 57–58%.
+         */
+        val artworkCenterY =
+            (screenHeight * 0.555f).toInt()
 
-            gravity =
-                Gravity.CENTER
+        val artworkTop =
+            artworkCenterY -
+                artworkSize / 2
 
-            setTextColor(
-                Color.WHITE,
-            )
+        val artworkImage =
+            ImageView(this).apply {
+                setImageResource(
+                    R.drawable.shift_alarm_seagull_background,
+                )
 
-            isClickable = true
-            isFocusable = true
+                scaleType =
+                    ImageView.ScaleType.FIT_CENTER
 
-            background =
-                GradientDrawable().apply {
-                    shape =
-                        GradientDrawable.RECTANGLE
-
-                    cornerRadius =
-                        dp(18).toFloat()
-
-                    setColor(
-                        backgroundColor,
-                    )
-                }
-
-            setOnClickListener {
-                action()
+                adjustViewBounds = false
             }
+
+        root.addView(
+            artworkImage,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                artworkSize,
+            ).apply {
+                gravity =
+                    Gravity.TOP or
+                        Gravity.CENTER_HORIZONTAL
+
+                topMargin =
+                    artworkTop
+            },
+        )
+
+        /*
+         * Мягкий градиент по верхнему и нижнему краю
+         * квадратной картинки.
+         *
+         * Благодаря этому квадрат визуально превращается
+         * в часть полноэкранного фона.
+         */
+        val artworkFade =
+            View(this).apply {
+                background =
+                    GradientDrawable(
+                        GradientDrawable.Orientation.TOP_BOTTOM,
+                        intArrayOf(
+                            Color.argb(
+                                235,
+                                3,
+                                12,
+                                22,
+                            ),
+                            Color.argb(
+                                75,
+                                3,
+                                12,
+                                22,
+                            ),
+                            Color.TRANSPARENT,
+                            Color.TRANSPARENT,
+                            Color.argb(
+                                65,
+                                3,
+                                10,
+                                18,
+                            ),
+                            Color.argb(
+                                225,
+                                3,
+                                10,
+                                18,
+                            ),
+                        ),
+                    )
+            }
+
+        root.addView(
+            artworkFade,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                artworkSize,
+            ).apply {
+                gravity =
+                    Gravity.TOP or
+                        Gravity.CENTER_HORIZONTAL
+
+                topMargin =
+                    artworkTop
+            },
+        )
+
+        /*
+         * В исходном artwork справа снизу есть 19/4.
+         *
+         * Вместо грубой заплатки используем диагональное
+         * затемнение края. Оно заодно делает изображение
+         * ближе к нашему рендеру.
+         */
+        val cornerFadeSize =
+            (screenWidth * 0.42f).toInt()
+
+        val cornerFade =
+            View(this).apply {
+                background =
+                    GradientDrawable(
+                        GradientDrawable.Orientation.BR_TL,
+                        intArrayOf(
+                            Color.argb(
+                                255,
+                                3,
+                                10,
+                                18,
+                            ),
+                            Color.argb(
+                                235,
+                                3,
+                                10,
+                                18,
+                            ),
+                            Color.argb(
+                                125,
+                                3,
+                                10,
+                                18,
+                            ),
+                            Color.TRANSPARENT,
+                        ),
+                    )
+            }
+
+        root.addView(
+            cornerFade,
+            FrameLayout.LayoutParams(
+                cornerFadeSize,
+                cornerFadeSize,
+            ).apply {
+                gravity =
+                    Gravity.TOP or
+                        Gravity.END
+
+                topMargin =
+                    artworkTop +
+                        artworkSize -
+                        cornerFadeSize
+            },
+        )
+    }
+
+    private fun alarmButtonLayoutParams(
+        centerY: Int,
+    ): FrameLayout.LayoutParams {
+        val width =
+            screenWidth()
+
+        val buttonWidth =
+            (width * 0.76f)
+                .toInt()
+
+        val buttonHeight =
+            (width * 0.18f)
+                .toInt()
+                .coerceIn(
+                    dp(64),
+                    dp(78),
+                )
+
+        return FrameLayout.LayoutParams(
+            buttonWidth,
+            buttonHeight,
+        ).apply {
+            gravity =
+                Gravity.TOP or
+                    Gravity.CENTER_HORIZONTAL
+
+            topMargin =
+                centerY -
+                    buttonHeight / 2
         }
     }
 
-    private fun screenHeightQuarter(): Int {
-        return resources.displayMetrics.heightPixels / 4
+    private fun actionButton(
+        text: String,
+        iconResId: Int,
+        startColor: Int,
+        endColor: Int,
+        strokeColor: Int,
+        glowColor: Int,
+        action: () -> Unit,
+    ): View {
+        val outer =
+            FrameLayout(this).apply {
+                clipChildren = false
+                clipToPadding = false
+            }
+
+        val glow =
+            View(this).apply {
+                alpha = 0.42f
+
+                scaleX = 1.035f
+                scaleY = 1.10f
+
+                background =
+                    GradientDrawable().apply {
+                        shape =
+                            GradientDrawable.RECTANGLE
+
+                        cornerRadius =
+                            dp(42).toFloat()
+
+                        setColor(
+                            glowColor,
+                        )
+                    }
+            }
+
+        outer.addView(
+            glow,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+            ),
+        )
+
+        val button =
+            LinearLayout(this).apply {
+                orientation =
+                    LinearLayout.HORIZONTAL
+
+                gravity =
+                    Gravity.CENTER
+
+                isClickable = true
+                isFocusable = true
+
+                elevation =
+                    dp(10).toFloat()
+
+                setPadding(
+                    dp(24),
+                    0,
+                    dp(24),
+                    0,
+                )
+
+                background =
+                    GradientDrawable(
+                        GradientDrawable.Orientation.TOP_BOTTOM,
+                        intArrayOf(
+                            startColor,
+                            endColor,
+                        ),
+                    ).apply {
+                        shape =
+                            GradientDrawable.RECTANGLE
+
+                        cornerRadius =
+                            dp(40).toFloat()
+
+                        setStroke(
+                            dp(1),
+                            strokeColor,
+                        )
+                    }
+
+                setOnClickListener {
+                    action()
+                }
+            }
+
+        outer.addView(
+            button,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+            ),
+        )
+
+        val icon =
+            ImageView(this).apply {
+                setImageResource(
+                    iconResId,
+                )
+
+                scaleType =
+                    ImageView.ScaleType.CENTER_INSIDE
+            }
+
+        button.addView(
+            icon,
+            LinearLayout.LayoutParams(
+                dp(34),
+                dp(34),
+            ).apply {
+                marginEnd =
+                    dp(22)
+            },
+        )
+
+        val label =
+            TextView(this).apply {
+                this.text =
+                    text
+
+                textSize =
+                    21f
+
+                gravity =
+                    Gravity.CENTER
+
+                includeFontPadding =
+                    false
+
+                setTextColor(
+                    Color.WHITE,
+                )
+            }
+
+        button.addView(
+            label,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ),
+        )
+
+        return outer
     }
 
-    private fun screenHeightThreeQuarters(): Int {
-        return (
-            resources.displayMetrics.heightPixels *
-                3
-            ) / 4
+    private fun screenWidth(): Int {
+        return resources.displayMetrics.widthPixels
+    }
+
+    private fun screenHeight(): Int {
+        return resources.displayMetrics.heightPixels
     }
 
     private fun snoozeAlarm() {
@@ -457,7 +723,9 @@ class ShiftAlarmActivity : Activity() {
                 Intent.ACTION_SCREEN_OFF,
             )
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        if (Build.VERSION.SDK_INT >=
+            Build.VERSION_CODES.TIRAMISU
+        ) {
             registerReceiver(
                 screenOffReceiver,
                 filter,
@@ -486,7 +754,9 @@ class ShiftAlarmActivity : Activity() {
         screenOffReceiverRegistered = false
     }
 
-    private fun dp(value: Int): Int {
+    private fun dp(
+        value: Int,
+    ): Int {
         return (
             value *
                 resources.displayMetrics.density
