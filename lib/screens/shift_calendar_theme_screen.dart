@@ -780,6 +780,22 @@ class _RgbSlider extends StatelessWidget {
   final int value;
   final ValueChanged<int> onChanged;
 
+  void _decrement() {
+    if (value <= 0) {
+      return;
+    }
+
+    onChanged(value - 1);
+  }
+
+  void _increment() {
+    if (value >= 255) {
+      return;
+    }
+
+    onChanged(value + 1);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Row(
@@ -802,7 +818,19 @@ class _RgbSlider extends StatelessWidget {
             },
           ),
         ),
-        SizedBox(width: 34, child: Text('$value', textAlign: TextAlign.end)),
+        IconButton(
+          onPressed: value > 0 ? _decrement : null,
+          tooltip: 'Уменьшить $label на 1',
+          visualDensity: VisualDensity.compact,
+          icon: const Icon(Icons.remove_rounded),
+        ),
+        SizedBox(width: 34, child: Text('$value', textAlign: TextAlign.center)),
+        IconButton(
+          onPressed: value < 255 ? _increment : null,
+          tooltip: 'Увеличить $label на 1',
+          visualDensity: VisualDensity.compact,
+          icon: const Icon(Icons.add_rounded),
+        ),
       ],
     );
   }

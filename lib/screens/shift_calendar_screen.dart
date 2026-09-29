@@ -130,7 +130,11 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
     final result = await Navigator.of(context).push<CalendarEntryEditorResult>(
       MaterialPageRoute(
         builder: (context) {
-          return CalendarEntryEditorScreen(kind: kind, date: _selectedDate);
+          return CalendarEntryEditorScreen(
+            kind: kind,
+            date: _selectedDate,
+            palette: _calendarThemeState.activePalette,
+          );
         },
       ),
     );
@@ -927,7 +931,7 @@ class _ShiftCalendarScreenState extends State<ShiftCalendarScreen> {
                               selectedDate: _selectedDate,
                               userId: _currentUserId,
                               service: _calendarEntryService,
-                              backgroundColor: calendarColors.background,
+                              palette: calendarPalette,
                               additionalShiftEvents: _additionalShiftsForDate(
                                 _selectedDate,
                               ),
@@ -1647,14 +1651,12 @@ class _CompactDateStripState extends State<_CompactDateStrip> {
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(13),
                             border: Border.all(
-                              color: theme.colorScheme.primary.withValues(
-                                alpha: 0.95,
-                              ),
+                              color: colors.selectedDay.withValues(alpha: 0.95),
                               width: 2.4,
                             ),
                             boxShadow: [
                               BoxShadow(
-                                color: theme.colorScheme.primary.withValues(
+                                color: colors.selectedDay.withValues(
                                   alpha: 0.16,
                                 ),
                                 blurRadius: 5,
@@ -1671,7 +1673,7 @@ class _CompactDateStripState extends State<_CompactDateStrip> {
                         child: Container(
                           height: 5,
                           decoration: BoxDecoration(
-                            color: theme.colorScheme.primary,
+                            color: colors.selectedDay,
                             borderRadius: BorderRadius.circular(3),
                           ),
                         ),
@@ -1683,7 +1685,7 @@ class _CompactDateStripState extends State<_CompactDateStrip> {
                         child: Container(
                           height: 5,
                           decoration: BoxDecoration(
-                            color: theme.colorScheme.primary,
+                            color: colors.selectedDay,
                             borderRadius: BorderRadius.circular(3),
                           ),
                         ),
@@ -1709,7 +1711,7 @@ class _CalendarAgendaPanel extends StatefulWidget {
     required this.onAddEntry,
     required this.onEntriesChanged,
     required this.additionalShiftEvents,
-    required this.backgroundColor,
+    required this.palette,
   });
 
   final DateTime selectedDate;
@@ -1718,7 +1720,7 @@ class _CalendarAgendaPanel extends StatefulWidget {
   final Future<void> Function(CalendarEntryKind kind) onAddEntry;
   final Future<void> Function() onEntriesChanged;
   final List<CalendarAdditionalShiftEvent> additionalShiftEvents;
-  final Color backgroundColor;
+  final ShiftCalendarThemePalette palette;
 
   @override
   State<_CalendarAgendaPanel> createState() => _CalendarAgendaPanelState();
@@ -1804,6 +1806,7 @@ class _CalendarAgendaPanelState extends State<_CalendarAgendaPanel> {
             kind: entry.kind,
             date: entry.date,
             initialEntry: entry,
+            palette: widget.palette,
           );
         },
       ),
@@ -1902,28 +1905,27 @@ class _CalendarAgendaPanelState extends State<_CalendarAgendaPanel> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDarkPanel =
-        ThemeData.estimateBrightnessForColor(widget.backgroundColor) ==
-        Brightness.dark;
+    final colors = _CalendarColors.fromPalette(widget.palette);
 
-    final panelBackground = isDarkPanel
-        ? const Color(0xFF1D1F22)
-        : theme.colorScheme.surfaceContainerLow;
-
+    final panelBackground = _calendarLayerColor(colors.background, 0.05);
     final panelForeground = _calendarContrastColor(panelBackground);
-
     final panelSecondary = panelForeground.withValues(alpha: 0.72);
+
+    final controlRailBackground = _calendarLayerColor(panelBackground, 0.06);
+    final controlButtonBackground = _calendarLayerColor(panelBackground, 0.10);
+    final controlForeground = _calendarContrastColor(controlButtonBackground);
+
+    final errorColor =
+        ThemeData.estimateBrightnessForColor(panelBackground) == Brightness.dark
+        ? const Color(0xFFFF8A80)
+        : const Color(0xFFB3261E);
 
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.fromLTRB(8, 0, 8, 8),
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
       decoration: BoxDecoration(
-        color:
-            ThemeData.estimateBrightnessForColor(widget.backgroundColor) ==
-                Brightness.dark
-            ? const Color(0xFF1D1F22)
-            : theme.colorScheme.surfaceContainerLow,
+        color: panelBackground,
         borderRadius: BorderRadius.circular(18),
       ),
       child: Column(
@@ -1960,11 +1962,14 @@ class _CalendarAgendaPanelState extends State<_CalendarAgendaPanel> {
               future: _entriesFuture,
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(
+                  return Center(
                     child: SizedBox(
                       width: 22,
                       height: 22,
-                      child: CircularProgressIndicator(strokeWidth: 2),
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: colors.selectedDay,
+                      ),
                     ),
                   );
                 }
@@ -1975,7 +1980,7 @@ class _CalendarAgendaPanelState extends State<_CalendarAgendaPanel> {
                     child: Text(
                       'Не удалось загрузить дела',
                       style: theme.textTheme.bodyMedium?.copyWith(
-                        color: theme.colorScheme.error,
+                        color: errorColor,
                       ),
                     ),
                   );
@@ -2004,6 +2009,7 @@ class _CalendarAgendaPanelState extends State<_CalendarAgendaPanel> {
                       return _CalendarAdditionalShiftListItem(
                         event: additionalShiftEvents[index],
                         foregroundColor: panelForeground,
+                        accentColor: colors.additionalShiftMarker,
                       );
                     }
 
@@ -2012,6 +2018,7 @@ class _CalendarAgendaPanelState extends State<_CalendarAgendaPanel> {
                     return _CalendarEntryListItem(
                       entry: entry,
                       foregroundColor: panelForeground,
+                      accentColor: colors.selectedDay,
                       onTap: () {
                         _editEntry(entry);
                       },
@@ -2031,28 +2038,35 @@ class _CalendarAgendaPanelState extends State<_CalendarAgendaPanel> {
             height: 52,
             padding: const EdgeInsets.all(4),
             decoration: BoxDecoration(
-              color: theme.colorScheme.surfaceContainerHighest,
+              color: controlRailBackground,
               borderRadius: BorderRadius.circular(26),
             ),
             child: Row(
               children: [
                 Expanded(
                   child: Material(
-                    color: theme.colorScheme.secondaryContainer,
+                    color: controlButtonBackground,
                     borderRadius: BorderRadius.circular(22),
                     child: InkWell(
                       borderRadius: BorderRadius.circular(22),
                       onTap: () {
                         _handleAddEntry(CalendarEntryKind.task);
                       },
-                      child: const SizedBox(
+                      child: SizedBox(
                         height: 44,
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.check_circle_outline_rounded, size: 19),
-                            SizedBox(width: 7),
-                            Text('Дело'),
+                            Icon(
+                              Icons.check_circle_outline_rounded,
+                              size: 19,
+                              color: controlForeground,
+                            ),
+                            const SizedBox(width: 7),
+                            Text(
+                              'Дело',
+                              style: TextStyle(color: controlForeground),
+                            ),
                           ],
                         ),
                       ),
@@ -2063,28 +2077,35 @@ class _CalendarAgendaPanelState extends State<_CalendarAgendaPanel> {
                 Text(
                   'Добавить',
                   style: theme.textTheme.labelLarge?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
+                    color: panelSecondary,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Material(
-                    color: theme.colorScheme.secondaryContainer,
+                    color: controlButtonBackground,
                     borderRadius: BorderRadius.circular(22),
                     child: InkWell(
                       borderRadius: BorderRadius.circular(22),
                       onTap: () {
                         _handleAddEntry(CalendarEntryKind.note);
                       },
-                      child: const SizedBox(
+                      child: SizedBox(
                         height: 44,
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.sticky_note_2_outlined, size: 19),
-                            SizedBox(width: 7),
-                            Text('Заметка'),
+                            Icon(
+                              Icons.sticky_note_2_outlined,
+                              size: 19,
+                              color: controlForeground,
+                            ),
+                            const SizedBox(width: 7),
+                            Text(
+                              'Заметка',
+                              style: TextStyle(color: controlForeground),
+                            ),
                           ],
                         ),
                       ),
@@ -2110,10 +2131,12 @@ class _CalendarAdditionalShiftListItem extends StatelessWidget {
   const _CalendarAdditionalShiftListItem({
     required this.event,
     required this.foregroundColor,
+    required this.accentColor,
   });
 
   final CalendarAdditionalShiftEvent event;
   final Color foregroundColor;
+  final Color accentColor;
 
   @override
   Widget build(BuildContext context) {
@@ -2124,8 +2147,6 @@ class _CalendarAdditionalShiftListItem extends StatelessWidget {
       SubstitutionShiftKind.night => 'Дополнительная ночная смена',
     };
 
-    final accent = _CalendarColors.fromTheme(theme).additionalShiftMarker;
-
     return ListTile(
       contentPadding: EdgeInsets.zero,
       leading: SizedBox(
@@ -2135,7 +2156,7 @@ class _CalendarAdditionalShiftListItem extends StatelessWidget {
             width: 4,
             height: 32,
             decoration: BoxDecoration(
-              color: accent,
+              color: accentColor,
               borderRadius: BorderRadius.circular(999),
             ),
           ),
@@ -2156,12 +2177,14 @@ class _CalendarEntryListItem extends StatelessWidget {
   const _CalendarEntryListItem({
     required this.entry,
     required this.foregroundColor,
+    required this.accentColor,
     required this.onTap,
     required this.onCompletedChanged,
   });
 
   final CalendarEntry entry;
   final Color foregroundColor;
+  final Color accentColor;
   final VoidCallback onTap;
   final ValueChanged<bool>? onCompletedChanged;
 
@@ -2188,6 +2211,9 @@ class _CalendarEntryListItem extends StatelessWidget {
       leading: entry.kind == CalendarEntryKind.task
           ? Checkbox(
               value: isCompleted,
+              activeColor: accentColor,
+              checkColor: _calendarContrastColor(accentColor),
+              side: BorderSide(color: foregroundColor.withValues(alpha: 0.55)),
               onChanged: (value) {
                 if (value == null) {
                   return;
@@ -2196,9 +2222,12 @@ class _CalendarEntryListItem extends StatelessWidget {
                 onCompletedChanged?.call(value);
               },
             )
-          : const SizedBox(
+          : SizedBox(
               width: 48,
-              child: Icon(Icons.sticky_note_2_outlined),
+              child: Icon(
+                Icons.sticky_note_2_outlined,
+                color: foregroundColor.withValues(alpha: 0.82),
+              ),
             ),
       title: Text(
         entry.title,
@@ -2496,14 +2525,6 @@ class _CalendarColors {
     );
   }
 
-  factory _CalendarColors.fromTheme(ThemeData theme) {
-    final palette = theme.brightness == Brightness.dark
-        ? ShiftCalendarThemePalette.dark
-        : ShiftCalendarThemePalette.light;
-
-    return _CalendarColors.fromPalette(palette);
-  }
-
   Color forPhase(ShiftCyclePhase phase) {
     return switch (phase) {
       ShiftCyclePhase.day1 => day1,
@@ -2516,6 +2537,12 @@ class _CalendarColors {
       ShiftCyclePhase.offAfterRecovery2 => offAfterRecovery2,
     };
   }
+}
+
+Color _calendarLayerColor(Color background, double amount) {
+  final foreground = _calendarContrastColor(background);
+
+  return Color.lerp(background, foreground, amount)!;
 }
 
 Color _calendarContrastColor(Color background) {
