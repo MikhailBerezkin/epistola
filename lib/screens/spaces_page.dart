@@ -21,11 +21,35 @@ import '../platform/epistola_runtime_mode.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/app_user.dart';
 import 'assigned_crew_setup_screen.dart';
+import '../domain/models/spaces_tile_id.dart';
 
 class SpacesPage extends StatefulWidget {
-  const SpacesPage({super.key, this.spacesBarTargetMessageId});
+  const SpacesPage({
+    super.key,
+    this.spacesBarTargetMessageId,
+    this.useLargeTiles = false,
+    this.visibleTileIds = const {
+      SpacesTileId.chats,
+      SpacesTileId.substitution,
+      SpacesTileId.vesselCalls,
+      SpacesTileId.calendar,
+      SpacesTileId.buses,
+      SpacesTileId.safety,
+    },
+    this.tileOrder = const [
+      SpacesTileId.chats,
+      SpacesTileId.substitution,
+      SpacesTileId.vesselCalls,
+      SpacesTileId.calendar,
+      SpacesTileId.buses,
+      SpacesTileId.safety,
+    ],
+  });
 
   final String? spacesBarTargetMessageId;
+  final bool useLargeTiles;
+  final Set<SpacesTileId> visibleTileIds;
+  final List<SpacesTileId> tileOrder;
 
   @override
   State<SpacesPage> createState() => _SpacesPageState();
@@ -467,12 +491,120 @@ class _SpacesPageState extends State<SpacesPage> with WidgetsBindingObserver {
     ];
   }
 
+  Widget _buildSpaceTile({
+    required SpacesTileId tileId,
+    required ChatUnreadSummaryController? chatUnreadController,
+    required bool isLarge,
+  }) {
+    switch (tileId) {
+      case SpacesTileId.chats:
+        if (chatUnreadController != null) {
+          return AnimatedBuilder(
+            animation: chatUnreadController,
+            builder: (context, _) {
+              return _SpaceTile(
+                title: 'Чаты',
+                subtitle: 'Личные и групповые чаты',
+                icon: Icons.forum_outlined,
+                badgeCount: chatUnreadController.totalUnreadCount,
+                isLarge: isLarge,
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => ChatsSpaceScreen(
+                        unreadController: chatUnreadController,
+                      ),
+                    ),
+                  );
+                },
+              );
+            },
+          );
+        }
+
+        return _SpaceTile(
+          title: 'Чаты',
+          subtitle: 'Доступно в Android',
+          icon: Icons.forum_outlined,
+          isLarge: isLarge,
+          onTap: () {
+            _showAndroidOnly(context, 'Чаты');
+          },
+        );
+
+      case SpacesTileId.substitution:
+        return _SpaceTile(
+          title: 'Список',
+          icon: Icons.groups_2_outlined,
+          isLarge: isLarge,
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const SubstitutionSpaceScreen(),
+              ),
+            );
+          },
+        );
+
+      case SpacesTileId.vesselCalls:
+        return _SpaceTile(
+          title: 'Судозаходы',
+          subtitle: 'Суда и объём работ',
+          icon: Icons.directions_boat_outlined,
+          isLarge: isLarge,
+          onTap: () {
+            _showUnderDevelopment(context, 'Судозаходы');
+          },
+        );
+
+      case SpacesTileId.calendar:
+        return _SpaceTile(
+          title: 'Календарь смен',
+          subtitle: 'Смены и рабочие события',
+          icon: Icons.calendar_month_outlined,
+          isLarge: isLarge,
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const ShiftCalendarScreen(),
+              ),
+            );
+          },
+        );
+
+      case SpacesTileId.buses:
+        return _SpaceTile(
+          title: 'Автобусы',
+          subtitle: 'Расписание транспорта',
+          icon: Icons.directions_bus_outlined,
+          isLarge: isLarge,
+          onTap: () {
+            _showUnderDevelopment(context, 'Автобусы');
+          },
+        );
+
+      case SpacesTileId.safety:
+        return _SpaceTile(
+          title: 'ОТ и ТБ',
+          subtitle: 'Инструкции и поиск',
+          icon: Icons.health_and_safety_outlined,
+          isLarge: isLarge,
+          onTap: () {
+            _showUnderDevelopment(context, 'ОТ и ТБ');
+          },
+        );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final presentationItems = EpistolaRuntimeMode.isTest
         ? _buildSpacesBarTestItems()
         : (_spacesBarState?.presentationItems ?? const []);
     final chatUnreadController = _chatUnreadController;
+    final visibleTileOrder = widget.tileOrder
+        .where(widget.visibleTileIds.contains)
+        .toList(growable: false);
 
     final canManageSpacesBar =
         !EpistolaRuntimeMode.isTest &&
@@ -554,93 +686,39 @@ class _SpacesPageState extends State<SpacesPage> with WidgetsBindingObserver {
               ),
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-              sliver: SliverGrid(
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  mainAxisSpacing: 12,
-                  crossAxisSpacing: 12,
-                  childAspectRatio: 1.15,
-                ),
-                delegate: SliverChildListDelegate([
-                  if (chatUnreadController != null)
-                    AnimatedBuilder(
-                      animation: chatUnreadController,
-                      builder: (context, _) {
-                        return _SpaceTile(
-                          title: 'Чаты',
-                          subtitle: 'Личные и групповые чаты',
-                          icon: Icons.forum_outlined,
-                          badgeCount: chatUnreadController.totalUnreadCount,
-                          onTap: () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute<void>(
-                                builder: (_) => ChatsSpaceScreen(
-                                  unreadController: chatUnreadController,
-                                ),
-                              ),
-                            );
-                          },
+              sliver: widget.useLargeTiles
+                  ? SliverList(
+                      delegate: SliverChildBuilderDelegate((context, index) {
+                        return Padding(
+                          padding: EdgeInsets.only(
+                            bottom: index == visibleTileOrder.length - 1
+                                ? 0
+                                : 12,
+                          ),
+                          child: _buildSpaceTile(
+                            tileId: visibleTileOrder[index],
+                            chatUnreadController: chatUnreadController,
+                            isLarge: true,
+                          ),
                         );
-                      },
+                      }, childCount: visibleTileOrder.length),
                     )
-                  else
-                    _SpaceTile(
-                      title: 'Чаты',
-                      subtitle: 'Доступно в Android',
-                      icon: Icons.forum_outlined,
-                      onTap: () {
-                        _showAndroidOnly(context, 'Чаты');
-                      },
+                  : SliverGrid(
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 2,
+                            mainAxisSpacing: 12,
+                            crossAxisSpacing: 12,
+                            childAspectRatio: 1.15,
+                          ),
+                      delegate: SliverChildBuilderDelegate((context, index) {
+                        return _buildSpaceTile(
+                          tileId: visibleTileOrder[index],
+                          chatUnreadController: chatUnreadController,
+                          isLarge: false,
+                        );
+                      }, childCount: visibleTileOrder.length),
                     ),
-                  _SpaceTile(
-                    title: 'Список',
-                    icon: Icons.groups_2_outlined,
-                    onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (_) => const SubstitutionSpaceScreen(),
-                        ),
-                      );
-                    },
-                  ),
-                  _SpaceTile(
-                    title: 'Судозаходы',
-                    subtitle: 'Суда и объём работ',
-                    icon: Icons.directions_boat_outlined,
-                    onTap: () {
-                      _showUnderDevelopment(context, 'Судозаходы');
-                    },
-                  ),
-                  _SpaceTile(
-                    title: 'Календарь смен',
-                    subtitle: 'Смены и рабочие события',
-                    icon: Icons.calendar_month_outlined,
-                    onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (_) => const ShiftCalendarScreen(),
-                        ),
-                      );
-                    },
-                  ),
-                  _SpaceTile(
-                    title: 'Автобусы',
-                    subtitle: 'Расписание транспорта',
-                    icon: Icons.directions_bus_outlined,
-                    onTap: () {
-                      _showUnderDevelopment(context, 'Автобусы');
-                    },
-                  ),
-                  _SpaceTile(
-                    title: 'ОТ и ТБ',
-                    subtitle: 'Инструкции и поиск',
-                    icon: Icons.health_and_safety_outlined,
-                    onTap: () {
-                      _showUnderDevelopment(context, 'ОТ и ТБ');
-                    },
-                  ),
-                ]),
-              ),
             ),
           ],
         ),
@@ -698,6 +776,7 @@ class _SpaceTile extends StatelessWidget {
     required this.icon,
     required this.onTap,
     this.badgeCount = 0,
+    this.isLarge = false,
   });
 
   final String title;
@@ -705,10 +784,92 @@ class _SpaceTile extends StatelessWidget {
   final IconData icon;
   final VoidCallback onTap;
   final int badgeCount;
+  final bool isLarge;
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    if (isLarge) {
+      return SizedBox(
+        height: 112,
+        child: Card(
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onTap,
+            child: Stack(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 16,
+                  ),
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: 56,
+                        child: Icon(icon, size: 42, color: colorScheme.primary),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              title,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.titleLarge,
+                            ),
+                            if (subtitle != null) ...[
+                              const SizedBox(height: 6),
+                              Text(
+                                subtitle!,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context).textTheme.bodyMedium
+                                    ?.copyWith(
+                                      color: colorScheme.onSurfaceVariant,
+                                    ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (badgeCount > 0)
+                  Positioned(
+                    top: 12,
+                    right: 12,
+                    child: Container(
+                      constraints: const BoxConstraints(
+                        minWidth: 26,
+                        minHeight: 26,
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 7),
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: colorScheme.primary,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        badgeCount > 99 ? '99+' : badgeCount.toString(),
+                        style: TextStyle(
+                          color: colorScheme.onPrimary,
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
 
     return Card(
       clipBehavior: Clip.antiAlias,
@@ -729,17 +890,24 @@ class _SpaceTile extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
-                  if (subtitle != null) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      subtitle!,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: colorScheme.onSurfaceVariant,
-                      ),
+                  const SizedBox(height: 4),
+                  SizedBox(
+                    height: 34,
+                    child: Align(
+                      alignment: Alignment.topLeft,
+                      child: subtitle == null
+                          ? const SizedBox.shrink()
+                          : Text(
+                              subtitle!,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(
+                                    color: colorScheme.onSurfaceVariant,
+                                  ),
+                            ),
                     ),
-                  ],
+                  ),
                 ],
               ),
             ),
