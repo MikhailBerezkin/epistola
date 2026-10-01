@@ -9,8 +9,8 @@
 > → `ARCHITECTURE.md`
 > → `README.md`
 >
-> This document describes architectural invariants and the latest implementation state.
 > `PROJECT_CONTEXT.md` is the operational checkpoint/handoff.
+> `ARCHITECTURE.md` records technical invariants.
 > `README.md` is the concise project overview.
 
 ---
@@ -27,11 +27,16 @@ Current feature branch:
 
 Last pushed functional checkpoint:
 
-`7343528 — feat(calendar): add customizable calendar themes`
+`b8618aa — feat(spaces): add customizable hub layout`
 
-Previous major checkpoints:
+Recent sequence:
 
 ```text
+b8618aa — feat(spaces): add customizable hub layout
+617bd36 — docs: update calendar alarm and roadmap handoff
+17a73b7 — wip(alarm): refine ringing screen visuals
+daedc9f — feat(calendar): refine themed calendar surfaces
+7343528 — feat(calendar): add customizable calendar themes
 a3cbd07 — fix(substitution): return users after vacation ends
 83f4ad6 — feat(calendar): finalize native alarms and monthly hours
 f83ee7c — wip(alarm): add full-screen alarm flow foundation
@@ -47,7 +52,12 @@ Stable baseline before `v0.8.0`:
 
 `v0.8.0` is not yet considered merged/released.
 
-Local work after `7343528` includes Calendar theme audit and Shift Alarm visual WIP.
+Latest confirmed:
+
+```text
+HEAD = origin = b8618aa
+working tree = CLEAN
+```
 
 ---
 
@@ -101,7 +111,7 @@ Rules:
 UI must not be sole security boundary
 Firebase Rules protect server-authoritative state
 deterministic business logic should be testable outside UI
-personal local-only state should not be pushed to Firestore without product reason
+personal presentation state should prefer local persistence
 platform-native behavior should remain behind explicit bridge/service boundaries
 ```
 
@@ -145,11 +155,22 @@ Current Home starts on:
 
 `Пространства`
 
-Spaces tiles include:
+Spaces IDs:
+
+```text
+SpacesTileId.chats
+SpacesTileId.substitution
+SpacesTileId.vesselCalls
+SpacesTileId.calendar
+SpacesTileId.buses
+SpacesTileId.safety
+```
+
+Presentation:
 
 ```text
 Чаты
-Список / Подсменка
+Список
 Судозаходы
 Календарь смен
 Автобусы
@@ -160,7 +181,87 @@ Owner remains highest-priority role.
 
 ---
 
-# 6. Platform capabilities
+# 6. Spaces Hub customization architecture
+
+Checkpoint:
+
+`b8618aa`
+
+Files:
+
+```text
+lib/domain/models/spaces_tile_id.dart
+lib/screens/home_screen.dart
+lib/screens/spaces_page.dart
+```
+
+Responsibilities:
+
+```text
+SpacesTileId
+→ stable logical identity of Hub tiles
+
+HomeScreen
+→ presentation settings
+→ SharedPreferences persistence
+→ settings bottom sheets
+
+SpacesPage
+→ rendering visible tiles
+→ applying saved order
+→ choosing Grid vs Large layout
+```
+
+Local keys:
+
+```text
+spaces_tile_layout_mode
+spaces_visible_tiles
+spaces_tile_order
+```
+
+Layout modes:
+
+```text
+grid
+→ 2-column SliverGrid
+
+large
+→ 1-column SliverList
+→ horizontal cards
+→ icon left
+→ title/subtitle right
+```
+
+Visible tiles:
+
+```text
+stored as SpacesTileId names
+at least one tile remains visible
+```
+
+Order:
+
+```text
+stored as ordered SpacesTileId names
+ReorderableListView in settings
+hidden tiles remain in the full canonical order
+when re-enabled they return to their saved place
+```
+
+Rendering invariant:
+
+```text
+tileOrder
+→ filter by visibleTileIds
+→ render same result order in Grid and Large
+```
+
+This is presentation-only local state and must not be moved to Firestore without a product reason.
+
+---
+
+# 7. Platform capabilities
 
 Files:
 
@@ -190,13 +291,13 @@ Do not scatter raw platform checks where a capability belongs in this abstractio
 
 ---
 
-# 7. User/work identity
+# 8. User/work identity
 
 Authoritative user document:
 
 `users/{uid}`
 
-Relevant fields include:
+Relevant fields:
 
 ```text
 uid
@@ -217,7 +318,7 @@ assignedCrew?
 
 Missing crew remains distinct from real crew.
 
-Implemented components:
+Components:
 
 ```text
 UserAssignedCrewService
@@ -228,11 +329,11 @@ SubstitutionWorkProfileService
 SubstitutionWorkProfileFirestoreGateway
 ```
 
-Calendar and Substitution consume authoritative assignedCrew.
+Calendar and Substitution consume authoritative `assignedCrew`.
 
 ---
 
-# 8. Shift schedule domain
+# 9. Shift schedule domain
 
 File:
 
@@ -281,13 +382,13 @@ Do not reproduce phase math in arbitrary UI code.
 
 ---
 
-# 9. Substitution root model
+# 10. Substitution root model
 
 Firestore root:
 
 `spaces/substitution`
 
-Module fields include:
+Module fields:
 
 ```text
 nextRotationOrder
@@ -299,7 +400,7 @@ Participants:
 
 `spaces/substitution/participants/{uid}`
 
-State includes:
+State:
 
 ```text
 rotationOrder
@@ -328,7 +429,7 @@ Effective Vacation state can be derived rather than blindly persisted.
 
 ---
 
-# 10. Canonical rotation
+# 11. Canonical rotation
 
 `rotationOrder` is authoritative.
 
@@ -340,7 +441,7 @@ Never rebuild authoritative order from current UI list index.
 
 ---
 
-# 11. Vacation persistence
+# 12. Vacation persistence
 
 Collection:
 
@@ -374,35 +475,18 @@ Substitution effective state:
 
 `SubstitutionEffectiveStatusResolver`
 
-Important current invariant:
+Invariant:
 
 ```text
 no active VacationPeriod
 → do not keep participant effectively in vacation merely because legacy raw status says vacation
 ```
 
-This was fixed in:
+Fixed in:
 
 `a3cbd07`
 
----
-
-# 12. Vacation parser
-
-Friendly input examples:
-
-```text
-18.09.2026
-18.09
-18/09/2026
-18/09
-18 сентября
-18 сентября 2026
-```
-
-Cross-year resolution follows Calendar year/context logic.
-
-Do not recycle vacation slots destructively; history must remain reconstructable.
+Do not recycle vacation slots destructively; history should remain reconstructable.
 
 ---
 
@@ -564,7 +648,86 @@ Do not reuse older transition-compatible assumptions.
 
 ---
 
-# 18. Calendar architecture
+# 18. Production data reset checkpoint — 2026-09-30
+
+A controlled history cleanup was performed before October.
+
+Deleted:
+
+```text
+Firestore:
+chats/* recursively
+spaces/substitution/statistics/*
+spaces/substitution/confirmedCalls/*
+spaces/substitution/shiftClaims/*
+spaces/substitution.lastCall
+
+Storage:
+chat_media/*
+group_avatars/*
+```
+
+Recursive chat deletion reported:
+
+```text
+950 docs
+```
+
+Intentionally retained:
+
+```text
+Firebase Auth users
+users/*
+users/*/devices/*
+pushInstallations/*
+spaces_access/*
+spaces/substitution/participants/*
+spaces/substitution.nextRotationOrder
+spaces/substitution.revision
+spaces/calendar/vacationPeriods/*
+spaces/spacesBar
+user_avatars/*
+```
+
+Substitution module after cleanup:
+
+```text
+nextRotationOrder = 278
+revision = 173
+lastCall absent
+```
+
+Then 8 real participants were called for:
+
+```text
+2026-10-01 day
+```
+
+Result:
+
+```text
+shiftClaims recreated
+confirmedCalls recreated
+statistics recreated
+lastCall recreated
+revision 173 → 181
+nextRotationOrder 278 → 286
+```
+
+Architectural meaning:
+
+```text
+participants = current queue state
+confirmedCalls/statistics = rebuildable operational history
+shiftClaims = current additional-shift claims
+module revision/order counters = monotonic infrastructure state
+```
+
+Do not infer current production history from records deleted before this checkpoint.
+
+---
+
+# 19. Calendar architecture
 
 Calendar composition:
 
@@ -586,9 +749,9 @@ Do not mutate base cycle to encode overlays.
 
 ---
 
-# 19. Calendar state / interaction
+# 20. Calendar state / interaction
 
-Key state concepts:
+Key state:
 
 ```text
 visibleMonth
@@ -599,16 +762,14 @@ viewMode
 ```
 
 Historical docs may mention full/medium/compact.
-Later UI simplification focused interaction around full + compact.
-Current source is authoritative.
 
-Month paging and selected-date state remain separate.
+Current practical UI focuses on full + compact.
 
 Compact mode uses stationary selector / moving dates.
 
 ---
 
-# 20. Additional shift projection
+# 21. Additional shift projection
 
 Domain:
 
@@ -623,9 +784,8 @@ Projection:
 `CalendarAdditionalShiftProjection`
 
 Source:
-structured Substitution data.
 
-No additional generic Calendar events Firestore collection is needed if authoritative Substitution data can be projected.
+structured Substitution data.
 
 Presentation:
 
@@ -633,9 +793,11 @@ Presentation:
 violet frame/marker
 ```
 
+Do not create duplicate generic Calendar event collections when authoritative Substitution data can be projected.
+
 ---
 
-# 21. Personal CalendarEntry
+# 22. Personal CalendarEntry
 
 Model:
 
@@ -680,7 +842,7 @@ Personal agenda remains local-only.
 
 ---
 
-# 22. CalendarEntry service
+# 23. CalendarEntry service
 
 Owns:
 
@@ -705,7 +867,7 @@ completed by completion timestamp where applicable
 
 ---
 
-# 23. One-off Calendar reminders
+# 24. One-off Calendar reminders
 
 Service:
 
@@ -736,7 +898,7 @@ unsupported.
 
 ---
 
-# 24. Shift Alarm scheduling domain
+# 25. Shift Alarm scheduling domain
 
 Added at `53bf805`.
 
@@ -765,11 +927,11 @@ Shared time picker:
 
 `TimeWheelPickerSheet`
 
-The shift alarm model/schedule planner is separate from personal CalendarEntry reminders.
+Shift alarms are separate from personal CalendarEntry reminders.
 
 ---
 
-# 25. Native Shift Alarm bridge
+# 26. Native Shift Alarm bridge
 
 Functional architecture finalized at `83f4ad6`:
 
@@ -784,17 +946,6 @@ NotificationService
 → full-screen notification
 → ShiftAlarmActivity
 ```
-
-Native files:
-
-```text
-MainActivity.kt
-ShiftAlarmActivity.kt
-ShiftAlarmNativeScheduler.kt
-ShiftAlarmReceiver.kt
-```
-
-The native screen is used because full-screen ringing behavior must remain reliable while device is locked.
 
 Functional invariants:
 
@@ -812,81 +963,54 @@ Do not regress these while changing visuals.
 
 ---
 
-# 26. Shift Alarm visual composition — WIP architecture
+# 27. Shift Alarm visual composition — WIP
 
-Current WIP attempted to use:
+Latest relevant commit:
 
-`design/branding/Аватар Чайки.png`
+`17a73b7 — wip(alarm): refine ringing screen visuals`
 
-as a full visual background.
-
-Problem:
+Problem source:
 
 ```text
-source is square and already composited:
-dark/ocean texture
-+
-white seagull
-+
-19/4 corner mark
+design/branding/Аватар Чайки.png
+→ square composed image
+→ ocean + seagull + 19/4
 ```
 
-This cannot be reliably mapped to all tall Android screens with one ImageView:
-- `CENTER_CROP` cuts composition;
-- scaling creates edge/position issues;
-- `FIT_CENTER` exposes square boundaries.
+One square bitmap cannot map cleanly to all tall Android screens.
 
-Correct architectural direction:
+Rejected behaviors included:
 
 ```text
-Root full-screen adaptive background
+CENTER_CROP composition loss
+FIT_CENTER square panel
+edge/band artifacts
+19/4 still visible
+```
+
+Correct direction:
+
+```text
+adaptive root background
 +
 independent seagull layer
 +
 independent buttons
 ```
 
-Prefer:
+Preferred bird source:
+
+`design/branding/Аватар Чайки трафарет.png`
+
+Normalized target geometry:
 
 ```text
-transparent seagull asset
-or verified `Аватар Чайки трафарет.png` if it has useful alpha/background separation
+snooze centerY ~ 25%
+bird centerY ~ 55–60%
+stop centerY ~ 75%
 ```
 
-Use normalized layout:
-
-```text
-snooze centerY ~ 0.25 * usableHeight
-seagull centerY ~ 0.55–0.60 * usableHeight
-stop centerY ~ 0.75 * usableHeight
-button width derived from screen width with min/max bounds
-bird size derived from screen width with min/max bounds
-```
-
-The background may use dark navy gradient/ocean texture independent of seagull.
-
-Avoid embedding essential composition into one square bitmap.
-
----
-
-# 27. Alarm visual resources currently present
-
-WIP runtime bitmap:
-
-```text
-android/app/src/main/res/drawable/shift_alarm_seagull_background.png
-```
-
-Vector icons:
-
-```text
-shift_alarm_snooze_icon.xml
-shift_alarm_stop_icon.xml
-```
-
-The snooze vector replaced system emoji so the UI can use a consistent white outline alarm icon.
-
-Latest screen is not accepted and must be treated as WIP.
+Current visual must remain marked WIP / not accepted.
 
 ---
 
@@ -910,7 +1034,7 @@ night next date/month → 7.5h
 additional shift follows same accounting
 ```
 
-Calendar displays:
+Calendar:
 
 ```text
 Основные
@@ -923,6 +1047,14 @@ Keep calculation out of widget code.
 ---
 
 # 29. Calendar theme domain
+
+Base:
+
+`7343528`
+
+Refinement:
+
+`daedc9f`
 
 Model:
 
@@ -950,7 +1082,7 @@ Custom 1
 Custom 2
 ```
 
-Configurable properties include:
+Configurable:
 
 ```text
 8 cycle tile colors
@@ -962,44 +1094,26 @@ monthly-hours bar
 text scale
 ```
 
-Derived automatically:
+Derived:
 
 ```text
 grid line
 text contrast
 ```
 
-Themes are Calendar-local and independent from global application theme.
-
----
-
-# 30. Calendar theme persistence
-
-Custom slots are saved independently.
-
-Reset is slot-local.
-
-Preferences tests:
-
-```text
-6/6 passed
-```
-
 Color editor:
 
 ```text
-HEX input
+HEX
 RGB sliders
 RGB +/-1
 ```
 
-Do not introduce Firestore for this; it is presentation preference.
+Calendar theme is presentation state, not Firestore state.
 
 ---
 
-# 31. Systemic Calendar theme audit
-
-Local post-`7343528` audit applies theme beyond day tiles.
+# 30. Systemic Calendar theme integration
 
 Affected:
 
@@ -1012,15 +1126,15 @@ TimeWheelPickerSheet
 Purpose:
 
 ```text
-remove accidental Material/global-theme leakage
-make agenda/editor/picker visually belong to selected Calendar theme
+remove accidental global Material-theme leakage
+agenda/editor/picker follow Calendar-local theme
 ```
 
-Phone visual verification passed.
+Manual phone visual verification passed.
 
 ---
 
-# 32. Chat lifecycle / Rules refinement
+# 31. Chat lifecycle / Rules refinement
 
 `ce22462` modified:
 
@@ -1030,13 +1144,14 @@ group_admin_lifecycle_rules.test.mjs
 ```
 
 Purpose:
+
 restore expected group-admin lifecycle and image-preview authorization behavior.
 
 Do not overwrite these Rules with pre-fix versions.
 
 ---
 
-# 33. Chat presentation refinement
+# 32. Chat presentation refinement / known bug
 
 `2ae2439` changed:
 
@@ -1045,10 +1160,7 @@ ChatsPage
 GroupMembersSection
 ```
 
-Purpose:
-refine filters and group member presentation.
-
-Known bug still pending:
+Known bug:
 
 ```text
 private peer message
@@ -1056,11 +1168,13 @@ private peer message
 → may fail
 ```
 
+Re-test before changing current Rules/service logic.
+
 ---
 
-# 34. SpacesBar
+# 33. SpacesBar
 
-Realtime presentation for:
+Realtime presentation:
 
 ```text
 general manager messages
@@ -1068,15 +1182,20 @@ Substitution call events
 chat unread integration
 ```
 
-User can hide relevant items under existing rules.
-
 Manager publish/edit paths remain role-gated.
 
-Upcoming roadmap includes Large Text / SpaceBar layout/padding pass.
+The Hub Large layout does NOT complete the full accessibility roadmap.
+
+Still pending:
+
+```text
+SpaceBar padding/readability pass
+broader Large Text audit across app
+```
 
 ---
 
-# 35. Push notifications
+# 34. Push notifications
 
 Foundation:
 
@@ -1110,9 +1229,11 @@ one installation → one current user
 one user → many installations possible
 ```
 
+Keep `pushInstallations` during data cleanups unless intentionally decommissioning tokens/installations.
+
 ---
 
-# 36. EpiLite Web
+# 35. EpiLite Web
 
 Config:
 
@@ -1156,7 +1277,7 @@ Android native exact/full-screen alarms
 
 ---
 
-# 37. Avatars / media
+# 36. Avatars / media
 
 Existing foundation:
 
@@ -1168,17 +1289,26 @@ GroupAvatarView
 ChatAvatarView
 ```
 
-Storage uses versioned thumb/full resources.
+Storage:
 
-Known Web avatar polish remains backlog.
+```text
+user_avatars/*
+```
 
-Do not regress Android caching.
+Production cleanup removed old:
+
+```text
+chat_media/*
+group_avatars/*
+```
+
+`user_avatars/*` was intentionally retained.
 
 ---
 
-# 38. Messaging foundation
+# 37. Messaging foundation
 
-Existing v0.7.x features:
+Existing v0.7.x:
 
 ```text
 private/group chat
@@ -1192,11 +1322,13 @@ private typing
 message deletion states
 ```
 
+Production chat documents were intentionally cleared on 2026-09-30.
+
 Attachment Composer, voice and general file transfer remain future blocks.
 
 ---
 
-# 39. Performance discipline
+# 38. Performance discipline
 
 Prefer:
 
@@ -1218,7 +1350,7 @@ Avoid unnecessary Firestore listeners and duplicated projection collections.
 
 ---
 
-# 40. Testing layers
+# 39. Testing layers
 
 Pure domain/service tests:
 
@@ -1242,45 +1374,59 @@ Firebase Emulator
 assertSucceeds/assertFails
 ```
 
-Manual native/device tests remain required for:
-- full-screen alarm;
-- lock-screen behavior;
-- Power button;
-- Android visual scaling.
+Manual device tests remain important for:
+
+```text
+full-screen alarm
+lock-screen behavior
+Power button
+Android visual scaling
+Spaces Hub Large readability
+```
 
 ---
 
-# 41. Latest test evidence
+# 40. Latest test evidence
 
-Stable prior release-pass:
+Latest full suite at `b8618aa`:
 
 ```text
-flutter test → 1161/1161
-flutter analyze → clean
+flutter test
+→ 1241 passed
+```
+
+Latest analyzer:
+
+```text
+flutter analyze
+→ No issues found!
+```
+
+Latest release APK:
+
+```text
+64.1 MB
+```
+
+Spaces Hub manual:
+
+```text
+layout selection persists after q/restart
+visible tile selection works
+reordering works
+order persists
+Grid/Large share order
+```
+
+Older Rules release-pass:
+
+```text
 Substitution Rules → 74/74
 ```
 
-Calendar theme local:
-
-```text
-theme preferences → 6/6
-flutter analyze → clean
-manual phone visual → passed
-```
-
-Native Alarm visual WIP:
-
-```text
-release APK build → passed
-latest APK size → 63.9 MB
-visual composition → NOT accepted
-```
-
-Do not conflate build success with visual acceptance.
-
 ---
 
-# 42. Generated files discipline
+# 41. Generated files discipline
 
 After last Flutter command before commit restore once:
 
@@ -1292,11 +1438,11 @@ windows/flutter/generated_plugin_registrant.cc
 windows/flutter/generated_plugins.cmake
 ```
 
-Restore once at the end, not after every command.
+Restore once at the end.
 
 ---
 
-# 43. Firebase Hosting cache
+# 42. Firebase Hosting cache
 
 `.firebase/` is local deploy cache.
 
@@ -1308,7 +1454,7 @@ Must remain ignored:
 
 ---
 
-# 44. Build outputs
+# 43. Build outputs
 
 Android:
 
@@ -1316,9 +1462,9 @@ Android:
 build/app/outputs/flutter-apk/app-release.apk
 ```
 
-Latest WIP build:
+Latest:
 
-`63.9 MB`
+`64.1 MB`
 
 Web:
 
@@ -1328,28 +1474,78 @@ Build outputs are generated and not repository source.
 
 ---
 
-# 45. Current roadmap
+# 44. Судозаходы — architecture discovery target
 
-Immediate:
+Current Hub ID:
+
+`SpacesTileId.vesselCalls`
+
+Current presentation:
 
 ```text
-1. Finish Shift Alarm visual composition.
-2. Re-verify native alarm behavior on phone.
-3. Finalize/commit Calendar theme audit + RGB ±1 if still local.
-4. Run targeted tests + analyze.
-5. Restore generated plugin files.
-6. Commit/push checkpoint.
-7. Large Text + SpaceBar layout/padding.
-8. Substitution Call Basket + Shift Cohort.
-9. Remaining product polish.
-10. v0.8.0 release/merge/tag decision.
-11. Achievements if time.
+title: Судозаходы
+subtitle: Суда и объём работ
+```
+
+Current behavior:
+
+under-development placeholder.
+
+No authoritative vessel-call Firestore architecture should be assumed yet.
+
+Before implementation define:
+
+```text
+authoritative source
+roles/permissions
+document lifecycle
+required fields
+status model
+history/audit requirements
+notification behavior
+Calendar/Substitution integration
+Web requirements
+read/query patterns
+retention policy
+```
+
+Likely architecture should follow existing project principles:
+
+```text
+domain model
+→ service
+→ gateway
+→ Firestore Rules
+→ UI projection
+```
+
+But actual schema must come from agreed product workflow, not from placeholder text.
+
+---
+
+# 45. Current roadmap
+
+Immediate new-chat topic:
+
+```text
+Судозаходы discovery / product design
+```
+
+Existing unfinished roadmap remains:
+
+```text
+Shift Alarm visual composition
+Large Text / SpaceBar accessibility pass
+Substitution Call Basket + Shift Cohort
+private chat delete bug
+remaining polish
+release debt / release decision
+Achievements if time
 ```
 
 Backlog:
 
 ```text
-private chat delete bug
 Attachment Composer
 voice messages
 file transfer
@@ -1357,8 +1553,8 @@ Vacation history/archive
 repeating cycle-linked local entries
 Web chat avatar polish
 legacy *MessageId cleanup
-pushInstallations cleanup
-Bus timetable
+pushInstallations cleanup for deleted Auth users
+Bus timetable after authoritative source
 ```
 
 ---
@@ -1382,9 +1578,17 @@ ARCHITECTURE.md
 README.md
 ```
 
-Do not start by reimplementing completed foundations.
+Expected functional checkpoint before docs update:
 
-For current next block:
-inspect exact current `ShiftAlarmActivity.kt` and alarm drawable resources before editing.
+```text
+b8618aa
+```
 
-Preserve functional native alarm invariants while replacing visual composition.
+For the next chat:
+
+```text
+do not reimplement Spaces Hub customization
+do not assume a Судозаходы schema
+first discuss real workplace workflow and authoritative data
+then define MVP and only then code
+```

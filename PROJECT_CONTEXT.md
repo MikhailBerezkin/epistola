@@ -11,11 +11,11 @@
 >
 > Не использовать `main` как источник текущего состояния `v0.8.0`, пока feature-ветка не merged/released.
 >
-> Документ должен фиксировать не только завершённые функции, но и:
+> Документ фиксирует:
 >
 > - последний pushed checkpoint;
-> - локальный WIP после него;
 > - реально выполненные проверки;
+> - production data checkpoints;
 > - известные незавершённые места;
 > - ближайший roadmap;
 > - правила безопасного продолжения в новом чате.
@@ -34,15 +34,16 @@ Feature branch:
 
 Последний pushed functional checkpoint:
 
-`7343528 — feat(calendar): add customizable calendar themes`
+`b8618aa — feat(spaces): add customizable hub layout`
 
-Parent:
-
-`a3cbd07 — fix(substitution): return users after vacation ends`
-
-Предыдущие важные checkpoints:
+Непосредственно перед ним:
 
 ```text
+617bd36 — docs: update calendar alarm and roadmap handoff
+17a73b7 — wip(alarm): refine ringing screen visuals
+daedc9f — feat(calendar): refine themed calendar surfaces
+7343528 — feat(calendar): add customizable calendar themes
+a3cbd07 — fix(substitution): return users after vacation ends
 83f4ad6 — feat(calendar): finalize native alarms and monthly hours
 f83ee7c — wip(alarm): add full-screen alarm flow foundation
 2ae2439 — feat(chat): refine chat filters and group members
@@ -58,15 +59,18 @@ Stable baseline before `v0.8.0`:
 
 `v0.8.0` всё ещё находится в feature-ветке и не считается merged/released.
 
-Remote checkpoint на момент подготовки документа:
+Последняя подтверждённая синхронизация:
 
 ```text
-origin/feat/v0.8.0-spaces-substitution-foundation
-→ 7343528
-```
+HEAD
+→ b8618aa
 
-После `7343528` есть локальные незакоммиченные изменения.
-Перед docs commit обязательно использовать фактический локальный `git status`.
+origin/feat/v0.8.0-spaces-substitution-foundation
+→ b8618aa
+
+working tree
+→ CLEAN
+```
 
 ---
 
@@ -89,7 +93,7 @@ git.exe rev-parse --short origin/feat/v0.8.0-spaces-substitution-foundation
 feat/v0.8.0-spaces-substitution-foundation
 ```
 
-Затем прочитать именно из текущей ветки:
+После этого прочитать именно из текущей ветки:
 
 ```text
 PROJECT_CONTEXT.md
@@ -110,175 +114,206 @@ current source code
 
 ---
 
-# 3. Текущий локальный WIP после `7343528`
+# 3. Последний завершённый блок — Spaces Hub customization
 
-На момент подготовки docs локально продолжалась работа в двух направлениях:
+Checkpoint:
 
-```text
-A. Calendar theme audit / visual integration
-B. Native Shift Alarm visual redesign
-```
+`b8618aa — feat(spaces): add customizable hub layout`
 
-Оба блока должны быть сохранены в текущем checkpoint перед переходом в новый чат, но Alarm visual redesign НЕ считать завершённым.
-
-Вероятные реальные modified files после последних действий:
+Изменены:
 
 ```text
-lib/screens/shift_calendar_theme_screen.dart
-lib/screens/shift_calendar_screen.dart
-lib/screens/calendar_entry_editor_screen.dart
-lib/widgets/common/time_wheel_picker_sheet.dart
-
-android/app/src/main/kotlin/com/epistola/app/ShiftAlarmActivity.kt
-android/app/src/main/res/drawable/shift_alarm_seagull_background.png
-android/app/src/main/res/drawable/shift_alarm_snooze_icon.xml
-android/app/src/main/res/drawable/shift_alarm_stop_icon.xml
+lib/domain/models/spaces_tile_id.dart
+lib/screens/home_screen.dart
+lib/screens/spaces_page.dart
 ```
 
-Также после Flutter-команд могут появиться generated plugin files.
+Добавлено:
 
-Перед commit фактический список определяет только:
+```text
+Настройка пространств через ⋮
 
-```powershell
-git.exe status --short
+Вид плиток:
+- Сетка
+- Крупные плитки
+
+Показывать плитки:
+- выбор видимых Spaces
+- минимум одна плитка должна оставаться
+
+Порядок плиток:
+- drag-and-drop
+- скрытые плитки сохраняют своё место
+
+Persistence:
+- SharedPreferences
 ```
+
+Крупный режим:
+
+```text
+одна широкая горизонтальная карточка
+иконка слева
+название + описание справа
+увеличенная зона чтения/нажатия
+вертикальный scroll
+```
+
+Обычный режим:
+
+```text
+2 плитки в ряд
+единая геометрия текста
+зарезервированная зона subtitle
+```
+
+SharedPreferences keys:
+
+```text
+spaces_tile_layout_mode
+spaces_visible_tiles
+spaces_tile_order
+```
+
+Manual verification:
+
+```text
+Сетка / Крупные плитки → переключаются
+выбранный layout → сохраняется после q/restart
+видимые плитки → сохраняются
+порядок → сохраняется
+одинаковый порядок применяется к Grid и Large
+скрытая плитка сохраняет своё место и возвращается туда после включения
+```
+
+Этот блок считать завершённым функционально.
+
+Остаётся phone/workplace visual check при реальном использовании.
 
 ---
 
-# 4. Последние проверки
+# 4. Последние проверки на checkpoint `b8618aa`
 
-## 4.1 Calendar Theme
-
-После системного theme audit:
+Перед commit:
 
 ```text
-flutter.bat analyze
+dart format
+→ 0 changed
+
+flutter analyze
 → No issues found!
 ```
 
-Targeted preferences tests:
+Полный suite:
 
 ```text
-test/services/spaces/calendar/shift_calendar_theme_preferences_test.dart
-→ 6/6 passed
+flutter test
+→ 1241 tests passed
 ```
 
-Manual phone verification:
+Во время тестов был diagnostic output JPEG decoder:
 
 ```text
-Light theme → passed
-Dark theme → passed
-Custom theme → passed
-full Calendar → passed
-compact Calendar → passed
-Calendar Entry editor → passed
-custom selected-day accent → passed
-custom background propagation → passed
+Corrupt JPEG data
+JPEG datastream contains no image
 ```
 
-Release APK после theme audit:
+Но suite завершился успешно:
 
 ```text
-61.8 MB
+All tests passed!
 ```
 
-## 4.2 Alarm UI WIP
-
-После Kotlin/XML alarm UI изменений:
+Release build:
 
 ```text
-flutter.bat analyze
-→ No issues found!
-```
+flutter.bat build apk --release
+→ SUCCESS
 
-Несколько release builds прошли успешно.
-
-Последний подтверждённый build:
-
-```text
 build/app/outputs/flutter-apk/app-release.apk
-→ 63.9 MB
+→ 64.1 MB
 ```
 
-Один промежуточный Kotlin compile error был исправлен:
-локальный `background` конфликтовал с `View.background`.
+Kotlin Gradle Plugin warning остаётся future-migration warning и текущую сборку не блокирует.
 
-Текущий KGP message:
+Generated plugin files после последней Flutter-команды восстановлены один раз.
+
+Final:
 
 ```text
-Future versions of Flutter will fail to build if plugins continue applying KGP.
+git diff --check
+→ clean
+
+git status --short
+→ empty
+
+HEAD
+→ b8618aa
+
+origin
+→ b8618aa
 ```
-
-Это warning, текущий build не блокирует.
-
-## 4.3 Что НЕ нужно утверждать
-
-После последних незакоммиченных visual changes полный:
-
-```text
-flutter.bat test
-```
-
-не запускался заново.
-
-Поэтому старое:
-
-```text
-1161/1161 passed
-```
-
-остаётся подтверждением старого release-pass checkpoint, а не финальным тестом текущего dirty working tree.
 
 ---
 
 # 5. Большой roadmap — актуальное положение
 
-Текущий практический roadmap после основного Substitution/Web release-pass:
+Текущий практический roadmap:
 
 ```text
-1. Shift Alarm
-2. Vacation return
-3. Monthly hours
-4. Calendar themes/customization
-5. Large Text + SpaceBar layout/padding
-6. Substitution Call Basket + Shift Cohort
-7. Remaining polish
-8. Achievements, если останется время
+1. Shift Alarm visual redesign
+2. Large Text / accessibility audit
+3. Substitution Call Basket + Shift Cohort
+4. Remaining product polish
+5. Release debt / docs / release decision
+6. Achievements, если останется время
 ```
 
 Статус:
 
 ```text
-1. Shift Alarm
-   functional foundation → DONE
-   visual ringing-screen redesign → WIP / continue in new chat
+Shift Alarm functional foundation
+→ DONE
 
-2. Vacation return
-   → DONE
+Shift Alarm ringing-screen visual
+→ WIP / NOT accepted yet
 
-3. Monthly hours
-   → DONE
+Vacation return
+→ DONE
 
-4. Calendar themes/customization
-   base feature → DONE
-   systemic theme audit → DONE and phone-tested
-   RGB ±1 controls → added
-   possible final polish → minor
+Monthly hours
+→ DONE
 
-5. Large Text + SpaceBar layout/padding
-   → NEXT after alarm/theme checkpoint
+Calendar themes/customization
+→ DONE
 
-6. Substitution Call Basket + Shift Cohort
-   → planned
+Calendar systemic theme audit
+→ DONE
 
-7. Remaining polish
-   → planned
+Spaces Hub customization
+→ DONE at b8618aa
 
-8. Achievements
-   → optional
+Large Text / accessibility
+→ PARTIAL
+   Spaces Hub Large layout done
+   broader app + SpaceBar pass remains
+
+Substitution Call Basket + Shift Cohort
+→ planned
+
+Achievements
+→ optional
 ```
 
-До merge/tag `v0.8.0` нужен отдельный release decision после завершения текущих WIP-блоков.
+Новый ближайший продуктовый разговор по решению владельца:
+
+```text
+Судозаходы
+→ next-chat discovery / requirements discussion
+→ do not implement blindly before agreeing data model and workflow
+```
+
+Shift Alarm visual WIP не отменён и остаётся в roadmap.
 
 ---
 
@@ -305,6 +340,7 @@ Shift alarms
 Exact local reminders
 Monthly hours
 Calendar themes
+Spaces Hub customization
 ```
 
 ## EpiLite — Flutter Web / PWA
@@ -337,7 +373,49 @@ native Android exact/full-screen alarm → not supported on Web
 
 ---
 
-# 7. Substitution / work identity — stable foundation
+# 7. Main product navigation / Spaces Hub
+
+Root areas:
+
+```text
+Контакты
+Пространства
+Профиль
+```
+
+Home starts on:
+
+`Пространства`
+
+Current Spaces IDs:
+
+```text
+chats
+substitution
+vesselCalls
+calendar
+buses
+safety
+```
+
+Current visible product names:
+
+```text
+Чаты
+Список
+Судозаходы
+Календарь смен
+Автобусы
+ОТ и ТБ
+```
+
+Current `Судозаходы`, `Автобусы`, `ОТ и ТБ` may still be placeholder/under-development entry points depending on current source.
+
+Owner remains highest-priority role.
+
+---
+
+# 8. Substitution / work identity — stable foundation
 
 Authoritative personal crew:
 
@@ -394,7 +472,7 @@ UI:
 
 ---
 
-# 8. Shift cycle
+# 9. Shift cycle
 
 Base model:
 
@@ -448,7 +526,7 @@ Do not duplicate cycle math in random Flutter UI code.
 
 ---
 
-# 9. Substitution eligibility
+# 10. Substitution eligibility
 
 Pure resolver:
 
@@ -495,7 +573,7 @@ Night shift checks Vacation overlap on both calendar dates.
 
 ---
 
-# 10. Substitution security layers
+# 11. Substitution security layers
 
 The same decision is protected by:
 
@@ -527,7 +605,7 @@ Vacation overlap remains transaction-enforced to avoid excessive Rules access ca
 
 ---
 
-# 11. Production Substitution/Web checkpoint
+# 12. Production Substitution/Web checkpoint
 
 Repository Rules were tested and deployed on 2026-09-24.
 
@@ -562,7 +640,131 @@ Older notes about transition-compatible Substitution Rules are obsolete.
 
 ---
 
-# 12. Vacation integration
+# 13. Production data cleanup — 2026-09-30
+
+Перед началом октября выполнена контролируемая очистка production Firebase от старой тестовой истории.
+
+Удалено:
+
+```text
+Firestore:
+chats/* recursively
+spaces/substitution/statistics/*
+spaces/substitution/confirmedCalls/*
+spaces/substitution/shiftClaims/*
+spaces/substitution.lastCall
+
+Storage:
+chat_media/*
+group_avatars/*
+```
+
+Recursive `chats` cleanup завершился на:
+
+```text
+950 deleted docs
+```
+
+Намеренно сохранено:
+
+```text
+Firebase Auth users
+
+Firestore:
+users/*
+users/*/devices/*
+pushInstallations/*
+spaces_access/*
+spaces/substitution/participants/*
+spaces/substitution.nextRotationOrder
+spaces/substitution.revision
+spaces/calendar/vacationPeriods/*
+spaces/spacesBar
+
+Storage:
+user_avatars/*
+```
+
+Причины сохранения:
+
+```text
+participants
+→ это текущая рабочая очередь, не история
+
+vacationPeriods
+→ нужны текущие/будущие и исторические Calendar overlays
+
+pushInstallations + users/*/devices
+→ активная ownership/token инфраструктура push
+
+spaces_access
+→ owner/brigadier permissions
+
+spacesBar
+→ оставлены актуальные сообщения
+
+user_avatars
+→ рабочие пользовательские аватары
+```
+
+Сразу после cleanup Substitution baseline:
+
+```text
+nextRotationOrder = 278
+revision = 173
+lastCall = absent
+```
+
+Затем вручную повторно вызваны 8 участников на:
+
+```text
+2026-10-01
+day shift
+```
+
+После повторных вызовов:
+
+```text
+8 new shiftClaims created
+confirmedCalls recreated
+statistics recreated
+lastCall recreated
+
+revision:
+173 → 181
+
+nextRotationOrder:
+278 → 286
+```
+
+Это подтвердило post-cleanup chain:
+
+```text
+call
+→ pending/finalization
+→ confirmedCall
+→ shiftClaim
+→ statistics
+→ queue mutation
+→ push
+```
+
+Operational invariant:
+
+```text
+старые test/history records, удалённые 2026-09-30,
+не должны использоваться для объяснения текущего production state.
+
+Current production call history begins from post-cleanup October calls.
+
+participants rotation/order was intentionally preserved.
+Vacation periods were intentionally preserved.
+Push ownership/device registry was intentionally preserved.
+```
+
+---
+
+# 14. Vacation integration
 
 Collection:
 
@@ -587,7 +789,7 @@ Substitution effective state uses:
 
 `SubstitutionEffectiveStatusResolver`
 
-Current intended behavior:
+Behavior:
 
 ```text
 inside current VacationPeriod
@@ -620,7 +822,7 @@ Canonical queue position remains preserved.
 
 ---
 
-# 13. Vacation history invariant
+# 15. Vacation history invariant
 
 Do not auto-recycle slots with data loss.
 
@@ -638,7 +840,7 @@ Historical Calendar coloring should remain reconstructable.
 
 ---
 
-# 14. Calendar base architecture
+# 16. Calendar base architecture
 
 Base schedule is deterministic and immutable.
 
@@ -669,9 +871,9 @@ users/{uid}.assignedCrew
 
 ---
 
-# 15. Calendar interaction modes
+# 17. Calendar interaction modes
 
-Earlier UI had:
+Historical UI had:
 
 ```text
 full
@@ -679,18 +881,9 @@ medium
 compact
 ```
 
-Later interaction simplification reduced practical focus to full + compact behavior.
-Current source code is authority if old docs mention medium details.
+Current practical interaction focuses on full + compact.
 
-Important user decisions:
-
-```text
-full Calendar remains primary month view
-compact view opened by day interaction / swipe flow
-compact has fixed visible Add area
-Today action appears when needed
-return from compact/full follows current-date behavior rules
-```
+Current source code is authority if old notes mention medium details.
 
 State separates:
 
@@ -704,7 +897,7 @@ Compact central selection uses stationary frame with moving date strip.
 
 ---
 
-# 16. Personal Calendar Agenda
+# 18. Personal Calendar Agenda
 
 Personal:
 
@@ -763,7 +956,7 @@ separate reminder time
 
 ---
 
-# 17. Exact local Calendar reminders
+# 19. Exact local Calendar reminders
 
 Original checkpoint:
 
@@ -793,11 +986,11 @@ Scheduling mode:
 AndroidScheduleMode.alarmClock
 ```
 
-Reason:
+Observed reason:
 
 ```text
 exactAllowWhileIdle
-→ observed real-device delay ~1–2 min
+→ real-device delay ~1–2 min
 
 alarmClock
 → notification arrived in requested minute
@@ -819,13 +1012,13 @@ Manual checks passed.
 
 ---
 
-# 18. Shift Alarm scheduling foundation
+# 20. Shift Alarm scheduling foundation
 
 Checkpoint:
 
 `53bf805 — feat(calendar): add shift alarm scheduling foundation`
 
-Added domain/services:
+Domain/services:
 
 ```text
 ShiftAlarm
@@ -839,7 +1032,7 @@ ShiftAlarmScheduleRegistry
 ShiftAlarmSchedulingService
 ```
 
-Added screens:
+Screens:
 
 ```text
 ShiftAlarmEditorScreen
@@ -856,7 +1049,7 @@ Shift alarms are separate from one-off personal CalendarEntry reminders.
 
 ---
 
-# 19. Native full-screen Shift Alarm
+# 21. Native full-screen Shift Alarm
 
 Functional native foundation finalized in:
 
@@ -886,10 +1079,10 @@ android/app/src/main/kotlin/com/epistola/app/ShiftAlarmReceiver.kt
 lib/services/spaces/calendar/shift_alarm_native_bridge.dart
 ```
 
-Manual Poco verification of functional behavior passed:
+Manual Poco verification passed:
 
 ```text
-special full-screen alarm appears
+full-screen alarm appears
 +10 minute snooze works
 Stop works
 swipe up → +10 minutes
@@ -899,19 +1092,25 @@ screen does not linger
 returns to previous phone state instead of opening Epistola
 ```
 
-This behavior is stable and must not regress during visual redesign.
+This behavior is stable and must not regress.
 
 ---
 
-# 20. Shift Alarm visual redesign — CURRENT WIP
+# 22. Shift Alarm visual redesign — CURRENT WIP
 
-User-approved design direction:
+Latest visual work includes:
+
+```text
+17a73b7 — wip(alarm): refine ringing screen visuals
+```
+
+User-approved direction remains:
 
 ```text
 dark navy / ocean visual
 Epistola white seagull centered between actions
-+10 минут button at ~25% height
-Отключить button at ~75% height
++10 минут at ~25% height
+Отключить at ~75% height
 same button size
 blue snooze button
 red stop button
@@ -926,64 +1125,34 @@ design/branding/Аватар Чайки.png
 design/branding/Аватар Чайки трафарет.png
 ```
 
-Runtime resource created:
+Important finding:
 
 ```text
-android/app/src/main/res/drawable/shift_alarm_seagull_background.png
+Аватар Чайки.png
+→ square composed image
+→ ocean + seagull + 19/4
+→ unsuitable as one universal portrait background
 ```
 
-Vector icons created:
+Preferred direction:
 
 ```text
-android/app/src/main/res/drawable/shift_alarm_snooze_icon.xml
-android/app/src/main/res/drawable/shift_alarm_stop_icon.xml
-```
-
-Current problem:
-
-```text
-Аватар Чайки.png is a square composed image:
-ocean + seagull + 19/4 mark.
-Trying to use it as one universal portrait background produced:
-- crop problems with CENTER_CROP
-- side/empty bands with scaling
-- isolated square panel with FIT_CENTER/gradient
-- 19/4 still faintly visible
-```
-
-Latest visual result was explicitly NOT accepted.
-
-Decision:
-
-```text
-leave current code/resources as WIP
-continue in new chat
-do not call alarm visual design finished
-```
-
-Preferred next technical direction:
-
-```text
-inspect/use Аватар Чайки трафарет.png as separate seagull layer if alpha allows
-or prepare a clean transparent seagull asset
-
-render:
-full-screen adaptive dark/ocean background
+full-screen adaptive background
 +
-independent seagull ImageView
+independent transparent seagull layer
 +
 independent action buttons
-
-use normalized screen positions
-avoid coupling seagull scale to square avatar canvas
 ```
 
-Goal:
-one composition on any phone aspect ratio without cropping the important bird.
+`Аватар Чайки трафарет.png` was visually identified as the better candidate for a separate bird layer.
+
+Current visual result is NOT accepted as finished.
+
+Do not regress functional alarm behavior while continuing visual work.
 
 ---
 
-# 21. Monthly hours
+# 23. Monthly hours
 
 Added in:
 
@@ -1006,10 +1175,9 @@ night shift → split by month:
   4h start date/month
   7.5h next date/month
 additional shifts use same 11.5 accounting
-vacation contributes according to existing calendar-day rule
 ```
 
-Calendar UI shows:
+Calendar UI:
 
 ```text
 Основные
@@ -1026,22 +1194,27 @@ September:
 Всего 237,5 ч
 ```
 
-Combined alarm/month targeted checks at checkpoint passed.
-
 ---
 
-# 22. Calendar themes/customization
+# 24. Calendar themes/customization
 
-Checkpoint:
+Base checkpoint:
 
 `7343528 — feat(calendar): add customizable calendar themes`
 
-Files:
+Systemic refinement:
+
+`daedc9f — feat(calendar): refine themed calendar surfaces`
+
+Files include:
 
 ```text
 lib/domain/models/shift_calendar_theme.dart
 lib/services/spaces/calendar/shift_calendar_theme_preferences.dart
 lib/screens/shift_calendar_theme_screen.dart
+lib/screens/shift_calendar_screen.dart
+lib/screens/calendar_entry_editor_screen.dart
+lib/widgets/common/time_wheel_picker_sheet.dart
 test/services/spaces/calendar/shift_calendar_theme_preferences_test.dart
 ```
 
@@ -1060,17 +1233,10 @@ Custom slots:
 Своя 2
 ```
 
-Each custom can independently configure:
+Configurable:
 
 ```text
-day1
-day2
-offBeforeNight
-night1
-night2
-recovery
-offAfterRecovery1
-offAfterRecovery2
+8 cycle colors
 background
 Vacation
 additional-shift border
@@ -1079,7 +1245,7 @@ monthly-hours bar
 text scale
 ```
 
-Text scale options:
+Text scale:
 
 ```text
 Compact
@@ -1087,113 +1253,51 @@ Normal
 Large
 ```
 
-Automatic derived colors:
+Color editor:
 
 ```text
-grid line
-text contrast
-```
-
-Themes are independent of global app theme.
-
-Custom themes save/reset independently.
-
-Color editor supports:
-
-```text
-HEX input
+HEX
 RGB sliders
-RGB +/- 1 precision buttons
+RGB +/-1
 ```
 
-Preferences tests:
+Systemic audit result:
 
 ```text
-6/6 passed
-```
-
----
-
-# 23. Calendar theme systemic audit — local post-7343528
-
-After base theme commit, a broader audit fixed Material-theme leakage.
-
-Files changed:
-
-```text
-lib/screens/shift_calendar_screen.dart
-lib/screens/calendar_entry_editor_screen.dart
-lib/widgets/common/time_wheel_picker_sheet.dart
-```
-
-Result:
-
-```text
-custom background propagates into compact agenda panel
-selected compact day uses custom selectedDay
-lower action row follows calendar theme
+compact agenda follows calendar theme
+selected compact day follows selectedDay
+lower action row follows theme
 Calendar Entry editor follows calendar theme
 time picker follows calendar context
-Light/Dark/Custom visual behavior became consistent
 ```
 
-Analyzer:
-
-```text
-No issues found!
-```
-
-Phone visual test:
-
-```text
-passed
-```
-
-This local audit should be included in the next functional/docs checkpoint.
+Manual phone visual verification passed.
 
 ---
 
-# 24. Chat fixes after release-pass docs
+# 25. Chat refinements / known bug
 
-Checkpoint:
-
-`ce22462 — fix(chat): restore lifecycle and image preview rules`
-
-Changed:
+Latest relevant checkpoints:
 
 ```text
-firestore.rules
-test/rules/firestore/group_admin_lifecycle_rules.test.mjs
+ce22462 — Rules lifecycle/image preview fix
+2ae2439 — chat filters/group-member presentation
 ```
 
-Purpose:
-restore expected group admin lifecycle and image-preview Rules behavior.
-
-Checkpoint:
-
-`2ae2439 — feat(chat): refine chat filters and group members`
-
-Changed:
+Known backlog:
 
 ```text
-lib/screens/chats_page.dart
-lib/widgets/group/group_members_section.dart
+private chat
+peer message
+Удалить у себя
+may still fail
 ```
 
-Purpose:
-refine chat filtering/presentation and group member section.
-
-Do not overwrite these later changes with older chat UI code.
-
-Known chat backlog remains:
-
-```text
-private chat → peer message → Удалить у себя may still fail
-```
+Needs re-verification on current APK before fixing.
 
 ---
 
-# 25. Additional shift / халтура projection
+# 26. Additional shift / халтура projection
 
 Implemented from structured Substitution data.
 
@@ -1222,9 +1326,7 @@ Do not parse free-form SpacesBar text to reconstruct work events when structured
 
 ---
 
-# 26. Push / SpacesBar
-
-Messaging push foundation remains active.
+# 27. Push / SpacesBar
 
 Substitution successful call can produce:
 
@@ -1252,9 +1354,11 @@ pushInstallations/{installationId}
 
 One installation belongs to one current user; one user may own multiple installations.
 
+Broader Large Text / SpaceBar padding pass remains unfinished.
+
 ---
 
-# 27. EpiLite / Web architecture
+# 28. EpiLite / Web architecture
 
 Production URL:
 
@@ -1292,11 +1396,11 @@ Chats → supported
 Spaces/Substitution/Calendar → supported
 ```
 
-Personal Calendar entries remain browser-local; do not silently move them to Firestore.
+Personal Calendar entries remain browser-local.
 
 ---
 
-# 28. Performance / quota discipline
+# 29. Performance / quota discipline
 
 Pilot target:
 
@@ -1326,7 +1430,7 @@ duplicating authoritative data into unnecessary collections
 
 ---
 
-# 29. Generated Flutter files
+# 30. Generated Flutter files
 
 After the final Flutter command before commit restore once:
 
@@ -1344,7 +1448,7 @@ Do not accidentally commit generated noise.
 
 ---
 
-# 30. Firebase Hosting cache
+# 31. Firebase Hosting cache
 
 `.firebase/` is deploy cache.
 
@@ -1358,7 +1462,7 @@ Do not commit cache contents.
 
 ---
 
-# 31. Development environment
+# 32. Development environment
 
 Typical environment:
 
@@ -1385,7 +1489,7 @@ npx.cmd
 git.exe
 ```
 
-User workflow:
+Workflow:
 
 ```text
 small verifiable steps
@@ -1399,39 +1503,77 @@ no commit/push without separate agreement
 
 ---
 
-# 32. Immediate next-chat roadmap
+# 33. Immediate next-chat topic — Судозаходы
 
-Start from current checkpoint, not from redesigning completed foundations.
-
-Order:
+Owner decision:
 
 ```text
-1. Verify branch/status/HEAD/origin.
-2. Read three docs.
-3. Inspect current ShiftAlarmActivity/resources.
-4. Finish Shift Alarm visual composition correctly:
-   - separate background and seagull layers
-   - responsive scaling
-   - preserve native functional behavior
-5. Run build + phone test.
-6. Finalize Calendar theme local audit / ± controls if still dirty.
-7. Run targeted tests + analyze.
-8. Restore generated plugin files.
-9. Commit/push checkpoint.
-10. Continue Large Text + SpaceBar layout/padding.
-11. Substitution Call Basket + Shift Cohort.
-12. Remaining polish.
-13. Release/merge/tag v0.8.0 decision.
+Next chat
+→ discuss/design new Судозаходы tile
+```
+
+Current tile already exists in Spaces Hub as:
+
+```text
+SpacesTileId.vesselCalls
+title: Судозаходы
+subtitle: Суда и объём работ
+```
+
+Current entry point is still an under-development placeholder.
+
+New chat should start with product discovery before coding.
+
+Questions to settle:
+
+```text
+1. What is the authoritative source of vessel-call data?
+2. Who creates/edits/deletes a vessel call?
+3. What fields are required:
+   vessel name
+   ETA/arrival
+   ETD/departure
+   berth/location
+   work type
+   planned/actual volume
+   status
+   notes
+   responsible crew/shift?
+4. What lifecycle/statuses are needed?
+5. Does a vessel call need history/audit?
+6. Does it produce push or SpacesBar messages?
+7. Does it interact with Calendar or Substitution?
+8. What must be available in EpiLite Web?
+9. What is the expected list/card/calendar presentation?
+10. How much data/history should stay in Firestore?
+```
+
+Do not invent this workflow from the current placeholder UI.
+
+---
+
+# 34. Immediate roadmap after Судозаходы discussion
+
+After requirements are agreed, choose whether to implement Vessel Calls immediately or return to the existing unfinished roadmap.
+
+Existing unfinished priorities remain:
+
+```text
+Shift Alarm visual composition
+Large Text / broader accessibility + SpaceBar padding
+Substitution Call Basket + Shift Cohort
+private chat "Удалить у себя" bug
+remaining polish
+release debt
+release/merge/tag v0.8.0 decision
+optional Achievements
 ```
 
 ---
 
-# 33. Broader backlog
-
-After the immediate roadmap:
+# 35. Broader backlog
 
 ```text
-private chat "Удалить у себя" bug
 Attachment Composer Foundation
 voice messages
 file transfer
@@ -1446,7 +1588,7 @@ Achievements
 
 ---
 
-# 34. Commit/push preparation
+# 36. Commit/push preparation
 
 Before commit:
 
@@ -1457,7 +1599,7 @@ git.exe diff --check
 
 After final Flutter commands restore generated plugin files once.
 
-Recommended checkpoint structure:
+Preferred:
 
 ```text
 functional changes commit
@@ -1465,42 +1607,51 @@ functional changes commit
 → push
 ```
 
-If current user prefers one combined checkpoint, inspect staged diff carefully before commit.
-
 Never claim working tree clean until checked.
 
 ---
 
-# 35. Final new-chat handoff summary
-
-New chat must know:
+# 37. Final new-chat handoff summary
 
 ```text
+Repository:
+MikhailBerezkin/epistola
+
 Branch:
 feat/v0.8.0-spaces-substitution-foundation
 
-Last pushed checkpoint before current local work:
-7343528
+Last pushed functional checkpoint:
+b8618aa — feat(spaces): add customizable hub layout
 
-Completed:
-- Substitution eligibility + production Rules
-- EpiLite deploy
-- Calendar agenda/reminders
-- Shift Alarm functional native flow
-- Monthly hours
-- vacation return fix
-- base Calendar themes
-- systemic theme audit phone-tested
+Expected:
+HEAD = origin = b8618aa
+working tree CLEAN
+before applying this docs update
+
+Latest verification:
+flutter analyze → clean
+flutter test → 1241 passed
+release APK → 64.1 MB
+
+Recently completed:
+- Calendar theme systemic refinement
+- Spaces Hub customizable Grid/Large layout
+- visible tile selection
+- drag-and-drop tile order
+- local persistence
+- production Firebase history cleanup and successful 8-call rebuild
 
 Current unfinished:
-- visual design of native ringing Shift Alarm screen
+- Shift Alarm visual composition
+- broader Large Text / SpaceBar padding
+- Substitution Call Basket + Shift Cohort
+- private chat delete bug
 
-Important:
-Do not regress alarm scheduling/stop/snooze/swipe/Power behavior while fixing visual layers.
+Next chat topic by owner decision:
+Судозаходы
 
-Next:
-finish alarm visual composition
-→ verify
-→ commit/push
-→ continue roadmap.
+Start new chat:
+verify branch/status/HEAD/origin
+→ read PROJECT_CONTEXT.md / ARCHITECTURE.md / README.md
+→ discuss Судозаходы requirements and data model before implementation.
 ```
