@@ -22,6 +22,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/app_user.dart';
 import 'assigned_crew_setup_screen.dart';
 import '../domain/models/spaces_tile_id.dart';
+import 'vessel_calls_space_screen.dart';
 
 class SpacesPage extends StatefulWidget {
   const SpacesPage({
@@ -553,7 +554,11 @@ class _SpacesPageState extends State<SpacesPage> with WidgetsBindingObserver {
           icon: Icons.directions_boat_outlined,
           isLarge: isLarge,
           onTap: () {
-            _showUnderDevelopment(context, 'Судозаходы');
+            Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const VesselCallsSpaceScreen(),
+              ),
+            );
           },
         );
 
