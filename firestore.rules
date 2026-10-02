@@ -1459,6 +1459,26 @@ match /spaces_access/{userId} {
       ])
       && resource.data.role == 'brigadier';
 }
+
+match /spaces/vesselCalls {
+  allow read, write: if false;
+
+  match /monthMeta/{monthId} {
+    allow read: if signedIn();
+    allow write: if false;
+  }
+
+  match /monthSnapshots/{monthId} {
+    allow read: if signedIn();
+    allow write: if false;
+  }
+
+  match /monthArchives/{monthId} {
+    allow read: if signedIn();
+    allow write: if false;
+  }
+}
+
 function isSpacesManager() {
   return signedIn()
       && exists(
