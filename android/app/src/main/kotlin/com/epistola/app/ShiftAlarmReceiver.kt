@@ -120,6 +120,9 @@ class ShiftAlarmReceiver : BroadcastReceiver() {
                 .setUsage(
                     AudioAttributes.USAGE_ALARM,
                 )
+                .setContentType(
+                    AudioAttributes.CONTENT_TYPE_SONIFICATION,
+                )
                 .build()
 
         val channel =
@@ -146,7 +149,7 @@ class ShiftAlarmReceiver : BroadcastReceiver() {
 
     companion object {
         const val CHANNEL_ID =
-            "epistola_shift_alarms_v2"
+            "epistola_shift_alarms_v3"
 
         const val EXTRA_NOTIFICATION_ID =
             "notificationId"
