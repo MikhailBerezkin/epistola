@@ -7,11 +7,12 @@ class VesselCallsLocalCache {
 
   SharedPreferences? _preferences;
 
-  static const Duration fullCalendarRefreshInterval = Duration(days: 3);
+  static const Duration revisionCheckInterval = Duration(minutes: 30);
 
   static const String _monthPrefix = 'vessel_calls_month_';
 
-  static const String _lastFullSyncPrefix = 'vessel_calls_full_sync_';
+  static const String _lastRevisionCheckPrefix =
+      'vessel_calls_last_revision_check_';
 
   Future<SharedPreferences> _prefs() async {
     return _preferences ??= await SharedPreferences.getInstance();
@@ -56,16 +57,16 @@ class VesselCallsLocalCache {
 
     await prefs.remove(_monthKey(year, month));
 
-    await prefs.remove(_lastFullSyncKey(year, month));
+    await prefs.remove(_lastRevisionCheckKey(year, month));
   }
 
-  Future<DateTime?> readLastFullCalendarSync({
+  Future<DateTime?> readLastRevisionCheck({
     required int year,
     required int month,
   }) async {
     final prefs = await _prefs();
 
-    final milliseconds = prefs.getInt(_lastFullSyncKey(year, month));
+    final milliseconds = prefs.getInt(_lastRevisionCheckKey(year, month));
 
     if (milliseconds == null) {
       return null;
@@ -74,35 +75,35 @@ class VesselCallsLocalCache {
     return DateTime.fromMillisecondsSinceEpoch(milliseconds);
   }
 
-  Future<void> markFullCalendarSynced({
+  Future<void> markRevisionChecked({
     required int year,
     required int month,
     DateTime? at,
   }) async {
     final prefs = await _prefs();
 
-    final syncTime = at ?? DateTime.now();
+    final checkTime = at ?? DateTime.now();
 
     await prefs.setInt(
-      _lastFullSyncKey(year, month),
-      syncTime.millisecondsSinceEpoch,
+      _lastRevisionCheckKey(year, month),
+      checkTime.millisecondsSinceEpoch,
     );
   }
 
-  Future<bool> shouldRefreshFullCalendar({
+  Future<bool> shouldCheckRevision({
     required int year,
     required int month,
     DateTime? now,
   }) async {
-    final lastSync = await readLastFullCalendarSync(year: year, month: month);
+    final lastCheck = await readLastRevisionCheck(year: year, month: month);
 
-    if (lastSync == null) {
+    if (lastCheck == null) {
       return true;
     }
 
     final currentTime = now ?? DateTime.now();
 
-    return currentTime.difference(lastSync) >= fullCalendarRefreshInterval;
+    return currentTime.difference(lastCheck) >= revisionCheckInterval;
   }
 
   Future<CachedVesselMonth> applyOperationalChanges({
@@ -140,6 +141,7 @@ class VesselCallsLocalCache {
   }) async {
     if (localMonth == null) {
       await writeMonth(snapshot);
+
       return snapshot;
     }
 
@@ -183,8 +185,8 @@ class VesselCallsLocalCache {
         '${month.toString().padLeft(2, '0')}';
   }
 
-  static String _lastFullSyncKey(int year, int month) {
-    return '$_lastFullSyncPrefix'
+  static String _lastRevisionCheckKey(int year, int month) {
+    return '$_lastRevisionCheckPrefix'
         '${year.toString().padLeft(4, '0')}_'
         '${month.toString().padLeft(2, '0')}';
   }
@@ -219,8 +221,7 @@ class CachedVesselMonth {
   /// документа на сервере.
   final DateTime sourceUpdatedAt;
 
-  /// Последнее изменение локальной копии:
-  /// snapshot, operational update и т.п.
+  /// Последнее изменение локальной копии.
   final DateTime locallyUpdatedAt;
 
   final bool isArchived;
@@ -298,27 +299,23 @@ class CachedVesselCall {
 
   final String id;
 
-  /// Основная ссылка на карточку судна.
+  /// Сейчас источник ещё не даёт настоящий IMO.
+  /// До его подключения здесь временно хранится
+  /// идентификатор захода.
   final String vesselImo;
 
-  /// Snapshot имени оставляем прямо в заходе,
-  /// чтобы старый день можно было показать
-  /// мгновенно даже без загрузки Vessel.
   final String vesselName;
 
   final String vesselType;
   final String operationKind;
 
-  /// Пока это визуальная дорожка 0..3.
-  /// Позже поле можно заменить/дополнить
-  /// реальным причалом.
+  /// Временная визуальная дорожка 0..3.
+  /// Пока НЕ означает реальный причал.
   final int lane;
 
   final DateTime berthFrom;
   final DateTime berthTo;
 
-  /// Используется для разрешения конфликта
-  /// snapshot против более свежего compact-update.
   final DateTime updatedAt;
 
   final VesselCallCacheSource source;

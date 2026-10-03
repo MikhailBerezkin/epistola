@@ -2,13 +2,12 @@ import 'vessel_calls_current_month_firestore_gateway.dart';
 import 'vessel_calls_local_cache.dart';
 import 'vessel_calls_month_archive_firestore_gateway.dart';
 
-enum VesselCallsMonthFreshness { missing, fresh, refreshDue, archived }
+enum VesselCallsMonthFreshness { missing, fresh, revisionCheckDue, archived }
 
 enum VesselCallsCurrentMonthRefreshResult {
   notDue,
   unchanged,
   rebuilt,
-  localMonthMissing,
   remoteMetaMissing,
   remoteSnapshotMissing,
 }
@@ -63,14 +62,14 @@ final class VesselCallsMonthCacheService {
       return VesselCallsMonthFreshness.archived;
     }
 
-    final shouldRefresh = await _localCache.shouldRefreshFullCalendar(
+    final shouldCheckRevision = await _localCache.shouldCheckRevision(
       year: year,
       month: month,
       now: now,
     );
 
-    return shouldRefresh
-        ? VesselCallsMonthFreshness.refreshDue
+    return shouldCheckRevision
+        ? VesselCallsMonthFreshness.revisionCheckDue
         : VesselCallsMonthFreshness.fresh;
   }
 
@@ -81,18 +80,16 @@ final class VesselCallsMonthCacheService {
   }) async {
     final localMonth = await _localCache.readMonth(year: year, month: month);
 
-    if (localMonth == null) {
-      return VesselCallsCurrentMonthRefreshResult.localMonthMissing;
-    }
+    if (localMonth != null) {
+      final shouldCheckRevision = await _localCache.shouldCheckRevision(
+        year: year,
+        month: month,
+        now: now,
+      );
 
-    final shouldRefresh = await _localCache.shouldRefreshFullCalendar(
-      year: year,
-      month: month,
-      now: now,
-    );
-
-    if (!shouldRefresh) {
-      return VesselCallsCurrentMonthRefreshResult.notDue;
+      if (!shouldCheckRevision) {
+        return VesselCallsCurrentMonthRefreshResult.notDue;
+      }
     }
 
     final remoteRevision = await _currentMonthGateway.loadRevision(
@@ -104,12 +101,8 @@ final class VesselCallsMonthCacheService {
       return VesselCallsCurrentMonthRefreshResult.remoteMetaMissing;
     }
 
-    if (remoteRevision.revision == localMonth.revision) {
-      await _localCache.markFullCalendarSynced(
-        year: year,
-        month: month,
-        at: now,
-      );
+    if (localMonth != null && remoteRevision.revision == localMonth.revision) {
+      await _localCache.markRevisionChecked(year: year, month: month, at: now);
 
       return VesselCallsCurrentMonthRefreshResult.unchanged;
     }
@@ -125,14 +118,12 @@ final class VesselCallsMonthCacheService {
 
     final remoteSnapshot = CachedVesselMonth.fromJson(snapshotData);
 
-    final rebuiltMonth = await _localCache.rebuildFromMonthlySnapshot(
+    await _localCache.rebuildFromMonthlySnapshot(
       snapshot: remoteSnapshot,
       localMonth: localMonth,
     );
 
-    await _localCache.writeMonth(rebuiltMonth);
-
-    await _localCache.markFullCalendarSynced(year: year, month: month, at: now);
+    await _localCache.markRevisionChecked(year: year, month: month, at: now);
 
     return VesselCallsCurrentMonthRefreshResult.rebuilt;
   }
@@ -163,11 +154,11 @@ final class VesselCallsMonthCacheService {
     return archivedMonth;
   }
 
-  Future<void> markFullCalendarSynced({
+  Future<void> markRevisionChecked({
     required int year,
     required int month,
     DateTime? at,
   }) {
-    return _localCache.markFullCalendarSynced(year: year, month: month, at: at);
+    return _localCache.markRevisionChecked(year: year, month: month, at: at);
   }
 }

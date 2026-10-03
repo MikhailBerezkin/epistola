@@ -83,7 +83,7 @@ class _VesselCallsSpaceScreenState extends State<VesselCallsSpaceScreen> {
 
     _calls = previewCalls;
 
-    unawaited(_loadCurrentMonthFromCache());
+    unawaited(_loadAndRefreshCurrentMonth());
 
     _clockTimer = Timer.periodic(const Duration(minutes: 1), (_) {
       if (!mounted) {
@@ -150,74 +150,56 @@ class _VesselCallsSpaceScreenState extends State<VesselCallsSpaceScreen> {
     return _initialPage + normalized.difference(_anchorDate).inDays;
   }
 
-  Future<void> _loadCurrentMonthFromCache() async {
+  Future<void> _loadAndRefreshCurrentMonth() async {
     final year = _anchorDate.year;
     final month = _anchorDate.month;
 
     try {
-      final cachedMonth = await _localCache.readMonth(year: year, month: month);
+      final cachedMonth = await _monthCacheService.readLocalMonth(
+        year: year,
+        month: month,
+      );
 
-      if (cachedMonth == null) {
-        await _localCache.writeMonth(_createCachedMonthFromPreview(_calls));
+      if (cachedMonth != null && mounted) {
+        final cachedCalls =
+            cachedMonth.calls.map(_previewCallFromCached).toList()..sort(
+              (left, right) => left.berthFrom.compareTo(right.berthFrom),
+            );
 
+        setState(() {
+          _calls = cachedCalls;
+        });
+      }
+
+      final refreshResult = await _monthCacheService.refreshCurrentMonthIfDue(
+        year: year,
+        month: month,
+      );
+
+      if (refreshResult != VesselCallsCurrentMonthRefreshResult.rebuilt) {
         return;
       }
 
-      final restoredCalls =
-          cachedMonth.calls.map(_previewCallFromCached).toList()
+      final refreshedMonth = await _monthCacheService.readLocalMonth(
+        year: year,
+        month: month,
+      );
+
+      if (refreshedMonth == null || !mounted) {
+        return;
+      }
+
+      final refreshedCalls =
+          refreshedMonth.calls.map(_previewCallFromCached).toList()
             ..sort((left, right) => left.berthFrom.compareTo(right.berthFrom));
 
-      if (!mounted) {
-        return;
-      }
-
       setState(() {
-        _calls = restoredCalls;
+        _calls = refreshedCalls;
       });
     } catch (_) {
-      // Ошибка локального кэша не должна ломать экран.
-      // В этом случае остаются встроенные preview-данные.
+      // Судозаходы должны оставаться доступными даже при временной
+      // ошибке локального кэша или Firestore.
     }
-  }
-
-  CachedVesselMonth _createCachedMonthFromPreview(
-    List<_PreviewVesselCall> calls,
-  ) {
-    final now = DateTime.now();
-
-    DateTime? publishedUntil;
-
-    for (final call in calls) {
-      if (publishedUntil == null || call.berthTo.isAfter(publishedUntil)) {
-        publishedUntil = call.berthTo;
-      }
-    }
-
-    return CachedVesselMonth(
-      year: _anchorDate.year,
-      month: _anchorDate.month,
-      revision: 0,
-      publishedUntil: publishedUntil,
-      calls: calls
-          .map(
-            (call) => CachedVesselCall(
-              id: 'preview-${call.vessel.imo}',
-              vesselImo: call.vessel.imo,
-              vesselName: call.vessel.name,
-              vesselType: call.vesselType.name,
-              operationKind: call.operationKind.name,
-              lane: call.lane,
-              berthFrom: call.berthFrom,
-              berthTo: call.berthTo,
-              updatedAt: now,
-              source: VesselCallCacheSource.monthlySnapshot,
-            ),
-          )
-          .toList(),
-      sourceUpdatedAt: now,
-      locallyUpdatedAt: now,
-      isArchived: false,
-    );
   }
 
   _PreviewVesselCall _previewCallFromCached(CachedVesselCall cached) {

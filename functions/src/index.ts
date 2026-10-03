@@ -23,6 +23,11 @@ import {
   onDocumentWritten,
 } from "firebase-functions/v2/firestore";
 import {HttpsError, onCall} from "firebase-functions/v2/https";
+import {
+  ingestVesselCallsMonth,
+} from "./vessel_calls_ingest";
+
+export {ingestVesselCallsMonth};
 
 setGlobalOptions({
   region: "europe-west1",
