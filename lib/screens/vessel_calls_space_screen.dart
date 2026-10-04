@@ -9,6 +9,8 @@ import '../services/spaces/calendar/shift_schedule_calculator.dart';
 import '../services/work_schedule/user_assigned_crew_reader.dart';
 import '../services/spaces/vessel_calls/vessel_calls_local_cache.dart';
 import '../services/spaces/vessel_calls/vessel_calls_month_cache_service.dart';
+import '../domain/models/vessel_registry.dart';
+import '../services/spaces/vessel_calls/vessel_registry_service.dart';
 
 class VesselCallsSpaceScreen extends StatefulWidget {
   const VesselCallsSpaceScreen({super.key});
@@ -38,7 +40,12 @@ class _VesselCallsSpaceScreenState extends State<VesselCallsSpaceScreen> {
   late final PageController _pageController;
   late final VesselCallsLocalCache _localCache;
   late final VesselCallsMonthCacheService _monthCacheService;
-  late final Map<String, _PreviewVessel> _previewVesselsByImo;
+  late final VesselRegistryService _vesselRegistryService;
+
+  VesselRegistrySnapshot _vesselRegistry = const VesselRegistrySnapshot(
+    lines: [],
+    vessels: [],
+  );
 
   List<_PreviewVesselCall> _calls = const <_PreviewVesselCall>[];
 
@@ -74,16 +81,9 @@ class _VesselCallsSpaceScreenState extends State<VesselCallsSpaceScreen> {
     _monthCacheService = VesselCallsMonthCacheService.firebase(
       localCache: _localCache,
     );
+    _vesselRegistryService = VesselRegistryService.firebase();
 
-    final previewCalls = _buildPreviewCalls(_anchorDate);
-
-    _previewVesselsByImo = <String, _PreviewVessel>{
-      for (final call in previewCalls) call.vessel.imo: call.vessel,
-    };
-
-    _calls = previewCalls;
-
-    unawaited(_loadAndRefreshCurrentMonth());
+    unawaited(_loadRegistryAndRefreshCurrentMonth());
 
     _clockTimer = Timer.periodic(const Duration(minutes: 1), (_) {
       if (!mounted) {
@@ -150,6 +150,12 @@ class _VesselCallsSpaceScreenState extends State<VesselCallsSpaceScreen> {
     return _initialPage + normalized.difference(_anchorDate).inDays;
   }
 
+  Future<void> _loadRegistryAndRefreshCurrentMonth() async {
+    _vesselRegistry = await _vesselRegistryService.load();
+
+    await _loadAndRefreshCurrentMonth();
+  }
+
   Future<void> _loadAndRefreshCurrentMonth() async {
     final year = _anchorDate.year;
     final month = _anchorDate.month;
@@ -203,23 +209,43 @@ class _VesselCallsSpaceScreenState extends State<VesselCallsSpaceScreen> {
   }
 
   _PreviewVesselCall _previewCallFromCached(CachedVesselCall cached) {
-    final vessel =
-        _previewVesselsByImo[cached.vesselImo] ??
-        _PreviewVessel(
-          name: cached.vesselName,
-          imo: cached.vesselImo,
-          mmsi: '',
-          typeLabel: _typeLabelForCached(cached.vesselType),
-          lengthMeters: null,
-          widthMeters: null,
-          deadweightTons: null,
-          capacityLabel: null,
-        );
-
-    final vesselType = _VesselType.values.firstWhere(
-      (value) => value.name == cached.vesselType,
-      orElse: () => _VesselType.other,
+    final resolution = _vesselRegistry.resolve(
+      shipName: cached.vesselName,
+      lineName: cached.lineName,
     );
+
+    final registryVessel = resolution.vessel;
+
+    final vessel = registryVessel == null
+        ? _PreviewVessel(
+            name: cached.vesselName,
+            imo: '',
+            mmsi: '',
+            typeLabel: resolution.workType.displayName,
+            lengthMeters: null,
+            widthMeters: null,
+            deadweightTons: null,
+            capacityLabel: null,
+          )
+        : _PreviewVessel(
+            name: registryVessel.name,
+            imo: registryVessel.imo ?? '',
+            mmsi: '',
+            typeLabel: registryVessel.workType.displayName,
+            lengthMeters: registryVessel.lengthMeters?.round(),
+            widthMeters: null,
+            deadweightTons: registryVessel.deadweightTons,
+            capacityLabel: registryVessel.teuCapacity == null
+                ? null
+                : '${registryVessel.teuCapacity} TEU',
+          );
+
+    final vesselType = switch (resolution.workType) {
+      VesselWorkType.container => _VesselType.container,
+      VesselWorkType.bulk => _VesselType.bulk,
+      VesselWorkType.other => _VesselType.other,
+      VesselWorkType.unknown => _VesselType.other,
+    };
 
     final operationKind = _VesselOperationKind.values.firstWhere(
       (value) => value.name == cached.operationKind,
@@ -234,105 +260,6 @@ class _VesselCallsSpaceScreenState extends State<VesselCallsSpaceScreen> {
       berthFrom: cached.berthFrom,
       berthTo: cached.berthTo,
     );
-  }
-
-  String _typeLabelForCached(String vesselType) {
-    return switch (vesselType) {
-      'container' => 'Контейнеровоз',
-      'bulk' => 'Балкер',
-      'service' => 'Служебное судно',
-      _ => 'Судно',
-    };
-  }
-
-  List<_PreviewVesselCall> _buildPreviewCalls(DateTime base) {
-    return [
-      _PreviewVesselCall(
-        vessel: const _PreviewVessel(
-          name: 'TEST CONTAINER 01',
-          imo: '0000001',
-          mmsi: '000000001',
-          typeLabel: 'Контейнеровоз',
-          lengthMeters: 169,
-          widthMeters: 27,
-          deadweightTons: 23554,
-          capacityLabel: '1 730 TEU',
-        ),
-        vesselType: _VesselType.container,
-        operationKind: _VesselOperationKind.cargo,
-        lane: 0,
-        berthFrom: DateTime(base.year, base.month, base.day - 1, 8),
-        berthTo: DateTime(base.year, base.month, base.day + 1, 20),
-      ),
-      _PreviewVesselCall(
-        vessel: const _PreviewVessel(
-          name: 'TEST BULKER 01',
-          imo: '0000002',
-          mmsi: '000000002',
-          typeLabel: 'Балкер',
-          lengthMeters: 180,
-          widthMeters: 30,
-          deadweightTons: 32000,
-          capacityLabel: null,
-        ),
-        vesselType: _VesselType.bulk,
-        operationKind: _VesselOperationKind.cargo,
-        lane: 3,
-        berthFrom: DateTime(base.year, base.month, base.day, 4),
-        berthTo: DateTime(base.year, base.month, base.day + 1, 16),
-      ),
-      _PreviewVesselCall(
-        vessel: const _PreviewVessel(
-          name: 'TEST CONTAINER 02',
-          imo: '0000003',
-          mmsi: '000000003',
-          typeLabel: 'Контейнеровоз',
-          lengthMeters: 155,
-          widthMeters: 25,
-          deadweightTons: 19000,
-          capacityLabel: '1 400 TEU',
-        ),
-        vesselType: _VesselType.container,
-        operationKind: _VesselOperationKind.cargo,
-        lane: 1,
-        berthFrom: DateTime(base.year, base.month, base.day + 1, 10),
-        berthTo: DateTime(base.year, base.month, base.day + 2, 23),
-      ),
-      _PreviewVesselCall(
-        vessel: const _PreviewVessel(
-          name: 'TEST SERVICE 01',
-          imo: '0000004',
-          mmsi: '000000004',
-          typeLabel: 'Служебное судно',
-          lengthMeters: 115,
-          widthMeters: 21,
-          deadweightTons: null,
-          capacityLabel: null,
-        ),
-        vesselType: _VesselType.service,
-        operationKind: _VesselOperationKind.layby,
-        lane: 3,
-        berthFrom: DateTime(base.year, base.month, base.day + 1, 17),
-        berthTo: DateTime(base.year, base.month, base.day + 2, 12),
-      ),
-      _PreviewVesselCall(
-        vessel: const _PreviewVessel(
-          name: 'TEST CONTAINER 03',
-          imo: '0000005',
-          mmsi: '000000005',
-          typeLabel: 'Контейнеровоз',
-          lengthMeters: 175,
-          widthMeters: 28,
-          deadweightTons: 25000,
-          capacityLabel: '1 900 TEU',
-        ),
-        vesselType: _VesselType.container,
-        operationKind: _VesselOperationKind.cargo,
-        lane: 2,
-        berthFrom: DateTime(base.year, base.month, base.day + 3, 6),
-        berthTo: DateTime(base.year, base.month, base.day + 4, 18),
-      ),
-    ];
   }
 
   List<_PreviewVesselCall> _callsForDay(DateTime date) {
@@ -1964,7 +1891,7 @@ Color _vesselCallColor(
     _VesselType.container => containerColor,
     _VesselType.bulk => bulkColor,
     _VesselType.service => laybyColor,
-    _VesselType.other => laybyColor,
+    _VesselType.other => const Color(0xFF8193A2),
   };
 }
 

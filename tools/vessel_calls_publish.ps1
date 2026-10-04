@@ -150,18 +150,19 @@ foreach ($prepared in $preparedCalls) {
 
   $call = $prepared.sourceCall
 
-  $normalizedCalls += [PSCustomObject]@{
-    id = "$($call.calling_id)"
-    vesselImo = "$($call.calling_id)"
-    vesselName = "$($call.ship_name)"
-    vesselType = "container"
-    operationKind = "cargo"
-    lane = $selectedLane
-    berthFrom = $prepared.from.ToString("o")
-    berthTo = $prepared.to.ToString("o")
-    updatedAt = (Get-Date).ToString("o")
-    source = "monthlySnapshot"
-  }
+ $normalizedCalls += [PSCustomObject]@{
+  id = "$($call.calling_id)"
+  vesselImo = "$($call.calling_id)"
+  vesselName = "$($call.ship_name)"
+  lineName = "$($call.line_name)"
+  vesselType = "unknown"
+  operationKind = "cargo"
+  lane = $selectedLane
+  berthFrom = $prepared.from.ToString("o")
+  berthTo = $prepared.to.ToString("o")
+  updatedAt = (Get-Date).ToString("o")
+  source = "monthlySnapshot"
+}
 }
 
 $currentMonth =

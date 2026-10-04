@@ -1477,6 +1477,22 @@ match /spaces/vesselCalls {
     allow read: if signedIn();
     allow write: if false;
   }
+
+  match /lineRegistry/{lineId} {
+    allow read: if signedIn();
+
+    allow create, update: if isSpacesManager();
+
+    allow delete: if false;
+  }
+
+  match /vesselRegistry/{vesselUid} {
+    allow read: if signedIn();
+
+    allow create, update: if isSpacesManager();
+
+    allow delete: if false;
+  }
 }
 
 function isSpacesManager() {

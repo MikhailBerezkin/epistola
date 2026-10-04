@@ -15,6 +15,10 @@ enum SpacesAccessRole {
     return this == SpacesAccessRole.brigadier || this == SpacesAccessRole.owner;
   }
 
+  bool get canManageVesselRegistry {
+    return this == SpacesAccessRole.brigadier || this == SpacesAccessRole.owner;
+  }
+
   bool get canManageSpacesRoles {
     return this == SpacesAccessRole.owner;
   }

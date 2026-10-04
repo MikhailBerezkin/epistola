@@ -288,6 +288,7 @@ class CachedVesselCall {
     required this.id,
     required this.vesselImo,
     required this.vesselName,
+    required this.lineName,
     required this.vesselType,
     required this.operationKind,
     required this.lane,
@@ -306,7 +307,13 @@ class CachedVesselCall {
 
   final String vesselName;
 
+  /// Линия / оператор судна из источника ПКТ.
+  /// Используется как fallback для определения
+  /// типа работы через наш реестр линий.
+  final String lineName;
+
   final String vesselType;
+
   final String operationKind;
 
   /// Временная визуальная дорожка 0..3.
@@ -325,6 +332,7 @@ class CachedVesselCall {
       'id': id,
       'vesselImo': vesselImo,
       'vesselName': vesselName,
+      'lineName': lineName,
       'vesselType': vesselType,
       'operationKind': operationKind,
       'lane': lane,
@@ -340,12 +348,24 @@ class CachedVesselCall {
       id: json['id'] as String,
       vesselImo: json['vesselImo'] as String,
       vesselName: json['vesselName'] as String,
+
+      // Старые локальные snapshots были
+      // сохранены до появления lineName.
+      // Поэтому отсутствие поля допустимо.
+      lineName: json['lineName'] as String? ?? '',
+
       vesselType: json['vesselType'] as String,
+
       operationKind: json['operationKind'] as String,
+
       lane: json['lane'] as int,
+
       berthFrom: _readDateTime(json['berthFrom']),
+
       berthTo: _readDateTime(json['berthTo']),
+
       updatedAt: _readDateTime(json['updatedAt']),
+
       source: VesselCallCacheSource.values.firstWhere(
         (value) => value.name == json['source'],
         orElse: () => VesselCallCacheSource.monthlySnapshot,

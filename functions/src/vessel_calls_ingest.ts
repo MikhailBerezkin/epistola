@@ -10,6 +10,7 @@ interface VesselCallPayload {
   id: string;
   vesselImo: string;
   vesselName: string;
+  lineName: string;
   vesselType: string;
   operationKind: string;
   lane: number;
@@ -181,6 +182,10 @@ function readCall(
     vesselName: readRequiredString(
       value.vesselName,
       `calls[${index}].vesselName`,
+    ),
+    lineName: readRequiredString(
+      value.lineName,
+      `calls[${index}].lineName`,
     ),
     vesselType: readRequiredString(
       value.vesselType,
