@@ -12,6 +12,8 @@
 > `PROJECT_CONTEXT.md` is the operational checkpoint/handoff.
 > `ARCHITECTURE.md` records technical invariants.
 > `README.md` is the concise project overview.
+>
+> **MD continuity rule:** these three MD files are cumulative project history. Update them from the existing documents, preserve large completed functional blocks and architectural history, and add new checkpoints incrementally. Do not rewrite the MD set from scratch just to refresh the latest state.
 
 ---
 
@@ -27,11 +29,16 @@ Current feature branch:
 
 Last pushed functional checkpoint:
 
-`b8618aa — feat(spaces): add customizable hub layout`
+`50355ff — feat(vessel-calls): add VPS ingest and revision-based cache refresh`
 
 Recent sequence:
 
 ```text
+50355ff — feat(vessel-calls): add VPS ingest and revision-based cache refresh
+8f41d80 — fix(alarm): restore native alarm sound channel
+4fc9800 — test(vessel-calls): add firestore access rules
+0cb3882 — feat(vessel-calls): add calendar cache and archive foundation
+1efbcc7 — docs: update spaces checkpoint and vessel calls handoff
 b8618aa — feat(spaces): add customizable hub layout
 617bd36 — docs: update calendar alarm and roadmap handoff
 17a73b7 — wip(alarm): refine ringing screen visuals
@@ -55,7 +62,7 @@ Stable baseline before `v0.8.0`:
 Latest confirmed:
 
 ```text
-HEAD = origin = b8618aa
+HEAD = origin = 50355ff
 working tree = CLEAN
 ```
 
@@ -959,7 +966,32 @@ Power button stop
 return to previous phone state
 ```
 
-Do not regress these while changing visuals.
+Sound regression fix:
+
+`8f41d80 — fix(alarm): restore native alarm sound channel`
+
+Native alarm channel:
+
+```text
+epistola_shift_alarms_v3
+AudioAttributes.USAGE_ALARM
+AudioAttributes.CONTENT_TYPE_SONIFICATION
+```
+
+Reason for channel version bump:
+
+```text
+Android notification-channel sound/audio properties persist after channel creation.
+A fresh native channel was required to reliably restore alarm sound semantics.
+```
+
+Physical Poco verification after fix:
+
+```text
+normal system alarm sound restored
+```
+
+Do not regress these behaviors while changing visuals.
 
 ---
 
@@ -1275,6 +1307,16 @@ Web push
 Android native exact/full-screen alarms
 ```
 
+Current next Web pass:
+
+```text
+latest Calendar changes
++
+Vessel Calls
+```
+
+Owner decision is to finish Vessel Calls Android/archive behavior first and add both to Web together.
+
 ---
 
 # 36. Avatars / media
@@ -1340,6 +1382,7 @@ parallel independent reads
 central summaries
 local preferences for presentation
 local storage for personal agenda
+revision/hash based refresh for Vessel Calls
 ```
 
 Pilot:
@@ -1347,6 +1390,14 @@ Pilot:
 `40–50 users`
 
 Avoid unnecessary Firestore listeners and duplicated projection collections.
+
+For Vessel Calls specifically:
+
+```text
+VPS content hash suppresses unchanged publishes
+device revision check TTL = 30 minutes
+unchanged month revision avoids snapshot reads
+```
 
 ---
 
@@ -1382,17 +1433,19 @@ lock-screen behavior
 Power button
 Android visual scaling
 Spaces Hub Large readability
+Vessel Calls timeline/full-month rendering
 ```
 
 ---
 
 # 40. Latest test evidence
 
-Latest full suite at `b8618aa`:
+Latest full suite at functional checkpoint `50355ff`:
 
 ```text
 flutter test
 → 1241 passed
+→ All tests passed!
 ```
 
 Latest analyzer:
@@ -1405,10 +1458,25 @@ flutter analyze
 Latest release APK:
 
 ```text
-64.1 MB
+64.3 MB
 ```
 
-Spaces Hub manual:
+Vessel Calls phone verification:
+
+```text
+real current data displayed
+repeat open works
+full-month view works
+timeline/cards remain visible
+```
+
+Vessel Calls Rules:
+
+```text
+84/84 passed
+```
+
+Spaces Hub manual verification from earlier checkpoint remains valid:
 
 ```text
 layout selection persists after q/restart
@@ -1418,7 +1486,7 @@ order persists
 Grid/Large share order
 ```
 
-Older Rules release-pass:
+Older Substitution Rules release-pass remains historical evidence:
 
 ```text
 Substitution Rules → 74/74
@@ -1464,7 +1532,7 @@ build/app/outputs/flutter-apk/app-release.apk
 
 Latest:
 
-`64.1 MB`
+`64.3 MB`
 
 Web:
 
@@ -1474,7 +1542,7 @@ Build outputs are generated and not repository source.
 
 ---
 
-# 44. Судозаходы — architecture discovery target
+# 44. Судозаходы / Vessel Calls architecture
 
 Current Hub ID:
 
@@ -1487,48 +1555,420 @@ title: Судозаходы
 subtitle: Суда и объём работ
 ```
 
-Current behavior:
+## Source boundary
 
-under-development placeholder.
-
-No authoritative vessel-call Firestore architecture should be assumed yet.
-
-Before implementation define:
+Current source used for the implemented foundation:
 
 ```text
-authoritative source
-roles/permissions
-document lifecycle
-required fields
-status model
-history/audit requirements
-notification behavior
-Calendar/Substitution integration
-Web requirements
-read/query patterns
-retention policy
+Global Ports
+First Container Terminal / ПКТ
+public vessel schedule frontend
 ```
 
-Likely architecture should follow existing project principles:
+Public page:
 
 ```text
-domain model
-→ service
-→ gateway
-→ Firestore Rules
-→ UI projection
+https://www.globalports.com/ru/terminals/first-container-terminal/online-services/Vessels-fct/
 ```
 
-But actual schema must come from agreed product workflow, not from placeholder text.
+Observed backend endpoint:
+
+```text
+https://rpt.rlisystems.ru/api/conterra/primsyb.SEAPORT/rpc/171/1710027
+```
+
+POST modes:
+
+```text
+plan
+crnt
+closed
+```
+
+Source credentials/authorization are secrets and must never be committed.
+
+Known fields observed in source payloads include:
+
+```text
+line_name
+ship_name
+state_name
+callsign
+voynumber
+outvoynumber
+calling_id
+calling_name
+calling_status
+calling_status_color
+plan_calling_date
+plan_saling_date
+calling_date
+saling_date
+process_beg
+process_end
+real_process_start
+real_process_finish
+raid_date
+load_proc_end
+state_date
+multiple workload/document fields
+```
+
+Current time normalization:
+
+```text
+berthFrom = calling_date ?? plan_calling_date
+berthTo   = saling_date  ?? plan_saling_date
+```
+
+Temporary mappings that MUST NOT be mistaken for authoritative domain data:
+
+```text
+calling_id → vesselImo field temporarily
+all vesselType → container temporarily
+operationKind → cargo temporarily
+lane 0..3 → visual lane only
+```
+
+The planned real berth set:
+
+```text
+83
+85
+86
+87
+```
+
+must not be inferred from temporary lane indexes.
+
+## Flutter/service boundary
+
+Current files:
+
+```text
+lib/screens/vessel_calls_space_screen.dart
+lib/services/spaces/vessel_calls/vessel_calls_local_cache.dart
+lib/services/spaces/vessel_calls/vessel_calls_current_month_firestore_gateway.dart
+lib/services/spaces/vessel_calls/vessel_calls_month_archive_firestore_gateway.dart
+lib/services/spaces/vessel_calls/vessel_calls_month_cache_service.dart
+```
+
+Cached domain:
+
+```text
+CachedVesselMonth
+CachedVesselCall
+VesselCallCacheSource
+```
+
+Cached call fields include:
+
+```text
+id
+vesselImo
+vesselName
+vesselType
+operationKind
+lane
+berthFrom
+berthTo
+updatedAt
+source
+```
+
+Presentation currently supports:
+
+```text
+5-day compact timeline
+full-month vessel calendar
+crew shift borders
+vessel cards
+arrival/departure
+duration/countdown/progress
+four temporary lanes
+```
+
+## Firestore projection
+
+Document paths:
+
+```text
+spaces/vesselCalls/monthMeta/{YYYY-MM}
+spaces/vesselCalls/monthSnapshots/{YYYY-MM}
+spaces/vesselCalls/monthArchives/{YYYY-MM}
+```
+
+Client access:
+
+```text
+authenticated read
+client write denied
+```
+
+Admin/ingest writes are intentionally server-side.
+
+## Client cache discipline
+
+Old 3-day refresh policy was removed.
+
+Current device strategy:
+
+```text
+SharedPreferences local month
+revision check TTL = 30 minutes
+```
+
+Flow:
+
+```text
+screen open
+→ render local month immediately if present
+→ if revision check not due: no Firestore read
+→ if due: read monthMeta
+→ same revision: mark checked and stop
+→ new revision: read monthSnapshot, rebuild local month, persist, repaint
+```
+
+No local month:
+
+```text
+monthMeta
+→ monthSnapshot
+→ persist real month locally
+```
+
+If the remote check fails:
+
+```text
+keep local cache usable
+do not mark failed revision check complete
+retry on a later open
+```
+
+Preview/demo data must never be persisted as real Vessel Calls cache.
+
+## Cloud ingest boundary
+
+Function:
+
+`ingestVesselCallsMonth`
+
+Source:
+
+```text
+functions/src/vessel_calls_ingest.ts
+functions/src/index.ts
+```
+
+Region:
+
+`europe-west1`
+
+Security:
+
+```text
+POST
+Bearer secret
+Firebase secret storage
+Admin SDK writes
+```
+
+Writes:
+
+```text
+monthMeta
+monthSnapshots
+```
+
+Client Rules remain read-only.
+
+Local Windows fallback/dev tools:
+
+```text
+tools/vessel_calls_sync.ps1
+tools/vessel_calls_publish.ps1
+tools/vessel_calls_output/.gitignore
+```
+
+Raw JSON output remains ignored.
+
+## VPS publisher boundary
+
+Primary source fetching is intentionally outside mobile/web clients.
+
+Architecture:
+
+```text
+ПКТ public backend
+→ VPS updater.py
+→ normalize/hash
+→ enabled Firebase target(s)
+→ ingestVesselCallsMonth
+→ Firestore projection
+→ Epistola/EpiLite clients
+```
+
+Current VPS foundation:
+
+```text
+Ubuntu 24.04
+/opt/epistola-vessel-calls
+system user epistola-vessels
+```
+
+Secrets:
+
+```text
+/etc/epistola-vessel-calls.env
+root-owned
+0600
+never committed
+```
+
+Target config:
+
+```text
+/opt/epistola-vessel-calls/targets.json
+```
+
+Portable target matrix supports:
+
+```text
+19/1 .. 19/4
+20/1 .. 20/4
+```
+
+Currently enabled:
+
+```text
+19/4
+```
+
+Updater behavior:
+
+```text
+Python standard library only
+fetch plan / crnt / closed
+merge plan + current by calling_id
+normalize current month
+calculate stable content hash
+keep per-target hashes in state/
+publish only when changed
+per-target failures remain independent
+```
+
+Systemd:
+
+```text
+epistola-vessel-calls.service
+→ oneshot
+
+epistola-vessel-calls.timer
+→ enabled
+→ automatic checks approximately every 2 hours
+→ starts after reboot
+```
+
+Manual autonomous service test passed:
+
+```text
+systemd environment loaded
+ПКТ fetch succeeded
+snapshot normalized
+unchanged hash detected
+Firebase publish skipped
+service exited SUCCESS
+```
+
+First real VPS publish passed:
+
+```text
+plan = 42
+crnt = 0
+closed = 66
+normalized current-month calls = 30
+19/4 published successfully
+```
+
+Immediate second run:
+
+```text
+same normalized content hash
+→ Firebase publish skipped
+```
+
+This separation is deliberate:
+
+```text
+clients never call ПКТ directly
+VPS secrets never enter app bundles
+Firebase remains the application-facing cache/projection
+```
+
+## Security invariant
+
+Never commit or reproduce real values of:
+
+```text
+source Basic Authorization
+VESSEL_CALLS_INGEST_TOKEN
+```
+
+They belong only in secret storage / VPS environment.
+
+Old experimental Cloud probe/source-auth secret should be reviewed and cleaned later after the production path is stable.
+
+## Current archive gap
+
+`closed` is fetched and counted by the updater, but is not yet merged into current snapshot/archive behavior.
+
+Current effect:
+
+```text
+departed vessels may disappear from the visible current month
+```
+
+Next architecture task:
+
+```text
+preserve completed vessel history
+archive past months
+render completed/closed ranges in grey
+retain active/planned color semantics
+```
+
+Before extending the domain, inspect source evidence for:
+
+```text
+true IMO
+true berth
+vessel type
+container/bulk distinction
+cargo/workload
+actual processing status
+```
 
 ---
 
 # 45. Current roadmap
 
-Immediate new-chat topic:
+Immediate next block:
 
 ```text
-Судозаходы discovery / product design
+Vessel Calls closed/archive support
+→ completed vessels stay visible/reconstructable
+→ grey completed strips/cards
+→ past-month archive
+→ inspect source fields for real berth/IMO/type/workload
+```
+
+After Vessel Calls is finished:
+
+```text
+EpiLite Web
+→ integrate latest Calendar changes
+→ integrate Vessel Calls
+→ verify desktop/mobile browser
 ```
 
 Existing unfinished roadmap remains:
@@ -1555,6 +1995,8 @@ Web chat avatar polish
 legacy *MessageId cleanup
 pushInstallations cleanup for deleted Auth users
 Bus timetable after authoritative source
+portable VPS updater copy / ops documentation
+old experimental Vessel Calls cloud probe cleanup
 ```
 
 ---
@@ -1581,14 +2023,29 @@ README.md
 Expected functional checkpoint before docs update:
 
 ```text
-b8618aa
+50355ff
+```
+
+MD continuity rule:
+
+```text
+do not rewrite these three MD documents from scratch
+preserve accumulated historical/functional blocks
+update existing sections incrementally
+remove only clear duplicates or obsolete small details
 ```
 
 For the next chat:
 
 ```text
-do not reimplement Spaces Hub customization
-do not assume a Судозаходы schema
-first discuss real workplace workflow and authoritative data
-then define MVP and only then code
+do not reimplement VPS updater
+do not reimplement ingestVesselCallsMonth
+do not restore old 3-day client refresh
+do not persist preview data into real Vessel Calls cache
+
+continue with:
+closed/archive vessel history
+→ grey completed presentation
+→ authoritative field discovery
+→ then latest Calendar + Vessel Calls Web integration
 ```

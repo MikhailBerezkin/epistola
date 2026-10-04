@@ -24,15 +24,15 @@ Pilot target:
 |---|---|
 | Target | `v0.8.0` |
 | Branch | `feat/v0.8.0-spaces-substitution-foundation` |
-| Last pushed functional checkpoint | `b8618aa` |
-| Checkpoint message | `feat(spaces): add customizable hub layout` |
+| Last pushed functional checkpoint | `50355ff` |
+| Checkpoint message | `feat(vessel-calls): add VPS ingest and revision-based cache refresh` |
 | Stable baseline before v0.8.0 | `v0.7.4` |
 | Firebase project | `epistola-434b7` |
 | Android package | `com.epistola.app` |
 | Android product | `Epistola` |
 | Web/PWA product | `EpiLite` |
 | Production Hosting | `https://epistola-434b7.web.app` |
-| Latest release APK build | `64.1 MB` |
+| Latest release APK build | `64.3 MB` |
 | Latest full Flutter test | `1241 passed` |
 | Latest analyzer | `No issues found!` |
 
@@ -53,6 +53,8 @@ current code
 
 Do not use `main` as source of current `v0.8.0` state before merge.
 
+**MD continuity rule:** `PROJECT_CONTEXT.md`, `ARCHITECTURE.md` and `README.md` are cumulative project history. Update them from the existing files; do not rewrite them from scratch or drop large completed historical blocks. Full-file replacement is only a delivery method after the existing content has been preserved and updated.
+
 ---
 
 # Latest commit sequence
@@ -69,6 +71,11 @@ daedc9f — feat(calendar): refine themed calendar surfaces
 17a73b7 — wip(alarm): refine ringing screen visuals
 617bd36 — docs: update calendar alarm and roadmap handoff
 b8618aa — feat(spaces): add customizable hub layout
+1efbcc7 — docs: update spaces checkpoint and vessel calls handoff
+0cb3882 — feat(vessel-calls): add calendar cache and archive foundation
+4fc9800 — test(vessel-calls): add firestore access rules
+8f41d80 — fix(alarm): restore native alarm sound channel
+50355ff — feat(vessel-calls): add VPS ingest and revision-based cache refresh
 ```
 
 ---
@@ -111,6 +118,8 @@ desktop browser
 mobile browser
 earlier text chat flow
 ```
+
+Latest Calendar refinements and Vessel Calls still need a new Web integration pass.
 
 ## Calendar / Agenda
 
@@ -166,6 +175,41 @@ title/subtitle right
 
 Manual restart verification passed.
 
+## Vessel Calls / Судозаходы
+
+Implemented through `50355ff`:
+
+```text
+real ПКТ source integration
+5-day + full-month Android presentation
+Firestore monthMeta/monthSnapshots/monthArchives foundation
+signed-in read-only client Rules
+Cloud Function ingestVesselCallsMonth
+VPS automatic publisher
+hash-based publish suppression
+30-minute revision-based device cache
+real snapshot persistence on device
+```
+
+VPS:
+
+```text
+systemd timer
+approximately 2-hour source checks
+publish only when normalized content changes
+19/4 currently enabled
+target structure supports 19/1..19/4 and 20/1..20/4
+```
+
+Current unfinished:
+
+```text
+closed vessels are fetched but not yet kept in visible history
+archive/completed grey presentation
+real IMO/berth/type/workload field discovery
+Web integration
+```
+
 ---
 
 # Spaces Hub
@@ -192,7 +236,21 @@ Current titles:
 ОТ и ТБ
 ```
 
-`Судозаходы`, `Автобусы`, `ОТ и ТБ` are still under-development entry points unless current source says otherwise.
+Current state:
+
+```text
+Судозаходы
+→ active real-data implementation
+→ Android/VPS/Firestore foundation working
+→ completed/archive history remains
+
+Автобусы
+→ under development
+→ authoritative current timetable still needed
+
+ОТ и ТБ
+→ under development
+```
 
 ---
 
@@ -221,6 +279,15 @@ stop
 swipe up/down
 Power button stop
 returns to previous phone state
+```
+
+Sound regression fix:
+
+```text
+8f41d80
+→ native alarm channel epistola_shift_alarms_v3
+→ USAGE_ALARM + CONTENT_TYPE_SONIFICATION
+→ normal system alarm sound restored on Poco
 ```
 
 These functional behaviors are stable.
@@ -527,9 +594,54 @@ AndroidScheduleMode.alarmClock
 
 ---
 
+# Vessel Calls data flow
+
+Current production flow:
+
+```text
+ПКТ public backend
+→ VPS updater
+→ normalize current month
+→ stable content hash
+→ ingestVesselCallsMonth
+→ Firestore monthMeta/monthSnapshots
+→ Android local revision cache
+→ Судозаходы UI
+```
+
+Firestore:
+
+```text
+spaces/vesselCalls/monthMeta/{YYYY-MM}
+spaces/vesselCalls/monthSnapshots/{YYYY-MM}
+spaces/vesselCalls/monthArchives/{YYYY-MM}
+```
+
+Client:
+
+```text
+signed-in read
+no client writes
+```
+
+Current temporary mappings:
+
+```text
+calling_id is stored where vesselImo is expected
+→ not a real IMO yet
+
+lane 0..3
+→ visual lane only
+→ not berth 83/85/86/87
+```
+
+`closed` is already fetched by the VPS but is not yet merged into visible history.
+
+---
+
 # Build / verification
 
-Latest checkpoint `b8618aa`:
+Latest functional checkpoint `50355ff`:
 
 ```text
 flutter analyze
@@ -540,16 +652,25 @@ flutter test
 
 flutter build apk --release
 → SUCCESS
-→ 64.1 MB
+→ 64.3 MB
+
+Poco F6 Vessel Calls check
+→ passed
+
+Vessel Calls Firestore Rules
+→ 84/84 passed
 
 git diff --check
 → clean
 
 HEAD
-→ b8618aa
+→ 50355ff
 
 origin
-→ b8618aa
+→ 50355ff
+
+working tree
+→ CLEAN
 ```
 
 Generated Flutter plugin files were restored after the final Flutter command and were not committed.
@@ -558,46 +679,47 @@ Generated Flutter plugin files were restored after the final Flutter command and
 
 # Immediate next-chat topic
 
-Owner decision:
+Current functional foundation:
 
 ```text
-discuss the Судозаходы tile
-```
-
-Current tile:
-
-```text
-SpacesTileId.vesselCalls
-
-title:
 Судозаходы
-
-subtitle:
-Суда и объём работ
+→ real ПКТ source connected
+→ VPS updater active
+→ Firebase ingest active
+→ Firestore read-only client cache
+→ revision-based device cache
+→ Android phone check passed
 ```
 
-Current implementation is only an under-development entry point.
-
-Before coding, define:
+Next block:
 
 ```text
-source of vessel data
-who can create/edit
-required fields
-status/lifecycle
-planned vs actual work volume
-history/audit
-push/SpacesBar behavior
-Calendar/Substitution relation
-Web requirements
-retention/query model
+1. preserve/include closed vessel history
+2. show completed vessel timeline/cards in grey
+3. archive past months
+4. inspect source fields for real berth / IMO / vessel type / workload
+5. finish Android Vessel Calls behavior
+6. then add latest Calendar + Vessel Calls to EpiLite Web together
 ```
 
-Do not invent a Firestore schema before agreeing the real workplace workflow.
+Important:
+
+```text
+lane 0..3 ≠ real berth
+calling_id ≠ real IMO
+closed is fetched but not yet merged into visible history
+```
 
 ---
 
 # Roadmap
+
+Immediate:
+
+```text
+Vessel Calls closed/archive/completed presentation
+latest Calendar + Vessel Calls Web integration
+```
 
 Existing unfinished work remains:
 
@@ -623,6 +745,8 @@ Web chat avatar polish
 legacy *MessageId cleanup
 pushInstallations cleanup for deleted Auth users
 Bus schedule after authoritative timetable
+portable VPS updater copy / ops docs
+old experimental Vessel Calls probe cleanup
 ```
 
 ---
@@ -664,13 +788,19 @@ README.md
 
 Expected functional checkpoint before docs update:
 
-`b8618aa`
+`50355ff`
+
+MD continuity:
+
+```text
+preserve the existing three documents as cumulative project history
+do not rewrite them from scratch
+```
 
 Next:
 
 ```text
-Судозаходы
-→ requirements discussion
-→ agree MVP/data model
-→ then implementation
+finish Судозаходы closed/archive history
+→ inspect real source fields
+→ then Web: latest Calendar + Vessel Calls
 ```
