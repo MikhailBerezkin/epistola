@@ -1,0 +1,106 @@
+[
+  {
+    "documentId": "new_new_shipping",
+    "schemaVersion": 1,
+    "displayName": "NEW NEW SHIPPING",
+    "normalizedName": "NEW NEW SHIPPING",
+    "defaultWorkType": "container",
+    "isVerified": false
+  },
+  {
+    "documentId": "autoway_exp",
+    "schemaVersion": 1,
+    "displayName": "АВТОВЭЙ ЭКСП",
+    "normalizedName": "АВТОВЭЙ ЭКСП",
+    "defaultWorkType": "container",
+    "isVerified": false
+  },
+  {
+    "documentId": "baltic_ship",
+    "schemaVersion": 1,
+    "displayName": "БАЛТИК ШИП",
+    "normalizedName": "БАЛТИК ШИП",
+    "defaultWorkType": "container",
+    "isVerified": true
+  },
+  {
+    "documentId": "marmed",
+    "schemaVersion": 1,
+    "displayName": "МАРМЕД",
+    "normalizedName": "МАРМЕД",
+    "defaultWorkType": "unknown",
+    "isVerified": false
+  },
+  {
+    "documentId": "mirtrans",
+    "schemaVersion": 1,
+    "displayName": "МИРТРАНС",
+    "normalizedName": "МИРТРАНС",
+    "defaultWorkType": "container",
+    "isVerified": true
+  },
+  {
+    "documentId": "novik_logistic",
+    "schemaVersion": 1,
+    "displayName": "НОВИК ЛОГИСТИК",
+    "normalizedName": "НОВИК ЛОГИСТИК",
+    "defaultWorkType": "container",
+    "isVerified": true
+  },
+  {
+    "documentId": "obl_tr",
+    "schemaVersion": 1,
+    "displayName": "ОБЛ-ТР.",
+    "normalizedName": "ОБЛ-ТР.",
+    "defaultWorkType": "unknown",
+    "isVerified": false
+  },
+  {
+    "documentId": "sai_fu",
+    "schemaVersion": 1,
+    "displayName": "САЙ ФУ",
+    "normalizedName": "САЙ ФУ",
+    "defaultWorkType": "container",
+    "isVerified": true
+  },
+  {
+    "documentId": "smart",
+    "schemaVersion": 1,
+    "displayName": "СМАРТ",
+    "normalizedName": "СМАРТ",
+    "defaultWorkType": "unknown",
+    "isVerified": false
+  },
+  {
+    "documentId": "smart_bulk",
+    "schemaVersion": 1,
+    "displayName": "СМАРТ БАЛК",
+    "normalizedName": "СМАРТ БАЛК",
+    "defaultWorkType": "bulk",
+    "isVerified": true
+  },
+  {
+    "documentId": "tbk",
+    "schemaVersion": 1,
+    "displayName": "ТБК",
+    "normalizedName": "ТБК",
+    "defaultWorkType": "unknown",
+    "isVerified": false
+  },
+  {
+    "documentId": "fit",
+    "schemaVersion": 1,
+    "displayName": "ФИТ",
+    "normalizedName": "ФИТ",
+    "defaultWorkType": "container",
+    "isVerified": true
+  },
+  {
+    "documentId": "united",
+    "schemaVersion": 1,
+    "displayName": "ЮНАЙТЕД",
+    "normalizedName": "ЮНАЙТЕД",
+    "defaultWorkType": "unknown",
+    "isVerified": false
+  }
+]

@@ -42,9 +42,9 @@ final class VesselRegistryResolver {
       vessels: vessels,
     );
 
-    if (vessel != null && vessel.workType != VesselWorkType.unknown) {
+    if (vessel != null && vessel.effectiveWorkType != VesselWorkType.unknown) {
       return VesselRegistryResolution(
-        workType: vessel.workType,
+        workType: vessel.effectiveWorkType,
         source: VesselClassificationSource.vessel,
         vessel: vessel,
         line: line,

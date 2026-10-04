@@ -10,9 +10,9 @@ enum VesselWorkType {
 
   String get displayName {
     return switch (this) {
-      VesselWorkType.container => 'Контейнеровоз',
+      VesselWorkType.container => 'Контейнеры',
       VesselWorkType.bulk => 'Балкер',
-      VesselWorkType.other => 'Другое',
+      VesselWorkType.other => 'Другие суда',
       VesselWorkType.unknown => 'Не определён',
     };
   }
@@ -23,6 +23,44 @@ enum VesselWorkType {
       'bulk' => VesselWorkType.bulk,
       'other' => VesselWorkType.other,
       _ => VesselWorkType.unknown,
+    };
+  }
+}
+
+enum VesselPhysicalType {
+  container('container'),
+  bulk('bulk'),
+  reefer('reefer'),
+  multipurpose('multipurpose'),
+  generalCargo('generalCargo'),
+  other('other'),
+  unknown('unknown');
+
+  const VesselPhysicalType(this.storageValue);
+
+  final String storageValue;
+
+  String get displayName {
+    return switch (this) {
+      VesselPhysicalType.container => 'Контейнеровоз',
+      VesselPhysicalType.bulk => 'Балкер',
+      VesselPhysicalType.reefer => 'Рефрижератор',
+      VesselPhysicalType.multipurpose => 'Многоцелевое судно',
+      VesselPhysicalType.generalCargo => 'Сухогруз',
+      VesselPhysicalType.other => 'Другой тип',
+      VesselPhysicalType.unknown => 'Не определён',
+    };
+  }
+
+  static VesselPhysicalType tryParse(Object? value) {
+    return switch (value) {
+      'container' => VesselPhysicalType.container,
+      'bulk' => VesselPhysicalType.bulk,
+      'reefer' => VesselPhysicalType.reefer,
+      'multipurpose' => VesselPhysicalType.multipurpose,
+      'generalCargo' => VesselPhysicalType.generalCargo,
+      'other' => VesselPhysicalType.other,
+      _ => VesselPhysicalType.unknown,
     };
   }
 }
@@ -53,8 +91,12 @@ final class VesselRegistryEntry {
     required this.vesselUid,
     required this.name,
     required this.lineId,
-    required this.workType,
     required this.isVerified,
+    VesselWorkType? workType,
+    this.defaultWorkType,
+    this.allowedWorkTypes = const <VesselWorkType>[],
+    this.workTypeOverride,
+    this.physicalType = VesselPhysicalType.unknown,
     this.imo,
     this.lengthMeters,
     this.deadweightTons,
@@ -63,7 +105,7 @@ final class VesselRegistryEntry {
     this.marineTrafficUrl,
     this.updatedAt,
     this.updatedBy,
-  });
+  }) : _legacyWorkType = workType;
 
   /// Внутренний постоянный идентификатор Epistola.
   final String vesselUid;
@@ -73,8 +115,43 @@ final class VesselRegistryEntry {
   /// Ссылка на VesselLineRegistryEntry.lineId.
   final String lineId;
 
-  /// Тип конкретного судна имеет приоритет над defaultWorkType линии.
-  final VesselWorkType workType;
+  /// Технический тип самого судна.
+  ///
+  /// Например:
+  /// reefer, multipurpose, container, bulk.
+  ///
+  /// Это поле не определяет цвет работы на терминале.
+  final VesselPhysicalType physicalType;
+
+  /// Рабочая категория судна по умолчанию.
+  ///
+  /// Например, рефрижератор может иметь:
+  /// physicalType = reefer
+  /// defaultWorkType = container
+  final VesselWorkType? defaultWorkType;
+
+  /// Старое значение workType из schemaVersion 1.
+  ///
+  /// Используется только как fallback во время миграции.
+  final VesselWorkType? _legacyWorkType;
+
+  /// Категории, между которыми разрешено переключать конкретное судно.
+  ///
+  /// Примеры:
+  /// контейнеровоз:
+  /// [container]
+  ///
+  /// рефрижератор:
+  /// [container, other]
+  ///
+  /// multipurpose на линии СМАРТ БАЛК:
+  /// [bulk, other]
+  final List<VesselWorkType> allowedWorkTypes;
+
+  /// Ручное переопределение рабочей категории.
+  ///
+  /// null означает использование defaultWorkType.
+  final VesselWorkType? workTypeOverride;
 
   final bool isVerified;
 
@@ -95,6 +172,41 @@ final class VesselRegistryEntry {
   final String? updatedBy;
 
   String get normalizedName => normalizeVesselRegistryText(name);
+
+  /// Рабочая категория без ручного override.
+  ///
+  /// Поддерживает старое поле workType из schemaVersion 1.
+  VesselWorkType get resolvedDefaultWorkType {
+    return defaultWorkType ?? _legacyWorkType ?? VesselWorkType.unknown;
+  }
+
+  /// Категория, которая фактически используется сейчас
+  /// для цвета, фильтрации и отображения судозахода.
+  VesselWorkType get effectiveWorkType {
+    return workTypeOverride ?? resolvedDefaultWorkType;
+  }
+
+  /// Совместимость со старым кодом.
+  ///
+  /// Старые участки приложения продолжают обращаться к vessel.workType,
+  /// но фактически уже получают новую effectiveWorkType.
+  VesselWorkType get workType => effectiveWorkType;
+
+  List<VesselWorkType> get effectiveAllowedWorkTypes {
+    if (allowedWorkTypes.isNotEmpty) {
+      return allowedWorkTypes;
+    }
+
+    return <VesselWorkType>[resolvedDefaultWorkType];
+  }
+
+  bool get supportsWorkTypeSwitch {
+    return effectiveAllowedWorkTypes.toSet().length > 1;
+  }
+
+  bool allowsWorkType(VesselWorkType value) {
+    return effectiveAllowedWorkTypes.contains(value);
+  }
 }
 
 String normalizeVesselRegistryText(String value) {

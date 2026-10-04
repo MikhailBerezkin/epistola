@@ -65,11 +65,20 @@ final class VesselRegistryFirestoreMapper {
       return null;
     }
 
+    final legacyWorkType = VesselWorkType.tryParse(data['workType']);
+
+    final defaultWorkType =
+        _readNullableWorkType(data['defaultWorkType']) ?? legacyWorkType;
+
     return VesselRegistryEntry(
       vesselUid: normalizedVesselUid,
       name: name,
       lineId: lineId,
-      workType: VesselWorkType.tryParse(data['workType']),
+      workType: legacyWorkType,
+      defaultWorkType: defaultWorkType,
+      allowedWorkTypes: _readWorkTypeList(data['allowedWorkTypes']),
+      workTypeOverride: _readNullableWorkType(data['workTypeOverride']),
+      physicalType: VesselPhysicalType.tryParse(data['physicalType']),
       isVerified: data['isVerified'] == true,
       imo: _readNullableString(data['imo']),
       lengthMeters: _readNullableDouble(data['lengthMeters']),
@@ -100,12 +109,52 @@ final class VesselRegistryFirestoreMapper {
       );
     }
 
+    final defaultWorkType = vessel.resolvedDefaultWorkType;
+    final allowedWorkTypes = vessel.effectiveAllowedWorkTypes;
+
+    final uniqueAllowedWorkTypes = <VesselWorkType>{
+      ...allowedWorkTypes,
+    }.toList(growable: false);
+
+    if (!uniqueAllowedWorkTypes.contains(defaultWorkType)) {
+      throw ArgumentError.value(
+        allowedWorkTypes,
+        'allowedWorkTypes',
+        'allowedWorkTypes must contain defaultWorkType.',
+      );
+    }
+
+    final workTypeOverride = vessel.workTypeOverride;
+
+    if (workTypeOverride != null &&
+        !uniqueAllowedWorkTypes.contains(workTypeOverride)) {
+      throw ArgumentError.value(
+        workTypeOverride,
+        'workTypeOverride',
+        'workTypeOverride must be included in allowedWorkTypes.',
+      );
+    }
+
     return <String, dynamic>{
-      'schemaVersion': 1,
+      'schemaVersion': 2,
       'name': name,
       'normalizedName': normalizeVesselRegistryText(name),
       'lineId': vessel.lineId.trim(),
-      'workType': vessel.workType.storageValue,
+
+      // Новая схема.
+      'physicalType': vessel.physicalType.storageValue,
+      'defaultWorkType': defaultWorkType.storageValue,
+      'allowedWorkTypes': uniqueAllowedWorkTypes
+          .map((value) => value.storageValue)
+          .toList(growable: false),
+      'workTypeOverride': workTypeOverride?.storageValue,
+
+      // Временно сохраняем и старое поле.
+      //
+      // Старые версии клиента смогут продолжить читать документ.
+      // Значение соответствует фактически используемой категории.
+      'workType': vessel.effectiveWorkType.storageValue,
+
       'isVerified': vessel.isVerified,
       'imo': _normalizeNullableString(vessel.imo),
       'lengthMeters': vessel.lengthMeters,
@@ -128,6 +177,36 @@ final class VesselRegistryFirestoreMapper {
 
     final normalized = value.trim();
     return normalized.isEmpty ? null : normalized;
+  }
+
+  static VesselWorkType? _readNullableWorkType(Object? value) {
+    return switch (value) {
+      'container' => VesselWorkType.container,
+      'bulk' => VesselWorkType.bulk,
+      'other' => VesselWorkType.other,
+      'unknown' => VesselWorkType.unknown,
+      _ => null,
+    };
+  }
+
+  static List<VesselWorkType> _readWorkTypeList(Object? value) {
+    if (value is! Iterable) {
+      return const <VesselWorkType>[];
+    }
+
+    final result = <VesselWorkType>[];
+
+    for (final item in value) {
+      final workType = _readNullableWorkType(item);
+
+      if (workType == null || result.contains(workType)) {
+        continue;
+      }
+
+      result.add(workType);
+    }
+
+    return List<VesselWorkType>.unmodifiable(result);
   }
 
   static double? _readNullableDouble(Object? value) {
