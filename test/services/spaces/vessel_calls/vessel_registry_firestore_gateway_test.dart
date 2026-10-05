@@ -34,6 +34,7 @@ void main() {
               required String documentId,
               required Map<String, dynamic> data,
             }) async {},
+        vesselPhotoWriter: _noopVesselPhotoWriter,
       );
 
       final lines = await gateway.loadLines();
@@ -73,6 +74,7 @@ void main() {
               required String documentId,
               required Map<String, dynamic> data,
             }) async {},
+        vesselPhotoWriter: _noopVesselPhotoWriter,
       );
 
       final vessels = await gateway.loadVessels();
@@ -102,6 +104,7 @@ void main() {
               required String documentId,
               required Map<String, dynamic> data,
             }) async {},
+        vesselPhotoWriter: _noopVesselPhotoWriter,
       );
 
       await gateway.saveLine(
@@ -140,6 +143,7 @@ void main() {
               capturedId = documentId;
               capturedData = data;
             },
+        vesselPhotoWriter: _noopVesselPhotoWriter,
       );
 
       await gateway.saveVessel(
@@ -161,5 +165,64 @@ void main() {
       expect(capturedData?['imo'], '1234567');
       expect(capturedData?['updatedBy'], 'brigadier_1');
     });
+
+    test('saves only vessel photo metadata through photo writer', () async {
+      String? capturedId;
+      String? capturedThumbnailPath;
+      String? capturedFullPath;
+      int? capturedVersion;
+      String? capturedUpdatedBy;
+
+      final gateway = VesselRegistryFirestoreGateway(
+        lineReader: () async => const <VesselRegistryDocument>[],
+        vesselReader: () async => const <VesselRegistryDocument>[],
+        lineWriter:
+            ({
+              required String documentId,
+              required Map<String, dynamic> data,
+            }) async {},
+        vesselWriter:
+            ({
+              required String documentId,
+              required Map<String, dynamic> data,
+            }) async {},
+        vesselPhotoWriter:
+            ({
+              required String documentId,
+              required String thumbnailPath,
+              required String fullPath,
+              required int version,
+              required String updatedBy,
+            }) async {
+              capturedId = documentId;
+              capturedThumbnailPath = thumbnailPath;
+              capturedFullPath = fullPath;
+              capturedVersion = version;
+              capturedUpdatedBy = updatedBy;
+            },
+      );
+
+      await gateway.saveVesselPhoto(
+        vesselUid: 'vessel_001',
+        thumbnailPath: 'vessel_photos/imo_1234567/v123/thumb.jpg',
+        fullPath: 'vessel_photos/imo_1234567/v123/full.jpg',
+        version: 123,
+        updatedBy: 'owner_1',
+      );
+
+      expect(capturedId, 'vessel_001');
+      expect(capturedThumbnailPath, 'vessel_photos/imo_1234567/v123/thumb.jpg');
+      expect(capturedFullPath, 'vessel_photos/imo_1234567/v123/full.jpg');
+      expect(capturedVersion, 123);
+      expect(capturedUpdatedBy, 'owner_1');
+    });
   });
 }
+
+Future<void> _noopVesselPhotoWriter({
+  required String documentId,
+  required String thumbnailPath,
+  required String fullPath,
+  required int version,
+  required String updatedBy,
+}) async {}

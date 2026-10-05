@@ -120,6 +120,9 @@ final class VesselRegistryEntry {
     this.deadweightTons,
     this.teuCapacity,
     this.photoPath,
+    this.photoThumbPath,
+    this.photoFullPath,
+    this.photoVersion,
     this.marineTrafficUrl,
     this.updatedAt,
     this.updatedBy,
@@ -179,8 +182,22 @@ final class VesselRegistryEntry {
   final int? deadweightTons;
   final int? teuCapacity;
 
-  /// Firebase Storage path.
+  /// Старый одиночный Firebase Storage path.
+  ///
+  /// Оставлен только для совместимости со старыми документами.
   final String? photoPath;
+
+  /// Firebase Storage path уменьшенной версии фотографии.
+  final String? photoThumbPath;
+
+  /// Firebase Storage path полноразмерной версии фотографии.
+  final String? photoFullPath;
+
+  /// Версия фотографии.
+  ///
+  /// Используется для безопасной замены файлов и инвалидирования
+  /// локального кэша на устройствах пользователей.
+  final int? photoVersion;
 
   final String? marineTrafficUrl;
 
@@ -214,6 +231,24 @@ final class VesselRegistryEntry {
 
   bool allowsWorkType(VesselWorkType value) {
     return effectiveAllowedWorkTypes.contains(value);
+  }
+
+  /// Thumbnail новой схемы.
+  ///
+  /// Для старых записей используем photoPath как fallback.
+  String? get effectivePhotoThumbPath {
+    return photoThumbPath ?? photoPath;
+  }
+
+  /// Full новой схемы.
+  ///
+  /// Для старых записей используем photoPath как fallback.
+  String? get effectivePhotoFullPath {
+    return photoFullPath ?? photoPath;
+  }
+
+  bool get hasPhoto {
+    return effectivePhotoThumbPath != null || effectivePhotoFullPath != null;
   }
 }
 

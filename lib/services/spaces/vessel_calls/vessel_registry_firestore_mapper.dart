@@ -84,7 +84,15 @@ final class VesselRegistryFirestoreMapper {
       lengthMeters: _readNullableDouble(data['lengthMeters']),
       deadweightTons: _readNullableInt(data['deadweightTons']),
       teuCapacity: _readNullableInt(data['teuCapacity']),
+
+      // Старое поле оставляем для совместимости.
       photoPath: _readNullableString(data['photoPath']),
+
+      // Новая схема фотографий судна.
+      photoThumbPath: _readNullableString(data['photoThumbPath']),
+      photoFullPath: _readNullableString(data['photoFullPath']),
+      photoVersion: _readPositiveNullableInt(data['photoVersion']),
+
       marineTrafficUrl: _readNullableString(data['marineTrafficUrl']),
       updatedAt: _readDateTime(data['updatedAt']),
       updatedBy: _readNullableString(data['updatedBy']),
@@ -135,13 +143,23 @@ final class VesselRegistryFirestoreMapper {
       );
     }
 
+    final photoVersion = vessel.photoVersion;
+
+    if (photoVersion != null && photoVersion <= 0) {
+      throw ArgumentError.value(
+        photoVersion,
+        'photoVersion',
+        'photoVersion must be positive.',
+      );
+    }
+
     return <String, dynamic>{
       'schemaVersion': 2,
       'name': name,
       'normalizedName': normalizeVesselRegistryText(name),
       'lineId': vessel.lineId.trim(),
 
-      // Новая схема.
+      // Схема классификации.
       'physicalType': vessel.physicalType.storageValue,
       'defaultWorkType': defaultWorkType.storageValue,
       'allowedWorkTypes': uniqueAllowedWorkTypes
@@ -149,10 +167,7 @@ final class VesselRegistryFirestoreMapper {
           .toList(growable: false),
       'workTypeOverride': workTypeOverride?.storageValue,
 
-      // Временно сохраняем и старое поле.
-      //
-      // Старые версии клиента смогут продолжить читать документ.
-      // Значение соответствует фактически используемой категории.
+      // Старые версии клиента продолжают видеть фактическую категорию.
       'workType': vessel.effectiveWorkType.storageValue,
 
       'isVerified': vessel.isVerified,
@@ -160,7 +175,15 @@ final class VesselRegistryFirestoreMapper {
       'lengthMeters': vessel.lengthMeters,
       'deadweightTons': vessel.deadweightTons,
       'teuCapacity': vessel.teuCapacity,
+
+      // Legacy.
       'photoPath': _normalizeNullableString(vessel.photoPath),
+
+      // Новая двухуровневая фотография.
+      'photoThumbPath': _normalizeNullableString(vessel.photoThumbPath),
+      'photoFullPath': _normalizeNullableString(vessel.photoFullPath),
+      'photoVersion': photoVersion,
+
       'marineTrafficUrl': _normalizeNullableString(vessel.marineTrafficUrl),
       'updatedBy': updatedBy.trim(),
     };
@@ -176,6 +199,7 @@ final class VesselRegistryFirestoreMapper {
     }
 
     final normalized = value.trim();
+
     return normalized.isEmpty ? null : normalized;
   }
 
@@ -226,6 +250,16 @@ final class VesselRegistryFirestoreMapper {
     return null;
   }
 
+  static int? _readPositiveNullableInt(Object? value) {
+    if (value is! num) {
+      return null;
+    }
+
+    final result = value.toInt();
+
+    return result > 0 ? result : null;
+  }
+
   static DateTime? _readDateTime(Object? value) {
     if (value is Timestamp) {
       return value.toDate();
@@ -244,6 +278,7 @@ final class VesselRegistryFirestoreMapper {
     }
 
     final normalized = value.trim();
+
     return normalized.isEmpty ? null : normalized;
   }
 

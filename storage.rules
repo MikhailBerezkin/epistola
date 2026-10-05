@@ -7,7 +7,9 @@ service firebase.storage {
     }
 
     match /test_uploads/{userId}/{fileName} {
-      allow read: if signedIn() && request.auth.uid == userId;
+      allow read: if signedIn()
+        && request.auth.uid == userId;
+
       allow write: if signedIn()
         && request.auth.uid == userId
         && request.resource.size < 5 * 1024 * 1024;
@@ -16,19 +18,20 @@ service firebase.storage {
     function isValidAvatarVersion(version) {
       return version.matches('v[1-9][0-9]*');
     }
-    function canManageGroupAvatar(chatId) {
-  let chat = firestore.get(
-    /databases/(default)/documents/chats/$(chatId)
-  ).data;
 
-  return signedIn()
-      && chat.type == 'group'
-      && request.auth.uid in chat.memberIds
-      && (
-        chat.memberRoles[request.auth.uid] == 'owner'
-        || chat.memberRoles[request.auth.uid] == 'admin'
-      );
-}
+    function canManageGroupAvatar(chatId) {
+      let chat = firestore.get(
+        /databases/(default)/documents/chats/$(chatId)
+      ).data;
+
+      return signedIn()
+        && chat.type == 'group'
+        && request.auth.uid in chat.memberIds
+        && (
+          chat.memberRoles[request.auth.uid] == 'owner'
+          || chat.memberRoles[request.auth.uid] == 'admin'
+        );
+    }
 
     match /user_avatars/{userId}/{version}/thumb.jpg {
       allow get: if signedIn()
@@ -44,7 +47,8 @@ service firebase.storage {
         && request.auth.uid == userId
         && isValidAvatarVersion(version);
     }
-        function chatData(chatId) {
+
+    function chatData(chatId) {
       return firestore.get(
         /databases/(default)/documents/chats/$(chatId)
       ).data;
@@ -56,36 +60,37 @@ service firebase.storage {
 
     function isMessageMediaStatusActive(statusData) {
       return statusData.permanent == true
-          || (
-            statusData.expiresAt is timestamp
-            && statusData.expiresAt > request.time
-          );
+        || (
+          statusData.expiresAt is timestamp
+          && statusData.expiresAt > request.time
+        );
     }
 
     function isMessageMediaMutedOrBanned(statusData) {
       return (
-            statusData.status == 'muted'
-            || statusData.status == 'banned'
-          )
-          && isMessageMediaStatusActive(statusData);
+        statusData.status == 'muted'
+        || statusData.status == 'banned'
+      )
+      && isMessageMediaStatusActive(statusData);
     }
 
     function isMessageMediaAdminOrOwner(role) {
-      return role == 'admin' || role == 'owner';
+      return role == 'admin'
+        || role == 'owner';
     }
 
     function isMessageMediaModeratorOrAbove(role) {
       return role == 'moderator'
-          || role == 'admin'
-          || role == 'owner';
+        || role == 'admin'
+        || role == 'owner';
     }
 
     function isChatMediaMember(chatId) {
       let chat = chatData(chatId);
 
       return signedIn()
-          && chat.memberIds is list
-          && request.auth.uid in chat.memberIds;
+        && chat.memberIds is list
+        && request.auth.uid in chat.memberIds;
     }
 
     function canWriteChatMedia(chatId) {
@@ -95,27 +100,27 @@ service firebase.storage {
       let permission = chat.groupSettings.messagePermission;
 
       return signedIn()
-          && chat.memberIds is list
-          && request.auth.uid in chat.memberIds
-          && (
-            chat.type == 'private'
-            || (
-              chat.type == 'group'
-              && role != 'guest'
-              && !isMessageMediaMutedOrBanned(statusData)
-              && (
-                permission == 'all'
-                || (
-                  permission == 'moderators'
-                  && isMessageMediaModeratorOrAbove(role)
-                )
-                || (
-                  permission == 'admins'
-                  && isMessageMediaAdminOrOwner(role)
-                )
+        && chat.memberIds is list
+        && request.auth.uid in chat.memberIds
+        && (
+          chat.type == 'private'
+          || (
+            chat.type == 'group'
+            && role != 'guest'
+            && !isMessageMediaMutedOrBanned(statusData)
+            && (
+              permission == 'all'
+              || (
+                permission == 'moderators'
+                && isMessageMediaModeratorOrAbove(role)
+              )
+              || (
+                permission == 'admins'
+                && isMessageMediaAdminOrOwner(role)
               )
             )
-          );
+          )
+        );
     }
 
     function hasValidMessageMediaMetadata(
@@ -124,25 +129,26 @@ service firebase.storage {
       version
     ) {
       return request.resource.metadata.size() == 4
-          && request.resource.metadata.uploaderId
-              == request.auth.uid
-          && request.resource.metadata.chatId == chatId
-          && request.resource.metadata.messageId == messageId
-          && request.resource.metadata.version == version;
+        && request.resource.metadata.uploaderId
+          == request.auth.uid
+        && request.resource.metadata.chatId == chatId
+        && request.resource.metadata.messageId == messageId
+        && request.resource.metadata.version == version;
     }
-        function hasValidFirstPrivateImageMediaMetadata(
+
+    function hasValidFirstPrivateImageMediaMetadata(
       chatId,
       messageId,
       version
     ) {
       return request.resource.metadata.size() == 5
-          && request.resource.metadata.uploaderId
-              == request.auth.uid
-          && request.resource.metadata.chatId == chatId
-          && request.resource.metadata.messageId == messageId
-          && request.resource.metadata.version == version
-          && request.resource.metadata.uploadGrantType
-              == 'first_private_image';
+        && request.resource.metadata.uploaderId
+          == request.auth.uid
+        && request.resource.metadata.chatId == chatId
+        && request.resource.metadata.messageId == messageId
+        && request.resource.metadata.version == version
+        && request.resource.metadata.uploadGrantType
+          == 'first_private_image';
     }
 
     function hasValidFirstPrivateImageUploadGrant(
@@ -155,55 +161,55 @@ service firebase.storage {
       ).data;
 
       return grant.keys().hasAll([
-            'grantType',
-            'uploaderId',
-            'peerId',
-            'chatId',
-            'messageId',
-            'version',
-            'createdAt',
-            'expiresAt'
-          ])
-          && grant.keys().hasOnly([
-            'grantType',
-            'uploaderId',
-            'peerId',
-            'chatId',
-            'messageId',
-            'version',
-            'createdAt',
-            'expiresAt'
-          ])
+        'grantType',
+        'uploaderId',
+        'peerId',
+        'chatId',
+        'messageId',
+        'version',
+        'createdAt',
+        'expiresAt'
+      ])
+      && grant.keys().hasOnly([
+        'grantType',
+        'uploaderId',
+        'peerId',
+        'chatId',
+        'messageId',
+        'version',
+        'createdAt',
+        'expiresAt'
+      ])
 
-          && grant.grantType == 'first_private_image'
+      && grant.grantType == 'first_private_image'
 
-          && grant.uploaderId is string
-          && grant.uploaderId == request.auth.uid
+      && grant.uploaderId is string
+      && grant.uploaderId == request.auth.uid
 
-          && grant.peerId is string
-          && grant.peerId.size() > 0
-          && grant.peerId != request.auth.uid
+      && grant.peerId is string
+      && grant.peerId.size() > 0
+      && grant.peerId != request.auth.uid
 
-          && grant.chatId is string
-          && grant.chatId == chatId
-          && (
-            chatId == grant.uploaderId + '_' + grant.peerId
-            || chatId == grant.peerId + '_' + grant.uploaderId
-          )
+      && grant.chatId is string
+      && grant.chatId == chatId
+      && (
+        chatId == grant.uploaderId + '_' + grant.peerId
+        || chatId == grant.peerId + '_' + grant.uploaderId
+      )
 
-          && grant.messageId is string
-          && grant.messageId == messageId
+      && grant.messageId is string
+      && grant.messageId == messageId
 
-          && grant.version is string
-          && grant.version == version
+      && grant.version is string
+      && grant.version == version
 
-          && grant.createdAt is timestamp
-          && grant.createdAt <= request.time
+      && grant.createdAt is timestamp
+      && grant.createdAt <= request.time
 
-          && grant.expiresAt is timestamp
-          && grant.expiresAt > request.time
-          && grant.expiresAt
-              <= grant.createdAt + duration.value(10, 'm');
+      && grant.expiresAt is timestamp
+      && grant.expiresAt > request.time
+      && grant.expiresAt
+        <= grant.createdAt + duration.value(10, 'm');
     }
 
     function canUseFirstPrivateImageUploadGrant(
@@ -212,69 +218,70 @@ service firebase.storage {
       version
     ) {
       return signedIn()
-          && firestore.exists(
-            /databases/(default)/documents/imageMessageUploadGrants/$(messageId)
-          )
-          && hasValidFirstPrivateImageUploadGrant(
-            chatId,
-            messageId,
-            version
-          );
+        && firestore.exists(
+          /databases/(default)/documents/imageMessageUploadGrants/$(messageId)
+        )
+        && hasValidFirstPrivateImageUploadGrant(
+          chatId,
+          messageId,
+          version
+        );
     }
 
-        function canCreateMessageMedia(
+    function canCreateMessageMedia(
       chatId,
       messageId,
       version,
       maxSizeBytes
     ) {
       return resource == null
-          && isValidMessageMediaVersion(version)
-          && request.resource.contentType == 'image/jpeg'
-          && request.resource.size > 0
-          && request.resource.size <= maxSizeBytes
-          && (
-            (
-              canUseFirstPrivateImageUploadGrant(
-                chatId,
-                messageId,
-                version
-              )
-              && hasValidFirstPrivateImageMediaMetadata(
-                chatId,
-                messageId,
-                version
-              )
+        && isValidMessageMediaVersion(version)
+        && request.resource.contentType == 'image/jpeg'
+        && request.resource.size > 0
+        && request.resource.size <= maxSizeBytes
+        && (
+          (
+            canUseFirstPrivateImageUploadGrant(
+              chatId,
+              messageId,
+              version
             )
-            || (
-              canWriteChatMedia(chatId)
-              && hasValidMessageMediaMetadata(
-                chatId,
-                messageId,
-                version
-              )
+            && hasValidFirstPrivateImageMediaMetadata(
+              chatId,
+              messageId,
+              version
             )
-          );
+          )
+          || (
+            canWriteChatMedia(chatId)
+            && hasValidMessageMediaMetadata(
+              chatId,
+              messageId,
+              version
+            )
+          )
+        );
     }
-        function hasValidStoredMessageMediaMetadata(
+
+    function hasValidStoredMessageMediaMetadata(
       chatId,
       messageId,
       version
     ) {
       return (
-            resource.metadata.size() == 4
-            || (
-              resource.metadata.size() == 5
-              && resource.metadata.uploadGrantType
-                  == 'first_private_image'
-            )
-          )
+        resource.metadata.size() == 4
+        || (
+          resource.metadata.size() == 5
+          && resource.metadata.uploadGrantType
+            == 'first_private_image'
+        )
+      )
 
-          && resource.metadata.uploaderId
-              == request.auth.uid
-          && resource.metadata.chatId == chatId
-          && resource.metadata.messageId == messageId
-          && resource.metadata.version == version;
+      && resource.metadata.uploaderId
+        == request.auth.uid
+      && resource.metadata.chatId == chatId
+      && resource.metadata.messageId == messageId
+      && resource.metadata.version == version;
     }
 
     function canDeleteOrphanedMessageMedia(
@@ -283,17 +290,17 @@ service firebase.storage {
       version
     ) {
       return signedIn()
-          && isValidMessageMediaVersion(version)
+        && isValidMessageMediaVersion(version)
 
-          && hasValidStoredMessageMediaMetadata(
-            chatId,
-            messageId,
-            version
-          )
+        && hasValidStoredMessageMediaMetadata(
+          chatId,
+          messageId,
+          version
+        )
 
-          && !firestore.exists(
-            /databases/(default)/documents/chats/$(chatId)/messages/$(messageId)
-          );
+        && !firestore.exists(
+          /databases/(default)/documents/chats/$(chatId)/messages/$(messageId)
+        );
     }
 
     match /chat_media/{chatId}/messages/{messageId}/{version}/thumb.jpg {
@@ -307,7 +314,7 @@ service firebase.storage {
         128 * 1024
       );
 
-            allow update: if false;
+      allow update: if false;
 
       allow delete: if canDeleteOrphanedMessageMedia(
         chatId,
@@ -327,7 +334,7 @@ service firebase.storage {
         1024 * 1024
       );
 
-            allow update: if false;
+      allow update: if false;
 
       allow delete: if canDeleteOrphanedMessageMedia(
         chatId,
@@ -352,40 +359,146 @@ service firebase.storage {
     }
 
     match /group_avatars/{chatId}/{version}/thumb.jpg {
-  allow get: if signedIn()
-    && isValidAvatarVersion(version);
+      allow get: if signedIn()
+        && isValidAvatarVersion(version);
 
-  allow create: if canManageGroupAvatar(chatId)
-    && isValidAvatarVersion(version)
-    && request.resource.contentType == 'image/jpeg'
-    && request.resource.size <= 128 * 1024;
+      allow create: if canManageGroupAvatar(chatId)
+        && isValidAvatarVersion(version)
+        && request.resource.contentType == 'image/jpeg'
+        && request.resource.size <= 128 * 1024;
 
-  allow update: if false;
+      allow update: if false;
 
-  allow delete: if canManageGroupAvatar(chatId)
-    && isValidAvatarVersion(version);
-}
+      allow delete: if canManageGroupAvatar(chatId)
+        && isValidAvatarVersion(version);
+    }
 
-match /group_avatars/{chatId}/{version}/full.jpg {
-  allow get: if signedIn()
-    && isValidAvatarVersion(version);
+    match /group_avatars/{chatId}/{version}/full.jpg {
+      allow get: if signedIn()
+        && isValidAvatarVersion(version);
 
-  allow create: if canManageGroupAvatar(chatId)
-    && isValidAvatarVersion(version)
-    && request.resource.contentType == 'image/jpeg'
-    && request.resource.size <= 512 * 1024;
+      allow create: if canManageGroupAvatar(chatId)
+        && isValidAvatarVersion(version)
+        && request.resource.contentType == 'image/jpeg'
+        && request.resource.size <= 512 * 1024;
 
-  allow update: if false;
+      allow update: if false;
 
-  allow delete: if canManageGroupAvatar(chatId)
-    && isValidAvatarVersion(version);
-}
+      allow delete: if canManageGroupAvatar(chatId)
+        && isValidAvatarVersion(version);
+    }
 
-// Старый невариантный путь оставляем только для чтения.
-match /group_avatars/{chatId}/{fileName} {
-  allow get: if signedIn();
-  allow create, update, delete: if false;
-}
+    // Старый невариантный путь оставляем только для чтения.
+    match /group_avatars/{chatId}/{fileName} {
+      allow get: if signedIn();
+      allow create, update, delete: if false;
+    }
+
+    function isValidVesselPhotoVersion(version) {
+      return version.matches('v[1-9][0-9]*');
+    }
+
+    function canManageVesselPhoto() {
+      return signedIn()
+        && firestore.exists(
+          /databases/(default)/documents/spaces_access/$(request.auth.uid)
+        )
+        && (
+          firestore.get(
+            /databases/(default)/documents/spaces_access/$(request.auth.uid)
+          ).data.role == 'brigadier'
+          || firestore.get(
+            /databases/(default)/documents/spaces_access/$(request.auth.uid)
+          ).data.role == 'owner'
+        );
+    }
+
+    function hasValidVesselPhotoMetadata(
+      vesselKey,
+      version,
+      expectedType
+    ) {
+      return request.resource.metadata.size() == 4
+
+        && request.resource.metadata.type
+          == expectedType
+
+        && request.resource.metadata.ownerType
+          == 'vessel'
+
+        && request.resource.metadata.ownerId
+          == vesselKey
+
+        && request.resource.metadata.version is string
+        && request.resource.metadata.version.matches(
+          '[1-9][0-9]*'
+        )
+
+        && version
+          == 'v' + request.resource.metadata.version;
+    }
+
+    function canCreateVesselPhoto(
+      vesselKey,
+      version,
+      expectedType,
+      maxSizeBytes
+    ) {
+      return resource == null
+
+        && canManageVesselPhoto()
+
+        && isValidVesselPhotoVersion(version)
+
+        && request.resource.contentType == 'image/jpeg'
+
+        && request.resource.size > 0
+        && request.resource.size <= maxSizeBytes
+
+        && hasValidVesselPhotoMetadata(
+          vesselKey,
+          version,
+          expectedType
+        );
+    }
+
+    match /vessel_photos/{vesselKey}/{version}/thumb.jpg {
+      allow get: if signedIn()
+        && isValidVesselPhotoVersion(version);
+
+      allow list: if false;
+
+      allow create: if canCreateVesselPhoto(
+        vesselKey,
+        version,
+        'vesselPhotoThumbnail',
+        192 * 1024
+      );
+
+      allow update: if false;
+
+      allow delete: if canManageVesselPhoto()
+        && isValidVesselPhotoVersion(version);
+    }
+
+    match /vessel_photos/{vesselKey}/{version}/full.jpg {
+      allow get: if signedIn()
+        && isValidVesselPhotoVersion(version);
+
+      allow list: if false;
+
+      allow create: if canCreateVesselPhoto(
+        vesselKey,
+        version,
+        'vesselPhotoFull',
+        1536 * 1024
+      );
+
+      allow update: if false;
+
+      allow delete: if canManageVesselPhoto()
+        && isValidVesselPhotoVersion(version);
+    }
 
     match /{allPaths=**} {
       allow read, write: if false;

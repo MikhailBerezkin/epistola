@@ -72,4 +72,20 @@ final class VesselRegistryService {
   }) {
     return gateway.saveVessel(vessel: vessel, updatedBy: updatedBy);
   }
+
+  Future<void> saveVesselPhoto({
+    required String vesselUid,
+    required String thumbnailPath,
+    required String fullPath,
+    required int version,
+    required String updatedBy,
+  }) {
+    return gateway.saveVesselPhoto(
+      vesselUid: vesselUid,
+      thumbnailPath: thumbnailPath,
+      fullPath: fullPath,
+      version: version,
+      updatedBy: updatedBy,
+    );
+  }
 }

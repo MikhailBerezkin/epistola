@@ -309,7 +309,15 @@ class _VesselCallsSpaceScreenState extends State<VesselCallsSpaceScreen> {
       lengthMeters: lengthMeters ?? existingEntry?.lengthMeters,
       deadweightTons: deadweightTons ?? existingEntry?.deadweightTons,
       teuCapacity: teuCapacity ?? existingEntry?.teuCapacity,
+
+      // Фотография относится к судну как к постоянной сущности.
+      // Обычное редактирование характеристик не должно
+      // изменять, сбрасывать или перевыпускать фото.
       photoPath: existingEntry?.photoPath,
+      photoThumbPath: existingEntry?.photoThumbPath,
+      photoFullPath: existingEntry?.photoFullPath,
+      photoVersion: existingEntry?.photoVersion,
+
       marineTrafficUrl: marineTrafficUrl ?? existingEntry?.marineTrafficUrl,
       updatedAt: existingEntry?.updatedAt,
       updatedBy: userId,
