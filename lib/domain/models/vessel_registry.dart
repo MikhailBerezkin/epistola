@@ -1,6 +1,7 @@
 enum VesselWorkType {
   container('container'),
   bulk('bulk'),
+  special('special'),
   other('other'),
   unknown('unknown');
 
@@ -11,8 +12,9 @@ enum VesselWorkType {
   String get displayName {
     return switch (this) {
       VesselWorkType.container => 'Контейнеры',
-      VesselWorkType.bulk => 'Балкер',
-      VesselWorkType.other => 'Другие суда',
+      VesselWorkType.bulk => 'Балкер / сыпучие',
+      VesselWorkType.special => 'Не обрабатывается',
+      VesselWorkType.other => 'Другие грузы',
       VesselWorkType.unknown => 'Не определён',
     };
   }
@@ -21,6 +23,7 @@ enum VesselWorkType {
     return switch (value) {
       'container' => VesselWorkType.container,
       'bulk' => VesselWorkType.bulk,
+      'special' => VesselWorkType.special,
       'other' => VesselWorkType.other,
       _ => VesselWorkType.unknown,
     };
@@ -30,9 +33,14 @@ enum VesselWorkType {
 enum VesselPhysicalType {
   container('container'),
   bulk('bulk'),
+  generalCargo('generalCargo'),
+  tanker('tanker'),
+  icebreaker('icebreaker'),
+  tug('tug'),
   reefer('reefer'),
   multipurpose('multipurpose'),
-  generalCargo('generalCargo'),
+  roRo('roRo'),
+  ferry('ferry'),
   other('other'),
   unknown('unknown');
 
@@ -44,9 +52,14 @@ enum VesselPhysicalType {
     return switch (this) {
       VesselPhysicalType.container => 'Контейнеровоз',
       VesselPhysicalType.bulk => 'Балкер',
+      VesselPhysicalType.generalCargo => 'Сухогруз',
+      VesselPhysicalType.tanker => 'Танкер',
+      VesselPhysicalType.icebreaker => 'Ледокол',
+      VesselPhysicalType.tug => 'Буксир',
       VesselPhysicalType.reefer => 'Рефрижератор',
       VesselPhysicalType.multipurpose => 'Многоцелевое судно',
-      VesselPhysicalType.generalCargo => 'Сухогруз',
+      VesselPhysicalType.roRo => 'Ро-ро',
+      VesselPhysicalType.ferry => 'Паром',
       VesselPhysicalType.other => 'Другой тип',
       VesselPhysicalType.unknown => 'Не определён',
     };
@@ -56,9 +69,14 @@ enum VesselPhysicalType {
     return switch (value) {
       'container' => VesselPhysicalType.container,
       'bulk' => VesselPhysicalType.bulk,
+      'generalCargo' => VesselPhysicalType.generalCargo,
+      'tanker' => VesselPhysicalType.tanker,
+      'icebreaker' => VesselPhysicalType.icebreaker,
+      'tug' => VesselPhysicalType.tug,
       'reefer' => VesselPhysicalType.reefer,
       'multipurpose' => VesselPhysicalType.multipurpose,
-      'generalCargo' => VesselPhysicalType.generalCargo,
+      'roRo' => VesselPhysicalType.roRo,
+      'ferry' => VesselPhysicalType.ferry,
       'other' => VesselPhysicalType.other,
       _ => VesselPhysicalType.unknown,
     };
@@ -110,24 +128,25 @@ final class VesselRegistryEntry {
   /// Внутренний постоянный идентификатор Epistola.
   final String vesselUid;
 
+  /// Каноническое имя судна в реестре.
+  ///
+  /// Имя, пришедшее в конкретном судозаходе от ПКТ,
+  /// должно храниться отдельно в данных судозахода.
   final String name;
 
   /// Ссылка на VesselLineRegistryEntry.lineId.
   final String lineId;
 
-  /// Технический тип самого судна.
+  /// Физический тип самого судна.
   ///
-  /// Например:
-  /// reefer, multipurpose, container, bulk.
-  ///
-  /// Это поле не определяет цвет работы на терминале.
+  /// Это справочная характеристика судна и она не определяет
+  /// цвет полосы судозахода.
   final VesselPhysicalType physicalType;
 
-  /// Рабочая категория судна по умолчанию.
+  /// Рабочая категория по умолчанию.
   ///
-  /// Например, рефрижератор может иметь:
-  /// physicalType = reefer
-  /// defaultWorkType = container
+  /// Используется автоматикой, если для конкретного захода
+  /// нет ручного выбора.
   final VesselWorkType? defaultWorkType;
 
   /// Старое значение workType из schemaVersion 1.
@@ -135,32 +154,29 @@ final class VesselRegistryEntry {
   /// Используется только как fallback во время миграции.
   final VesselWorkType? _legacyWorkType;
 
-  /// Категории, между которыми разрешено переключать конкретное судно.
+  /// Историческое поле schemaVersion 2.
   ///
-  /// Примеры:
-  /// контейнеровоз:
-  /// [container]
-  ///
-  /// рефрижератор:
-  /// [container, other]
-  ///
-  /// multipurpose на линии СМАРТ БАЛК:
-  /// [bulk, other]
+  /// Оно остаётся в модели для обратной совместимости,
+  /// но универсальный UI больше не обязан ограничивать выбор
+  /// этим списком.
   final List<VesselWorkType> allowedWorkTypes;
 
-  /// Ручное переопределение рабочей категории.
+  /// Ручное переопределение рабочего статуса.
+  ///
+  /// Именно это значение используется для текущей ручной
+  /// классификации:
+  /// container / bulk / special / other.
   ///
   /// null означает использование defaultWorkType.
   final VesselWorkType? workTypeOverride;
 
+  /// true означает, что постоянные данные карточки
+  /// были проверены человеком.
   final bool isVerified;
 
   final String? imo;
-
   final double? lengthMeters;
-
   final int? deadweightTons;
-
   final int? teuCapacity;
 
   /// Firebase Storage path.
@@ -173,23 +189,15 @@ final class VesselRegistryEntry {
 
   String get normalizedName => normalizeVesselRegistryText(name);
 
-  /// Рабочая категория без ручного override.
-  ///
-  /// Поддерживает старое поле workType из schemaVersion 1.
   VesselWorkType get resolvedDefaultWorkType {
     return defaultWorkType ?? _legacyWorkType ?? VesselWorkType.unknown;
   }
 
-  /// Категория, которая фактически используется сейчас
-  /// для цвета, фильтрации и отображения судозахода.
   VesselWorkType get effectiveWorkType {
     return workTypeOverride ?? resolvedDefaultWorkType;
   }
 
   /// Совместимость со старым кодом.
-  ///
-  /// Старые участки приложения продолжают обращаться к vessel.workType,
-  /// но фактически уже получают новую effectiveWorkType.
   VesselWorkType get workType => effectiveWorkType;
 
   List<VesselWorkType> get effectiveAllowedWorkTypes {

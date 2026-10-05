@@ -183,6 +183,7 @@ final class VesselRegistryFirestoreMapper {
     return switch (value) {
       'container' => VesselWorkType.container,
       'bulk' => VesselWorkType.bulk,
+      'special' => VesselWorkType.special,
       'other' => VesselWorkType.other,
       'unknown' => VesselWorkType.unknown,
       _ => null,

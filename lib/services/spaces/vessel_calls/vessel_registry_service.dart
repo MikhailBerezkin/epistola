@@ -65,4 +65,11 @@ final class VesselRegistryService {
       );
     }
   }
+
+  Future<void> saveVessel({
+    required VesselRegistryEntry vessel,
+    required String updatedBy,
+  }) {
+    return gateway.saveVessel(vessel: vessel, updatedBy: updatedBy);
+  }
 }

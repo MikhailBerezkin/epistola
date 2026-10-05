@@ -73,6 +73,49 @@ final class VesselCallsMonthCacheService {
         : VesselCallsMonthFreshness.fresh;
   }
 
+  Future<VesselCallsCurrentMonthRefreshResult> refreshCurrentMonthNow({
+    required int year,
+    required int month,
+    DateTime? now,
+  }) async {
+    final localMonth = await _localCache.readMonth(year: year, month: month);
+
+    final remoteRevision = await _currentMonthGateway.loadRevision(
+      year: year,
+      month: month,
+    );
+
+    if (remoteRevision == null) {
+      return VesselCallsCurrentMonthRefreshResult.remoteMetaMissing;
+    }
+
+    if (localMonth != null && remoteRevision.revision == localMonth.revision) {
+      await _localCache.markRevisionChecked(year: year, month: month, at: now);
+
+      return VesselCallsCurrentMonthRefreshResult.unchanged;
+    }
+
+    final snapshotData = await _currentMonthGateway.loadSnapshot(
+      year: year,
+      month: month,
+    );
+
+    if (snapshotData == null) {
+      return VesselCallsCurrentMonthRefreshResult.remoteSnapshotMissing;
+    }
+
+    final remoteSnapshot = CachedVesselMonth.fromJson(snapshotData);
+
+    await _localCache.rebuildFromMonthlySnapshot(
+      snapshot: remoteSnapshot,
+      localMonth: localMonth,
+    );
+
+    await _localCache.markRevisionChecked(year: year, month: month, at: now);
+
+    return VesselCallsCurrentMonthRefreshResult.rebuilt;
+  }
+
   Future<VesselCallsCurrentMonthRefreshResult> refreshCurrentMonthIfDue({
     required int year,
     required int month,
