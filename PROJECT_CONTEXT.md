@@ -36,11 +36,17 @@ Feature branch:
 
 Последний pushed functional checkpoint:
 
-`50355ff — feat(vessel-calls): add VPS ingest and revision-based cache refresh`
+`72aba3a — feat(vessel-calls): refine vessel photos and registry editing`
 
 Непосредственно перед ним:
 
 ```text
+5392b51 — feat(vessel-calls): add vessel photo foundation
+fee17e7 — feat(vessel-calls): improve registry editing and live sync
+cdc5329 — feat(vessel-calls): add registry schema v2 and production import
+fe63edf — feat(vessel-calls): add vessel registry classification foundation
+624f424 — docs: update vessel calls checkpoint and handoff
+50355ff — feat(vessel-calls): add VPS ingest and revision-based cache refresh
 8f41d80 — fix(alarm): restore native alarm sound channel
 4fc9800 — test(vessel-calls): add firestore access rules
 0cb3882 — feat(vessel-calls): add calendar cache and archive foundation
@@ -70,10 +76,10 @@ Stable baseline before `v0.8.0`:
 
 ```text
 HEAD
-→ 50355ff
+→ 72aba3a
 
 origin/feat/v0.8.0-spaces-substitution-foundation
-→ 50355ff
+→ 72aba3a
 
 working tree
 → CLEAN
@@ -2204,3 +2210,690 @@ verify branch/status/HEAD/origin
 → continue from the latest docs checkpoint
 → do not reimplement the already working VPS/ingest/cache foundation.
 ```
+---
+
+# 38. Update 2026-10-06 — Vessel Registry / photos / current checkpoint
+
+This section is an additive update to the accumulated history above. It does not replace earlier completed blocks.
+
+Current pushed functional checkpoint:
+
+```text
+72aba3a — feat(vessel-calls): refine vessel photos and registry editing
+```
+
+Recent Vessel Calls sequence after the previous `50355ff` server/cache checkpoint:
+
+```text
+624f424 — docs: update vessel calls checkpoint and handoff
+fe63edf — feat(vessel-calls): add vessel registry classification foundation
+cdc5329 — feat(vessel-calls): add registry schema v2 and production import
+fee17e7 — feat(vessel-calls): improve registry editing and live sync
+5392b51 — feat(vessel-calls): add vessel photo foundation
+72aba3a — feat(vessel-calls): refine vessel photos and registry editing
+```
+
+Current repository synchronization confirmed immediately after push:
+
+```text
+branch:
+feat/v0.8.0-spaces-substitution-foundation
+
+HEAD:
+72aba3a
+
+origin/feat/v0.8.0-spaces-substitution-foundation:
+72aba3a
+
+working tree:
+CLEAN
+```
+
+Latest checks for the `72aba3a` block:
+
+```text
+flutter.bat analyze
+→ No issues found!
+
+flutter.bat test test/services/spaces/vessel_calls
+→ 25/25 passed
+→ All tests passed!
+
+git diff --check / git diff --cached --check
+→ no whitespace errors
+→ only ordinary LF→CRLF warnings appeared before generated files were restored
+```
+
+Phone verification on Poco F6:
+
+```text
+Vessel Calls screen opens with real data
+registry classifications are visible
+manual vessel photo flow works
+16:9 crop works
+thumb/full photo rendering works
+expanded hero card works
+IMO entered for a vessel that previously had no IMO now persists after Save
+```
+
+The full historical Flutter suite `1241 passed` and the earlier release APK evidence remain valid evidence for the preceding server/cache checkpoint; they were not rerun as a full-suite release pass for `72aba3a`.
+
+## Vessel Registry / classification
+
+The registry now separates call identity from stable vessel metadata.
+
+Firestore:
+
+```text
+spaces/vesselCalls/lineRegistry/{lineId}
+spaces/vesselCalls/vesselRegistry/{vesselUid}
+```
+
+Access:
+
+```text
+signed-in users → read
+owner / brigadier → create/update
+delete → false
+```
+
+Registry v2 can represent:
+
+```text
+vesselUid
+name
+lineId
+physicalType
+defaultWorkType
+allowedWorkTypes
+workTypeOverride
+isVerified
+imo
+lengthMeters
+deadweightTons
+teuCapacity
+marineTrafficUrl
+photoPath
+photoThumbPath
+photoFullPath
+photoVersion
+updatedAt
+updatedBy
+```
+
+Important identity invariant:
+
+```text
+calling_id
+→ stable identity of a particular PKT call in the monthly source projection
+
+IMO
+→ property/identity of the physical vessel in vesselRegistry
+```
+
+Do not replace `calling_id` with IMO in the monthly call key.
+
+The cached monthly field historically named `vesselImo` still temporarily carries `calling_id`; this is legacy naming, not proof that the source supplied a real IMO.
+
+Registry schema v2 separates:
+
+```text
+physicalType
+→ technical type of the ship
+
+defaultWorkType
+→ normal terminal work category
+
+allowedWorkTypes
+→ categories the vessel may use
+
+workTypeOverride
+→ optional manual classification override
+```
+
+The screen resolves the latest registry entry by vessel/line data and uses registry information before legacy fallbacks.
+
+Bug fixed in the final block:
+
+```text
+vessel without IMO
+→ manager opens special/third-mode editor
+→ enters IMO
+→ Save
+→ latest vesselRegistry entry is resolved again
+→ reopened card/editor shows persisted IMO
+```
+
+The existing `vesselUid` is intentionally preserved when an already-known manual vessel later receives an IMO. This protects stable registry/photo identity instead of silently migrating Storage paths.
+
+## Vessel photo foundation
+
+Product decision:
+
+```text
+photos are added manually
+owner / brigadier may edit
+ordinary users read only
+no automatic photo scraping from the web
+```
+
+Firebase Storage paths:
+
+```text
+vessel_photos/<stableVesselKey>/v<version>/thumb.jpg
+vessel_photos/<stableVesselKey>/v<version>/full.jpg
+```
+
+Stable photo key:
+
+```text
+valid IMO when available for a new stable identity
+otherwise vesselUid
+```
+
+For an existing registry vessel, keep its existing stable vesselUid/photo identity; do not silently move old photo trees merely because IMO was added later.
+
+Photo metadata in vesselRegistry:
+
+```text
+photoPath          // legacy compatibility alias
+photoThumbPath
+photoFullPath
+photoVersion
+```
+
+Current preparation:
+
+```text
+fixed crop ratio = 16:9
+crop stage quality = 100; final processor controls compression
+
+thumb:
+max dimension 640
+typical output ~640×360
+quality ladder 86..50
+hard max 192 KiB
+
+full:
+max dimension 2560
+typical output ~2560×1440
+quality ladder 92..56
+target ~1024 KiB
+hard max 2048 KiB
+```
+
+Production Storage Rules were updated/deployed for the 2 MiB full-image ceiling.
+
+Display/cache:
+
+```text
+VesselPhotoImage
+→ Firebase Storage download URL
+→ CachedNetworkImage
+→ persistent disk image cache
+
+cache key:
+<storagePath>#v<photoVersion>
+
+VesselPhotoUrlCache:
+→ in-memory URL cache
+→ pending-request dedupe
+→ selected-day thumb preload
+→ max parallel preload = 10
+```
+
+Rendering:
+
+```text
+list card:
+112×63 16:9 thumbnail
+Где судно button under thumbnail
+
+expanded vessel card:
+full-width 16:9 hero
+full image
+vessel name + physical/work type over image
+soft blur/fade into card body
+work-type-tinted card background
+custom top drag handle
+duplicate lower Где судно button removed
+```
+
+Current accepted color state:
+
+```text
+container cards → dark blue tint
+bulk cards → dark warm orange/brown tint
+other/unknown → their existing class colors
+
+leave current tint tuning as-is for now
+```
+
+Photo replacement service order:
+
+```text
+prepare new thumb/full
+→ upload new version
+→ update vesselRegistry photo metadata
+→ delete previous version
+```
+
+If Firestore metadata update fails after upload:
+
+```text
+rollback newly uploaded files
+```
+
+Prepared files are cleaned in the replacement service `finally`.
+
+Known non-blocking photo debt for a later polish pass:
+
+```text
+after replacement failure, UI should explicitly clear any preparedPhoto that points to cleaned temp files
+dismiss-without-save should explicitly clean prepared temp files
+classification save + photo replacement is not one fully atomic cross-service transaction
+```
+
+---
+
+# 39. Approved Vessel Calls archive model — keep this invariant
+
+The archive design discussed and accepted before the next implementation block is monthly and server-generated.
+
+Core identity:
+
+```text
+one calling_id = one logical vessel call
+plan / crnt / closed = lifecycle views of that same call
+```
+
+Therefore:
+
+```text
+closed must not create a duplicate call
+closed must not make an already-seen call disappear
+```
+
+Firestore monthly projection remains:
+
+```text
+spaces/vesselCalls/monthMeta/{YYYY-MM}
+spaces/vesselCalls/monthSnapshots/{YYYY-MM}
+spaces/vesselCalls/monthArchives/{YYYY-MM}
+```
+
+Current/future operational month:
+
+```text
+monthSnapshots/{YYYY-MM}
+→ contains the month's planned/current calls
+→ after full-list support also retains closed/completed calls for that month
+→ isArchived = false
+```
+
+Finished historical month:
+
+```text
+monthArchives/{YYYY-MM}
+→ one archive document for the whole month
+→ final monthly projection
+→ isArchived = true
+```
+
+Archive document remains lightweight schedule/history data:
+
+```text
+year
+month
+revision
+publishedUntil
+calls[]
+sourceUpdatedAt
+locallyUpdatedAt
+isArchived = true
+```
+
+Do not duplicate vessel photos into archive documents.
+
+Stable vessel metadata and media remain separate:
+
+```text
+vesselRegistry
+lineRegistry
+Firebase Storage vessel_photos/*
+```
+
+Historical read strategy is intentionally cheap:
+
+```text
+archived month already in device cache
+→ 0 Firestore reads
+
+archived month not cached
+→ 1 read monthArchives/{YYYY-MM}
+→ whole old month received
+→ store locally
+→ later opens use local copy
+```
+
+Current `VesselCallsMonthCacheService.loadArchivedMonth()` and `VesselCallsMonthArchiveFirestoreGateway` already establish this one-document-per-month client boundary.
+
+Do not redesign archive into per-call documents unless a proven Firestore document-size limit requires a later migration.
+
+Late corrections after a month has been finalized were NOT given a hidden polling policy. If real production data later requires archive corrections, explicitly design/version that behavior; do not silently make archived clients poll like the active month.
+
+---
+
+# 40. NEXT implementation block — full PKT list on VPS/server, then monthly projection/archive
+
+This is the immediate next implementation after `72aba3a`.
+
+## Current limitation
+
+ПКТ already exposes:
+
+```text
+plan
+crnt
+closed
+```
+
+The VPS currently fetches all three, but its effective published projection is still limited:
+
+```text
+plan + crnt merged by calling_id
+→ normalize
+→ current-month-only projection
+→ one monthMeta/monthSnapshot published
+```
+
+`closed` is fetched/logged but is not yet part of the active published monthly history.
+
+The Windows fallback publisher also contains the explicit temporary filter:
+
+```text
+year = 2026
+month = 10
+```
+
+That confirms the current publishing path is not yet a general all-month publisher.
+
+Consequences today:
+
+```text
+completed calls can disappear after moving to closed
+past months are not actually generated as monthArchives
+future months returned by ПКТ are not published as independent monthly snapshots
+server-side normalized history is incomplete
+```
+
+## Target server pipeline
+
+Do NOT replace the month architecture with one huge Firestore `fullList` document.
+
+Target:
+
+```text
+ПКТ
+  plan
+  crnt
+  closed
+    ↓
+merge by calling_id
+    ↓
+normalize every usable call
+    ↓
+split normalized calls into YYYY-MM buckets
+    ↓
+calculate independent content hash per target + month + projection kind
+    ↓
+publish only changed monthly projections
+    ↓
+current/future month → monthMeta + monthSnapshots
+finished past month → monthArchives
+```
+
+Why keep monthly documents:
+
+```text
+existing Android cache is month-based
+archive gateway is month-based
+one old month can be loaded in one read
+Firestore document size stays bounded
+hash/revision changes stay isolated to one month
+future EpiLite Web can reuse the same projection
+```
+
+## Merge rule
+
+Build one map keyed by `calling_id`.
+
+Apply source rows in this order:
+
+```text
+plan
+→ crnt overwrites same calling_id
+→ closed overwrites same calling_id
+```
+
+Effective priority:
+
+```text
+closed > crnt > plan
+```
+
+The same `calling_id` appearing in several source modes remains exactly one logical call.
+
+Before publishing, dry-run diagnostics must verify:
+
+```text
+count(plan)
+count(crnt)
+count(closed)
+unique calling_id count
+duplicate calling_id count after merge = 0
+month bucket counts
+```
+
+## Month bucketing
+
+Preserve the existing effective start rule first:
+
+```text
+effective berthFrom:
+calling_date ?? plan_calling_date
+```
+
+For the first full-list migration, assign the logical call to a month from `berthFrom`, matching the existing publisher behavior.
+
+Cross-month call invariant:
+
+```text
+one calling_id remains one logical call
+```
+
+Do not create two logical call records just because its time range crosses a month boundary.
+
+If UI later needs the tail of a cross-month call to draw in the next month's calendar, solve that as a month/presentation projection rule while retaining one call identity.
+
+## Cloud Function extension
+
+Current `ingestVesselCallsMonth` validates `isArchived` but writes only:
+
+```text
+monthMeta/{YYYY-MM}
+monthSnapshots/{YYYY-MM}
+```
+
+Next server change must make the write destination explicit:
+
+```text
+isArchived == false
+→ set/update monthMeta/{YYYY-MM}
+→ set monthSnapshots/{YYYY-MM}
+
+isArchived == true
+→ set monthArchives/{YYYY-MM}
+→ archive payload is the final monthly projection
+```
+
+Mobile/web client writes remain forbidden.
+
+Do not weaken Firestore Rules for this; Admin SDK/ingest remains the server write boundary.
+
+## Per-month hash/revision
+
+Today the VPS stable content hash effectively protects one target/current-month projection.
+
+Change state to monthly projection identity, for example conceptually:
+
+```text
+target + YYYY-MM + projection kind
+```
+
+Exact filename/key can be chosen in implementation, but these invariants matter:
+
+```text
+unchanged October archive
+→ no republish because November plan changed
+
+changed November snapshot
+→ only November gets a new publish/revision
+
+unchanged month
+→ no Firebase write
+```
+
+Keep the existing quota discipline.
+
+## Lifecycle state for grey completed presentation
+
+Important schema decision still open:
+
+The existing cached `source` field means:
+
+```text
+monthlySnapshot
+operational
+archive
+```
+
+It is NOT a `plan/crnt/closed` lifecycle field.
+
+Do not overload it.
+
+To render closed/completed calls grey while they remain in the current month, the next implementation should deliberately add a normalized lifecycle field together across:
+
+```text
+VPS normalized payload
+Cloud Function validation
+CachedVesselCall
+JSON mapper/cache
+screen presentation
+tests
+```
+
+The exact field name (`lifecycleState`, `sourceMode`, etc.) was not previously fixed; choose it explicitly in the implementation rather than silently inventing a meaning for an existing field.
+
+## Archive finalization rule
+
+Approved product invariant:
+
+```text
+monthArchives = final projection of a finished past month
+```
+
+Safe initial rule:
+
+```text
+do not archive the current calendar month
+archive only months already in the past
+archive only after full plan/crnt/closed merge for that month
+```
+
+Because archived local months currently skip active-month revision polling, avoid silently rewriting old archives after clients may have cached them.
+
+If late official corrections become a real requirement, stop and explicitly decide archive version/refresh behavior first.
+
+## VPS operational procedure
+
+Do not expose secrets.
+
+Never print/copy into chat/Git:
+
+```text
+/etc/epistola-vessel-calls.env contents
+source Authorization
+VESSEL_CALLS_INGEST_TOKEN
+```
+
+Before modifying `/opt/epistola-vessel-calls/updater.py`:
+
+```text
+1. inspect systemd timer/service status
+2. inspect current updater.py and targets.json
+3. temporarily stop the timer
+4. create a timestamped updater.py backup
+5. install code in dry-run mode first
+6. compare source/merge/month counts and calling_id uniqueness
+7. only after dry-run passes, allow Firebase publish
+8. manually run one service cycle
+9. inspect safe logs
+10. restore/enable the ~2-hour timer
+```
+
+The pilot does not need a faster poll interval.
+
+## Acceptance criteria
+
+Do not mark this block complete until all of the following are true:
+
+```text
+VPS reads plan/crnt/closed
+merge priority closed > crnt > plan is tested
+one calling_id appears once after merge
+no hardcoded current-month-only filter remains
+normalized full result is split into every represented YYYY-MM
+current/future monthly snapshots still publish correctly
+finished past month writes monthArchives/{YYYY-MM}
+archive has isArchived=true
+unchanged monthly hash skips publish
+changed month updates only that monthly projection
+closed call no longer disappears from its month dataset
+Android active month still uses monthMeta/monthSnapshot
+Android past month loads one monthArchives document and caches it
+client Firestore write rules remain closed
+secrets remain outside Git/app/log screenshots/docs
+```
+
+Recommended tests before deployment:
+
+```text
+pure normalization:
+plan only
+crnt overrides plan
+closed overrides plan/crnt
+duplicate calling_id collapse
+missing/invalid dates
+month boundary
+
+publisher:
+one month
+several months
+unchanged monthly hash
+one changed month among unchanged months
+active vs archived destination
+
+Cloud Function:
+invalid token
+invalid month
+isArchived=false write path
+isArchived=true archive write path
+
+Flutter:
+current month unchanged
+archive one-read load/cache
+closed lifecycle mapper once lifecycle field is added
+```
+
+The full-list/archive block is the next priority before EpiLite Web integration.

@@ -24,8 +24,8 @@ Pilot target:
 |---|---|
 | Target | `v0.8.0` |
 | Branch | `feat/v0.8.0-spaces-substitution-foundation` |
-| Last pushed functional checkpoint | `50355ff` |
-| Checkpoint message | `feat(vessel-calls): add VPS ingest and revision-based cache refresh` |
+| Last pushed functional checkpoint | `72aba3a` |
+| Checkpoint message | `feat(vessel-calls): refine vessel photos and registry editing` |
 | Stable baseline before v0.8.0 | `v0.7.4` |
 | Firebase project | `epistola-434b7` |
 | Android package | `com.epistola.app` |
@@ -76,6 +76,12 @@ b8618aa — feat(spaces): add customizable hub layout
 4fc9800 — test(vessel-calls): add firestore access rules
 8f41d80 — fix(alarm): restore native alarm sound channel
 50355ff — feat(vessel-calls): add VPS ingest and revision-based cache refresh
+624f424 — docs: update vessel calls checkpoint and handoff
+fe63edf — feat(vessel-calls): add vessel registry classification foundation
+cdc5329 — feat(vessel-calls): add registry schema v2 and production import
+fee17e7 — feat(vessel-calls): improve registry editing and live sync
+5392b51 — feat(vessel-calls): add vessel photo foundation
+72aba3a — feat(vessel-calls): refine vessel photos and registry editing
 ```
 
 ---
@@ -803,4 +809,124 @@ Next:
 finish Судозаходы closed/archive history
 → inspect real source fields
 → then Web: latest Calendar + Vessel Calls
+```
+---
+
+# Update 2026-10-06 — current Vessel Calls state
+
+Current functional checkpoint:
+
+```text
+72aba3a — feat(vessel-calls): refine vessel photos and registry editing
+HEAD = origin = 72aba3a
+working tree = CLEAN immediately after push
+```
+
+Latest targeted verification for this block:
+
+```text
+flutter analyze → No issues found!
+test/services/spaces/vessel_calls → 25/25 passed
+phone → IMO persistence fix confirmed
+photo/crop/thumb/full/hero flow verified during this block
+```
+
+The earlier `1241 passed` full suite and `64.3 MB` release build above belong to the preceding full release-style checkpoint; a new full-suite release pass was not recorded for `72aba3a`.
+
+Registry/photo additions now present:
+
+```text
+lineRegistry + vesselRegistry
+registry schema v2
+physicalType / defaultWorkType / allowedWorkTypes / workTypeOverride
+manual owner/brigadier vessel editing
+real IMO stored in vesselRegistry when known
+stable vesselUid preserved for already-known vessels
+manual Firebase Storage vessel photos
+16:9 thumb/full pipeline
+persistent image cache
+full-width expanded vessel hero
+```
+
+Photo Storage:
+
+```text
+vessel_photos/<stableVesselKey>/v<version>/thumb.jpg
+vessel_photos/<stableVesselKey>/v<version>/full.jpg
+thumb hard max 192 KiB
+full hard max 2048 KiB
+```
+
+Production Storage Rules were updated for the 2 MiB full image limit.
+
+Important source/identity distinction:
+
+```text
+calling_id = PKT call identity
+IMO = physical-vessel metadata in vesselRegistry
+
+legacy CachedVesselCall.vesselImo currently still carries calling_id
+```
+
+## Approved archive
+
+Keep the existing monthly architecture:
+
+```text
+active/future:
+monthMeta/{YYYY-MM}
+monthSnapshots/{YYYY-MM}
+
+finished history:
+monthArchives/{YYYY-MM}
+```
+
+One archive document stores the whole final historical month. Photos are not copied into archives; they remain in vesselRegistry/Firebase Storage.
+
+Past month client behavior:
+
+```text
+local archived month → 0 reads
+not local → 1 read monthArchives/{YYYY-MM} → cache locally
+```
+
+## Immediate next implementation
+
+Current VPS fetches `plan`, `crnt`, `closed`, but the published normalized data is still effectively current-month limited and `closed` is not merged into visible history.
+
+Next pipeline:
+
+```text
+ПКТ plan + crnt + closed
+→ merge by calling_id
+→ priority closed > crnt > plan
+→ normalize all usable calls
+→ split by YYYY-MM
+→ per-target/per-month content hash
+→ publish only changed months
+→ current/future → monthMeta + monthSnapshots
+→ finished past months → monthArchives
+```
+
+Do not create one giant Firestore full-list document.
+
+Do not duplicate a call across source modes: one `calling_id` remains one logical call.
+
+Initial month bucketing should preserve the existing `berthFrom = calling_date ?? plan_calling_date` rule. Cross-month rendering can be extended later without changing call identity.
+
+`ingestVesselCallsMonth` must gain a real archive destination:
+
+```text
+isArchived=false → monthMeta + monthSnapshots
+isArchived=true  → monthArchives
+```
+
+The normalized `plan/crnt/closed` lifecycle field required for grey completed calls should be added deliberately across VPS payload, Cloud validation, CachedVesselCall, cache mapping, UI and tests. Do not overload the existing cache `source` field.
+
+Before changing the VPS publisher, stop the timer, back up `updater.py`, dry-run the all-month merge/bucketing, validate counts and unique `calling_id`, then publish manually and restore the ~2-hour timer.
+
+After the full-list/archive block is stable:
+
+```text
+latest Calendar + Vessel Calls → EpiLite Web
 ```
