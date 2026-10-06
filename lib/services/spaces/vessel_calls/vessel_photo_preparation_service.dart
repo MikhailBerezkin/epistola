@@ -62,8 +62,19 @@ final class VesselPhotoPreparationService {
   static Future<String?> _cropWithEditor(String sourcePath) async {
     final croppedFile = await ImageCropper().cropImage(
       sourcePath: sourcePath,
+
+      // Единый формат фотографии судна.
+      //
+      // Пользователь заранее видит ровно ту область,
+      // которая затем попадёт в аватар и full-photo.
+      aspectRatio: const CropAspectRatio(ratioX: 16, ratioY: 9),
+
       compressFormat: ImageCompressFormat.jpg,
+
+      // Здесь не экономим качество:
+      // финальное сжатие выполняет VesselPhotoProcessor.
       compressQuality: 100,
+
       uiSettings: <PlatformUiSettings>[
         AndroidUiSettings(
           toolbarTitle: 'Фото судна',
@@ -79,36 +90,42 @@ final class VesselPhotoPreparationService {
           cropGridRowCount: 3,
           cropGridColumnCount: 3,
           showCropGrid: true,
-          lockAspectRatio: false,
+
+          // Рамку можно двигать и менять её размер,
+          // но соотношение сторон всегда остаётся 16:9.
+          lockAspectRatio: true,
           hideBottomControls: false,
+
           statusBarLight: false,
           navBarLight: false,
-          initAspectRatio: CropAspectRatioPreset.original,
+
+          initAspectRatio: CropAspectRatioPreset.ratio16x9,
+
           cropStyle: CropStyle.rectangle,
+
           aspectRatioPresets: const <CropAspectRatioPresetData>[
-            CropAspectRatioPreset.original,
-            CropAspectRatioPreset.square,
-            CropAspectRatioPreset.ratio3x2,
-            CropAspectRatioPreset.ratio4x3,
             CropAspectRatioPreset.ratio16x9,
           ],
         ),
+
         IOSUiSettings(
           title: 'Фото судна',
           doneButtonTitle: 'Готово',
           cancelButtonTitle: 'Отмена',
           showCancelConfirmationDialog: true,
+
           rotateButtonsHidden: false,
           resetButtonHidden: false,
-          aspectRatioPickerButtonHidden: false,
-          resetAspectRatioEnabled: true,
-          aspectRatioLockEnabled: false,
+
+          // Формат фиксирован — отдельный выбор
+          // пропорций пользователю больше не нужен.
+          aspectRatioPickerButtonHidden: true,
+          resetAspectRatioEnabled: false,
+          aspectRatioLockEnabled: true,
+
           cropStyle: CropStyle.rectangle,
+
           aspectRatioPresets: const <CropAspectRatioPresetData>[
-            CropAspectRatioPreset.original,
-            CropAspectRatioPreset.square,
-            CropAspectRatioPreset.ratio3x2,
-            CropAspectRatioPreset.ratio4x3,
             CropAspectRatioPreset.ratio16x9,
           ],
         ),
@@ -140,6 +157,7 @@ final class VesselPhotoPreparationService {
 
   static bool _samePath(String first, String second) {
     final firstUri = File(first).absolute.uri.normalizePath();
+
     final secondUri = File(second).absolute.uri.normalizePath();
 
     if (Platform.isWindows) {

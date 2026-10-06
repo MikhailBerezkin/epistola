@@ -388,7 +388,7 @@ service firebase.storage {
         && isValidAvatarVersion(version);
     }
 
-    // Старый невариантный путь оставляем только для чтения.
+    // РЎС‚Р°СЂС‹Р№ РЅРµРІР°СЂРёР°РЅС‚РЅС‹Р№ РїСѓС‚СЊ РѕСЃС‚Р°РІР»СЏРµРј С‚РѕР»СЊРєРѕ РґР»СЏ С‡С‚РµРЅРёСЏ.
     match /group_avatars/{chatId}/{fileName} {
       allow get: if signedIn();
       allow create, update, delete: if false;
@@ -491,7 +491,7 @@ service firebase.storage {
         vesselKey,
         version,
         'vesselPhotoFull',
-        1536 * 1024
+        2048 * 1024
       );
 
       allow update: if false;

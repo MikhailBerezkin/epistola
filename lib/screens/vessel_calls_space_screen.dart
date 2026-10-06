@@ -14,6 +14,12 @@ import '../services/spaces/vessel_calls/vessel_registry_service.dart';
 import '../domain/models/spaces_access_role.dart';
 import '../services/spaces/spaces_dependencies.dart';
 import '../services/spaces/spaces_access_service.dart';
+import '../services/spaces/vessel_calls/vessel_photo_url_cache.dart';
+import '../widgets/spaces/vessel_calls/vessel_photo_image.dart';
+import '../services/spaces/vessel_calls/vessel_photo_preparation_service.dart';
+import '../services/spaces/vessel_calls/vessel_photo_processor.dart';
+import '../services/spaces/vessel_calls/vessel_photo_replacement_service.dart';
+import 'dart:ui' as ui;
 
 class VesselCallsSpaceScreen extends StatefulWidget {
   const VesselCallsSpaceScreen({super.key});
@@ -47,6 +53,9 @@ class _VesselCallsSpaceScreenState extends State<VesselCallsSpaceScreen> {
   late final VesselCallsMonthCacheService _monthCacheService;
   late final VesselRegistryService _vesselRegistryService;
   late final SpacesAccessService _spacesAccessService;
+  late final VesselPhotoUrlCache _vesselPhotoUrlCache;
+  late final VesselPhotoPreparationService _vesselPhotoPreparationService;
+  late final VesselPhotoReplacementService _vesselPhotoReplacementService;
 
   SpacesAccessRole _spacesAccessRole = SpacesAccessRole.member;
 
@@ -90,6 +99,10 @@ class _VesselCallsSpaceScreenState extends State<VesselCallsSpaceScreen> {
       localCache: _localCache,
     );
     _vesselRegistryService = VesselRegistryService.firebase();
+
+    _vesselPhotoUrlCache = VesselPhotoUrlCache();
+    _vesselPhotoPreparationService = VesselPhotoPreparationService();
+    _vesselPhotoReplacementService = VesselPhotoReplacementService.firebase();
 
     _spacesAccessService = defaultSpacesAccessService;
     unawaited(_loadSpacesAccessRole());
@@ -186,6 +199,8 @@ class _VesselCallsSpaceScreenState extends State<VesselCallsSpaceScreen> {
         setState(() {
           _calls = cachedCalls;
         });
+
+        unawaited(_preloadVesselPhotosForDay(_selectedDate));
       }
 
       final refreshResult = await _monthCacheService.refreshCurrentMonthNow(
@@ -213,6 +228,8 @@ class _VesselCallsSpaceScreenState extends State<VesselCallsSpaceScreen> {
       setState(() {
         _calls = refreshedCalls;
       });
+
+      unawaited(_preloadVesselPhotosForDay(_selectedDate));
     } catch (_) {
       // Судозаходы должны оставаться доступными даже при временной
       // ошибке локального кэша или Firestore.
@@ -238,7 +255,11 @@ class _VesselCallsSpaceScreenState extends State<VesselCallsSpaceScreen> {
 
     final normalizedImo = imo?.trim();
 
-    final existingEntry = vessel.registryEntry;
+    final latestRegistryEntry = _vesselRegistry
+        .resolve(shipName: vessel.name, lineName: vessel.lineName)
+        .vessel;
+
+    final existingEntry = latestRegistryEntry ?? vessel.registryEntry;
 
     final lineNameNormalized = normalizeVesselRegistryText(vessel.lineName);
 
@@ -400,6 +421,8 @@ class _VesselCallsSpaceScreenState extends State<VesselCallsSpaceScreen> {
     setState(() {
       _calls = refreshedCalls;
     });
+
+    unawaited(_preloadVesselPhotosForDay(_selectedDate));
   }
 
   _PreviewVesselCall _previewCallFromCached(CachedVesselCall cached) {
@@ -504,10 +527,24 @@ class _VesselCallsSpaceScreenState extends State<VesselCallsSpaceScreen> {
     return result;
   }
 
+  Future<void> _preloadVesselPhotosForDay(DateTime date) async {
+    final calls = _callsForDay(date);
+
+    final thumbnailPaths = calls
+        .take(10)
+        .map((call) => call.vessel.registryEntry?.effectivePhotoThumbPath);
+
+    await _vesselPhotoUrlCache.preload(thumbnailPaths, maximumItems: 10);
+  }
+
   void _selectDate(DateTime date) {
+    final selectedDate = DateTime(date.year, date.month, date.day);
+
     setState(() {
-      _selectedDate = DateTime(date.year, date.month, date.day);
+      _selectedDate = selectedDate;
     });
+
+    unawaited(_preloadVesselPhotosForDay(selectedDate));
   }
 
   void _handlePageChanged(int page) {
@@ -777,22 +814,36 @@ class _VesselCallsSpaceScreenState extends State<VesselCallsSpaceScreen> {
     required VesselPhysicalType initialPhysicalType,
     required VesselWorkType initialWorkType,
   }) {
-    final imoController = TextEditingController(text: vessel.imo);
+    final latestRegistryEntry = _vesselRegistry
+        .resolve(shipName: vessel.name, lineName: vessel.lineName)
+        .vessel;
+
+    final currentRegistryEntry = latestRegistryEntry ?? vessel.registryEntry;
+
+    final imoController = TextEditingController(
+      text: currentRegistryEntry?.imo ?? vessel.imo,
+    );
 
     final lengthController = TextEditingController(
-      text: vessel.lengthMeters?.toString() ?? '',
+      text:
+          currentRegistryEntry?.lengthMeters?.toString() ??
+          vessel.lengthMeters?.toString() ??
+          '',
     );
 
     final deadweightController = TextEditingController(
-      text: vessel.deadweightTons?.toString() ?? '',
+      text:
+          currentRegistryEntry?.deadweightTons?.toString() ??
+          vessel.deadweightTons?.toString() ??
+          '',
     );
 
     final teuController = TextEditingController(
-      text: vessel.registryEntry?.teuCapacity?.toString() ?? '',
+      text: currentRegistryEntry?.teuCapacity?.toString() ?? '',
     );
 
     final marineTrafficController = TextEditingController(
-      text: vessel.registryEntry?.marineTrafficUrl ?? '',
+      text: currentRegistryEntry?.marineTrafficUrl ?? '',
     );
 
     var selectedPhysicalType = initialPhysicalType;
@@ -1119,6 +1170,72 @@ class _VesselCallsSpaceScreenState extends State<VesselCallsSpaceScreen> {
     );
   }
 
+  Future<PreparedVesselPhotoImages?> _chooseVesselPhoto(
+    BuildContext context,
+  ) async {
+    final source = await showModalBottomSheet<_VesselPhotoSource>(
+      context: context,
+      backgroundColor: _cardBackgroundColor,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  leading: const Icon(
+                    Icons.photo_library_outlined,
+                    color: Colors.white,
+                  ),
+                  title: const Text(
+                    'Выбрать из галереи',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  onTap: () {
+                    Navigator.of(sheetContext).pop(_VesselPhotoSource.gallery);
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(
+                    Icons.photo_camera_outlined,
+                    color: Colors.white,
+                  ),
+                  title: const Text(
+                    'Сделать фото',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  onTap: () {
+                    Navigator.of(sheetContext).pop(_VesselPhotoSource.camera);
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (source == null) {
+      return null;
+    }
+
+    return switch (source) {
+      _VesselPhotoSource.gallery =>
+        _vesselPhotoPreparationService.prepareFromGallery(),
+
+      _VesselPhotoSource.camera =>
+        _vesselPhotoPreparationService.prepareWithCamera(),
+    };
+  }
+
   void _openVesselCard(_PreviewVessel vessel) {
     var isQuickEditMode = false;
 
@@ -1128,6 +1245,11 @@ class _VesselCallsSpaceScreenState extends State<VesselCallsSpaceScreen> {
     var quickEditInitialPhysicalType = selectedPhysicalType;
     var quickEditInitialWorkType = selectedWorkType;
     var isQuickEditSaving = false;
+    PreparedVesselPhotoImages? preparedPhoto;
+    var isPhotoPreparing = false;
+    var currentPhotoFullPath = vessel.registryEntry?.effectivePhotoFullPath;
+
+    var currentPhotoVersion = vessel.registryEntry?.photoVersion;
 
     final canManageVesselRegistry = _spacesAccessRole.canManageVesselRegistry;
 
@@ -1135,7 +1257,8 @@ class _VesselCallsSpaceScreenState extends State<VesselCallsSpaceScreen> {
       context: context,
       isScrollControlled: true,
       backgroundColor: _cardBackgroundColor,
-      showDragHandle: true,
+      showDragHandle: false,
+      clipBehavior: Clip.antiAlias,
       builder: (sheetContext) {
         return StatefulBuilder(
           builder: (context, setSheetState) {
@@ -1148,375 +1271,704 @@ class _VesselCallsSpaceScreenState extends State<VesselCallsSpaceScreen> {
                 ? 'Не определён'
                 : selectedWorkType.displayName;
 
+            final latestRegistryEntry = _vesselRegistry
+                .resolve(shipName: vessel.name, lineName: vessel.lineName)
+                .vessel;
+
+            final currentRegistryEntry =
+                latestRegistryEntry ?? vessel.registryEntry;
+
+            final currentImo =
+                currentRegistryEntry?.imo?.trim() ?? vessel.imo.trim();
+
             final workTypeColor = selectedWorkType == VesselWorkType.unknown
                 ? null
                 : _vesselWorkTypeColor(selectedWorkType);
+
+            final classColor = workTypeColor ?? _unknownColor;
+
+            final vesselCardBackgroundColor = HSVColor.fromColor(
+              classColor,
+            ).withSaturation(0.72).withValue(0.26).toColor();
 
             final isContainerLike =
                 selectedPhysicalType == VesselPhysicalType.container ||
                 selectedPhysicalType == VesselPhysicalType.reefer;
 
             return SafeArea(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Stack(
-                      children: [
-                        Center(
-                          child: Container(
-                            width: 168,
-                            height: 112,
-                            decoration: BoxDecoration(
-                              color: _dayBackgroundColor,
+              child: ColoredBox(
+                color: vesselCardBackgroundColor,
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(0, 0, 0, 28),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Stack(
+                        children: [
+                          Center(
+                            child: InkWell(
                               borderRadius: BorderRadius.circular(18),
-                            ),
-                            child: const Icon(
-                              Icons.directions_boat_rounded,
-                              color: Colors.white,
-                              size: 64,
-                            ),
-                          ),
-                        ),
-                        if (canManageVesselRegistry)
-                          Positioned(
-                            top: 0,
-                            right: 0,
-                            child: _VesselEditButton(
-                              isQuickEditMode: isQuickEditMode,
-                              onTap: () {
-                                if (isQuickEditMode) {
-                                  return;
-                                }
+                              onTap:
+                                  !isQuickEditMode ||
+                                      isQuickEditSaving ||
+                                      isPhotoPreparing
+                                  ? null
+                                  : () async {
+                                      setSheetState(() {
+                                        isPhotoPreparing = true;
+                                      });
 
-                                setSheetState(() {
-                                  quickEditInitialPhysicalType =
-                                      selectedPhysicalType;
-                                  quickEditInitialWorkType = selectedWorkType;
-                                  isQuickEditMode = true;
-                                });
-                              },
-                              onSpecialEdit: () {
-                                unawaited(
-                                  _openSpecialVesselEditor(
-                                    vessel: vessel,
-                                    initialPhysicalType: selectedPhysicalType,
-                                    initialWorkType: selectedWorkType,
-                                  ).then((result) async {
-                                    if (result == null ||
-                                        !sheetContext.mounted) {
-                                      return;
-                                    }
+                                      try {
+                                        final selectedPhoto =
+                                            await _chooseVesselPhoto(
+                                              sheetContext,
+                                            );
 
-                                    final saved =
-                                        await _saveVesselRegistryEntry(
-                                          vessel: vessel,
-                                          physicalType: result.physicalType,
-                                          workType: result.workType,
-                                          imo: result.imo,
-                                          lengthMeters: result.lengthMeters,
-                                          deadweightTons: result.deadweightTons,
-                                          teuCapacity: result.teuCapacity,
-                                          marineTrafficUrl:
-                                              result.marineTrafficUrl,
-                                          markVerified: true,
-                                        );
+                                        if (selectedPhoto == null) {
+                                          return;
+                                        }
 
-                                    if (!saved || !sheetContext.mounted) {
-                                      return;
-                                    }
+                                        if (!sheetContext.mounted) {
+                                          await selectedPhoto.cleanup();
+                                          return;
+                                        }
 
-                                    setSheetState(() {
-                                      selectedPhysicalType =
-                                          result.physicalType;
-                                      selectedWorkType = result.workType;
-                                    });
-                                  }),
-                                );
-                              },
-                            ),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 18),
-                    Text(
-                      vessel.name,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 24,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      physicalTypeText,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: _secondaryTextColor,
-                        fontSize: 15,
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    if (vessel.lineName.trim().isNotEmpty)
-                      _VesselFact(label: 'Линия', value: vessel.lineName),
-                    if (vessel.imo.trim().isNotEmpty)
-                      _VesselFact(label: 'IMO', value: vessel.imo),
-                    const SizedBox(height: 4),
-                    if (isQuickEditMode)
-                      Column(
-                        children: [
-                          Row(
-                            children: [
-                              const Expanded(
-                                child: Text(
-                                  'Тип судна',
-                                  style: TextStyle(
-                                    color: _secondaryTextColor,
-                                    fontSize: 15,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Flexible(
-                                child: _VesselChoiceButton(
-                                  label:
-                                      selectedPhysicalType ==
-                                          VesselPhysicalType.unknown
-                                      ? 'Выбрать'
-                                      : physicalTypeText,
-                                  onTap: () async {
-                                    final selected =
-                                        await _showVesselPhysicalTypePicker(
-                                          context: sheetContext,
-                                          selectedType: selectedPhysicalType,
-                                        );
+                                        final previousPhoto = preparedPhoto;
 
-                                    if (selected == null ||
-                                        !sheetContext.mounted) {
-                                      return;
-                                    }
+                                        setSheetState(() {
+                                          preparedPhoto = selectedPhoto;
+                                        });
 
-                                    setSheetState(() {
-                                      selectedPhysicalType = selected;
-                                    });
-                                  },
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          Row(
-                            children: [
-                              const Expanded(
-                                child: Text(
-                                  'Тип груза / захода',
-                                  style: TextStyle(
-                                    color: _secondaryTextColor,
-                                    fontSize: 15,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Flexible(
-                                child: _VesselChoiceButton(
-                                  label:
-                                      selectedWorkType == VesselWorkType.unknown
-                                      ? 'Выбрать'
-                                      : workTypeText,
-                                  color: workTypeColor,
-                                  onTap: () async {
-                                    final selected =
-                                        await _showVesselWorkTypePicker(
-                                          context: sheetContext,
-                                          selectedType: selectedWorkType,
-                                        );
-
-                                    if (selected == null ||
-                                        !sheetContext.mounted) {
-                                      return;
-                                    }
-
-                                    setSheetState(() {
-                                      selectedWorkType = selected;
-                                    });
-                                  },
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 18),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: OutlinedButton.icon(
-                                  onPressed: isQuickEditSaving
-                                      ? null
-                                      : () {
+                                        if (previousPhoto != null) {
+                                          await previousPhoto.cleanup();
+                                        }
+                                      } catch (_) {
+                                        if (sheetContext.mounted) {
+                                          ScaffoldMessenger.of(sheetContext)
+                                            ..hideCurrentSnackBar()
+                                            ..showSnackBar(
+                                              const SnackBar(
+                                                content: Text(
+                                                  'Не удалось подготовить фотографию.',
+                                                ),
+                                              ),
+                                            );
+                                        }
+                                      } finally {
+                                        if (sheetContext.mounted) {
                                           setSheetState(() {
-                                            selectedPhysicalType =
-                                                quickEditInitialPhysicalType;
-                                            selectedWorkType =
-                                                quickEditInitialWorkType;
-                                            isQuickEditMode = false;
+                                            isPhotoPreparing = false;
                                           });
-                                        },
-                                  style: OutlinedButton.styleFrom(
-                                    foregroundColor: Colors.white,
-                                    side: BorderSide(
-                                      color: Colors.white.withValues(
-                                        alpha: 0.45,
-                                      ),
-                                      width: 1.2,
-                                    ),
-                                  ),
-                                  icon: const Icon(Icons.close_rounded),
-                                  label: const Text(
-                                    'Отмена',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: FilledButton.icon(
-                                  onPressed: isQuickEditSaving
-                                      ? null
-                                      : () {
-                                          setSheetState(() {
-                                            isQuickEditSaving = true;
-                                          });
-
-                                          unawaited(
-                                            _saveVesselRegistryEntry(
-                                              vessel: vessel,
-                                              physicalType:
-                                                  selectedPhysicalType,
-                                              workType: selectedWorkType,
-                                              imo:
-                                                  vessel.registryEntry?.imo ??
-                                                  vessel.imo,
-                                              lengthMeters: vessel
-                                                  .registryEntry
-                                                  ?.lengthMeters,
-                                              deadweightTons: vessel
-                                                  .registryEntry
-                                                  ?.deadweightTons,
-                                              teuCapacity: vessel
-                                                  .registryEntry
-                                                  ?.teuCapacity,
-                                              marineTrafficUrl: vessel
-                                                  .registryEntry
-                                                  ?.marineTrafficUrl,
-                                              markVerified: false,
-                                            ).then((saved) {
-                                              if (!sheetContext.mounted) {
-                                                return;
-                                              }
-
-                                              setSheetState(() {
-                                                isQuickEditSaving = false;
-
-                                                if (saved) {
-                                                  quickEditInitialPhysicalType =
-                                                      selectedPhysicalType;
-                                                  quickEditInitialWorkType =
-                                                      selectedWorkType;
-                                                  isQuickEditMode = false;
-                                                }
-                                              });
-                                            }),
-                                          );
-                                        },
-                                  icon: isQuickEditSaving
-                                      ? const SizedBox(
-                                          width: 18,
-                                          height: 18,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                          ),
+                                        }
+                                      }
+                                    },
+                              child: SizedBox(
+                                width: double.infinity,
+                                child: AspectRatio(
+                                  aspectRatio: 16 / 9,
+                                  child: Stack(
+                                    fit: StackFit.expand,
+                                    children: [
+                                      if (preparedPhoto != null)
+                                        Image.file(
+                                          preparedPhoto!.fullFile,
+                                          fit: BoxFit.cover,
                                         )
-                                      : const Icon(Icons.check_rounded),
-                                  label: Text(
-                                    isQuickEditSaving
-                                        ? 'Сохранение...'
-                                        : 'Сохранить',
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                    ),
+                                      else
+                                        VesselPhotoImage(
+                                          storagePath: currentPhotoFullPath,
+                                          version: currentPhotoVersion,
+                                          width: double.infinity,
+                                          height: double.infinity,
+                                          borderRadius: BorderRadius.zero,
+                                          urlResolver:
+                                              _vesselPhotoUrlCache.resolve,
+                                          fallbackBuilder: (context) {
+                                            return Container(
+                                              color: _dayBackgroundColor,
+                                              alignment: Alignment.center,
+                                              child: const Icon(
+                                                Icons.directions_boat_rounded,
+                                                color: Colors.white,
+                                                size: 72,
+                                              ),
+                                            );
+                                          },
+                                        ),
+
+                                      // Нижняя часть фотографии затемняется,
+                                      // чтобы название и тип судна всегда читались.
+                                      IgnorePointer(
+                                        child: DecoratedBox(
+                                          decoration: BoxDecoration(
+                                            gradient: LinearGradient(
+                                              begin: Alignment.topCenter,
+                                              end: Alignment.bottomCenter,
+                                              stops: const [0.42, 0.70, 1.0],
+                                              colors: [
+                                                Colors.transparent,
+                                                Color(0x33000000),
+                                                Color(0xD9000000),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      // Лёгкое размытие нижней части фотографии.
+                                      Positioned(
+                                        left: 0,
+                                        right: 0,
+                                        bottom: 0,
+                                        height: 82,
+                                        child: IgnorePointer(
+                                          child: ClipRect(
+                                            child: BackdropFilter(
+                                              filter: ui.ImageFilter.blur(
+                                                sigmaX: 1,
+                                                sigmaY: 1,
+                                              ),
+                                              child: const SizedBox.expand(),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+
+                                      // Фото плавно растворяется в фоне карточки.
+                                      Positioned(
+                                        left: 0,
+                                        right: 0,
+                                        bottom: 0,
+                                        height: 110,
+                                        child: IgnorePointer(
+                                          child: DecoratedBox(
+                                            decoration: BoxDecoration(
+                                              gradient: LinearGradient(
+                                                begin: Alignment.topCenter,
+                                                end: Alignment.bottomCenter,
+                                                stops: const [
+                                                  0.0,
+                                                  0.42,
+                                                  0.72,
+                                                  1.0,
+                                                ],
+                                                colors: [
+                                                  Colors.transparent,
+                                                  vesselCardBackgroundColor
+                                                      .withValues(alpha: 0.18),
+                                                  vesselCardBackgroundColor
+                                                      .withValues(alpha: 0.62),
+                                                  vesselCardBackgroundColor,
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      Positioned(
+                                        top: 10,
+                                        left: 0,
+                                        right: 0,
+                                        child: Center(
+                                          child: Container(
+                                            width: 40,
+                                            height: 4,
+                                            decoration: BoxDecoration(
+                                              color: Colors.white.withValues(
+                                                alpha: 0.42,
+                                              ),
+                                              borderRadius:
+                                                  BorderRadius.circular(999),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      Positioned(
+                                        left: 20,
+                                        right: 20,
+                                        bottom: 18,
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Text(
+                                              vessel.name,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: const TextStyle(
+                                                color: Colors.white,
+                                                fontSize: 25,
+                                                fontWeight: FontWeight.w800,
+                                                height: 1.05,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 5),
+                                            Text(
+                                              '$physicalTypeText · $workTypeText',
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: const TextStyle(
+                                                color: Color(0xFFD7E4EF),
+                                                fontSize: 15,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+
+                                      if (isQuickEditMode)
+                                        Positioned(
+                                          top: 16,
+                                          left: 20,
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 12,
+                                              vertical: 7,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: Colors.black.withValues(
+                                                alpha: 0.58,
+                                              ),
+                                              borderRadius:
+                                                  BorderRadius.circular(999),
+                                            ),
+                                            child: Text(
+                                              isPhotoPreparing
+                                                  ? 'Подготовка...'
+                                                  : 'Изменить фото',
+                                              style: const TextStyle(
+                                                color: Colors.white,
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                    ],
                                   ),
                                 ),
                               ),
-                            ],
+                            ),
                           ),
-                        ],
-                      )
-                    else
-                      Column(
-                        children: [
-                          _VesselFact(
-                            label: 'Тип судна',
-                            value: physicalTypeText,
-                          ),
-                          const SizedBox(height: 12),
-                          _VesselFact(
-                            label: 'Тип груза / захода',
-                            value: workTypeText,
-                          ),
-                        ],
-                      ),
+                          if (canManageVesselRegistry)
+                            Positioned(
+                              top: 0,
+                              right: 0,
+                              child: _VesselEditButton(
+                                isQuickEditMode: isQuickEditMode,
+                                onTap: () {
+                                  if (isQuickEditMode) {
+                                    return;
+                                  }
 
-                    const SizedBox(height: 12),
-                    if (vessel.lengthMeters != null)
-                      _VesselFact(
-                        label: 'Длина',
-                        value: '${vessel.lengthMeters} м',
+                                  setSheetState(() {
+                                    quickEditInitialPhysicalType =
+                                        selectedPhysicalType;
+                                    quickEditInitialWorkType = selectedWorkType;
+                                    isQuickEditMode = true;
+                                  });
+                                },
+                                onSpecialEdit: () {
+                                  unawaited(
+                                    _openSpecialVesselEditor(
+                                      vessel: vessel,
+                                      initialPhysicalType: selectedPhysicalType,
+                                      initialWorkType: selectedWorkType,
+                                    ).then((result) async {
+                                      if (result == null ||
+                                          !sheetContext.mounted) {
+                                        return;
+                                      }
+
+                                      final saved =
+                                          await _saveVesselRegistryEntry(
+                                            vessel: vessel,
+                                            physicalType: result.physicalType,
+                                            workType: result.workType,
+                                            imo: result.imo,
+                                            lengthMeters: result.lengthMeters,
+                                            deadweightTons:
+                                                result.deadweightTons,
+                                            teuCapacity: result.teuCapacity,
+                                            marineTrafficUrl:
+                                                result.marineTrafficUrl,
+                                            markVerified: true,
+                                          );
+
+                                      if (!saved || !sheetContext.mounted) {
+                                        return;
+                                      }
+
+                                      setSheetState(() {
+                                        selectedPhysicalType =
+                                            result.physicalType;
+                                        selectedWorkType = result.workType;
+                                      });
+                                    }),
+                                  );
+                                },
+                              ),
+                            ),
+                        ],
                       ),
-                    if (vessel.widthMeters != null)
-                      _VesselFact(
-                        label: 'Ширина',
-                        value: '${vessel.widthMeters} м',
-                      ),
-                    if (isContainerLike)
-                      if (vessel.capacityLabel != null)
-                        _VesselFact(
-                          label: 'Вместимость',
-                          value: vessel.capacityLabel!,
-                        )
-                      else if (vessel.deadweightTons != null)
-                        _VesselFact(
-                          label: 'DWT',
-                          value: '${vessel.deadweightTons} т',
-                        )
-                      else if (vessel.deadweightTons != null)
-                        _VesselFact(
-                          label: 'DWT',
-                          value: '${vessel.deadweightTons} т',
-                        )
-                      else if (vessel.capacityLabel != null)
-                        _VesselFact(
-                          label: 'Вместимость',
-                          value: vessel.capacityLabel!,
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            if (vessel.lineName.trim().isNotEmpty)
+                              _VesselFact(
+                                label: 'Линия',
+                                value: vessel.lineName,
+                              ),
+                            if (currentImo.isNotEmpty)
+                              _VesselFact(label: 'IMO', value: currentImo),
+                            const SizedBox(height: 4),
+                            if (isQuickEditMode)
+                              Column(
+                                children: [
+                                  Row(
+                                    children: [
+                                      const Expanded(
+                                        child: Text(
+                                          'Тип судна',
+                                          style: TextStyle(
+                                            color: _secondaryTextColor,
+                                            fontSize: 15,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Flexible(
+                                        child: _VesselChoiceButton(
+                                          label:
+                                              selectedPhysicalType ==
+                                                  VesselPhysicalType.unknown
+                                              ? 'Выбрать'
+                                              : physicalTypeText,
+                                          onTap: () async {
+                                            final selected =
+                                                await _showVesselPhysicalTypePicker(
+                                                  context: sheetContext,
+                                                  selectedType:
+                                                      selectedPhysicalType,
+                                                );
+
+                                            if (selected == null ||
+                                                !sheetContext.mounted) {
+                                              return;
+                                            }
+
+                                            setSheetState(() {
+                                              selectedPhysicalType = selected;
+                                            });
+                                          },
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Row(
+                                    children: [
+                                      const Expanded(
+                                        child: Text(
+                                          'Тип груза / захода',
+                                          style: TextStyle(
+                                            color: _secondaryTextColor,
+                                            fontSize: 15,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Flexible(
+                                        child: _VesselChoiceButton(
+                                          label:
+                                              selectedWorkType ==
+                                                  VesselWorkType.unknown
+                                              ? 'Выбрать'
+                                              : workTypeText,
+                                          color: workTypeColor,
+                                          onTap: () async {
+                                            final selected =
+                                                await _showVesselWorkTypePicker(
+                                                  context: sheetContext,
+                                                  selectedType:
+                                                      selectedWorkType,
+                                                );
+
+                                            if (selected == null ||
+                                                !sheetContext.mounted) {
+                                              return;
+                                            }
+
+                                            setSheetState(() {
+                                              selectedWorkType = selected;
+                                            });
+                                          },
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 18),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: OutlinedButton.icon(
+                                          onPressed: isQuickEditSaving
+                                              ? null
+                                              : () {
+                                                  setSheetState(() {
+                                                    selectedPhysicalType =
+                                                        quickEditInitialPhysicalType;
+                                                    selectedWorkType =
+                                                        quickEditInitialWorkType;
+                                                    isQuickEditMode = false;
+                                                  });
+                                                },
+                                          style: OutlinedButton.styleFrom(
+                                            foregroundColor: Colors.white,
+                                            side: BorderSide(
+                                              color: Colors.white.withValues(
+                                                alpha: 0.45,
+                                              ),
+                                              width: 1.2,
+                                            ),
+                                          ),
+                                          icon: const Icon(Icons.close_rounded),
+                                          label: const Text(
+                                            'Отмена',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: FilledButton.icon(
+                                          onPressed: isQuickEditSaving
+                                              ? null
+                                              : () {
+                                                  setSheetState(() {
+                                                    isQuickEditSaving = true;
+                                                  });
+
+                                                  unawaited(() async {
+                                                    final photoToSave =
+                                                        preparedPhoto;
+
+                                                    final saved =
+                                                        await _saveVesselRegistryEntry(
+                                                          vessel: vessel,
+                                                          physicalType:
+                                                              selectedPhysicalType,
+                                                          workType:
+                                                              selectedWorkType,
+                                                          imo:
+                                                              vessel
+                                                                  .registryEntry
+                                                                  ?.imo ??
+                                                              vessel.imo,
+                                                          lengthMeters: vessel
+                                                              .registryEntry
+                                                              ?.lengthMeters,
+                                                          deadweightTons: vessel
+                                                              .registryEntry
+                                                              ?.deadweightTons,
+                                                          teuCapacity: vessel
+                                                              .registryEntry
+                                                              ?.teuCapacity,
+                                                          marineTrafficUrl: vessel
+                                                              .registryEntry
+                                                              ?.marineTrafficUrl,
+                                                          markVerified: false,
+                                                        );
+
+                                                    if (!saved) {
+                                                      if (sheetContext
+                                                          .mounted) {
+                                                        setSheetState(() {
+                                                          isQuickEditSaving =
+                                                              false;
+                                                        });
+                                                      }
+
+                                                      return;
+                                                    }
+
+                                                    if (photoToSave != null) {
+                                                      try {
+                                                        final refreshedEntry =
+                                                            _vesselRegistry
+                                                                .resolve(
+                                                                  shipName:
+                                                                      vessel
+                                                                          .name,
+                                                                  lineName: vessel
+                                                                      .lineName,
+                                                                )
+                                                                .vessel;
+
+                                                        if (refreshedEntry ==
+                                                            null) {
+                                                          throw StateError(
+                                                            'Saved vessel registry entry was not found.',
+                                                          );
+                                                        }
+
+                                                        final result =
+                                                            await _vesselPhotoReplacementService.replace(
+                                                              vessel:
+                                                                  refreshedEntry,
+                                                              images:
+                                                                  photoToSave,
+                                                              updatedBy:
+                                                                  _currentUserId,
+                                                            );
+
+                                                        currentPhotoFullPath =
+                                                            result.fullPath;
+
+                                                        currentPhotoVersion =
+                                                            result.version;
+
+                                                        // Новый Storage path получает новый cache key.
+                                                        // Подготовим thumb выбранного дня сразу.
+                                                        await _vesselPhotoUrlCache
+                                                            .resolve(
+                                                              result
+                                                                  .thumbnailPath,
+                                                            );
+
+                                                        _vesselRegistry =
+                                                            await _vesselRegistryService
+                                                                .load();
+
+                                                        await _reloadPreviewCallsFromLocalMonth();
+                                                      } catch (_) {
+                                                        if (!sheetContext
+                                                            .mounted) {
+                                                          return;
+                                                        }
+
+                                                        setSheetState(() {
+                                                          isQuickEditSaving =
+                                                              false;
+                                                        });
+
+                                                        ScaffoldMessenger.of(
+                                                            sheetContext,
+                                                          )
+                                                          ..hideCurrentSnackBar()
+                                                          ..showSnackBar(
+                                                            const SnackBar(
+                                                              content: Text(
+                                                                'Данные судна сохранены, '
+                                                                'но фотографию загрузить не удалось.',
+                                                              ),
+                                                            ),
+                                                          );
+
+                                                        return;
+                                                      }
+                                                    }
+
+                                                    if (!sheetContext.mounted) {
+                                                      return;
+                                                    }
+
+                                                    setSheetState(() {
+                                                      isQuickEditSaving = false;
+
+                                                      quickEditInitialPhysicalType =
+                                                          selectedPhysicalType;
+
+                                                      quickEditInitialWorkType =
+                                                          selectedWorkType;
+
+                                                      preparedPhoto = null;
+                                                      isQuickEditMode = false;
+                                                    });
+                                                  }());
+                                                },
+                                          icon: isQuickEditSaving
+                                              ? const SizedBox(
+                                                  width: 18,
+                                                  height: 18,
+                                                  child:
+                                                      CircularProgressIndicator(
+                                                        strokeWidth: 2,
+                                                      ),
+                                                )
+                                              : const Icon(Icons.check_rounded),
+                                          label: Text(
+                                            isQuickEditSaving
+                                                ? 'Сохранение...'
+                                                : 'Сохранить',
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              )
+                            else
+                              Column(
+                                children: [
+                                  _VesselFact(
+                                    label: 'Тип судна',
+                                    value: physicalTypeText,
+                                  ),
+                                  const SizedBox(height: 12),
+                                  _VesselFact(
+                                    label: 'Тип груза / захода',
+                                    value: workTypeText,
+                                  ),
+                                ],
+                              ),
+
+                            const SizedBox(height: 12),
+                            if (vessel.lengthMeters != null)
+                              _VesselFact(
+                                label: 'Длина',
+                                value: '${vessel.lengthMeters} м',
+                              ),
+                            if (vessel.widthMeters != null)
+                              _VesselFact(
+                                label: 'Ширина',
+                                value: '${vessel.widthMeters} м',
+                              ),
+                            if (isContainerLike)
+                              if (vessel.capacityLabel != null)
+                                _VesselFact(
+                                  label: 'Вместимость',
+                                  value: vessel.capacityLabel!,
+                                )
+                              else if (vessel.deadweightTons != null)
+                                _VesselFact(
+                                  label: 'DWT',
+                                  value: '${vessel.deadweightTons} т',
+                                )
+                              else if (vessel.deadweightTons != null)
+                                _VesselFact(
+                                  label: 'DWT',
+                                  value: '${vessel.deadweightTons} т',
+                                )
+                              else if (vessel.capacityLabel != null)
+                                _VesselFact(
+                                  label: 'Вместимость',
+                                  value: vessel.capacityLabel!,
+                                ),
+                          ],
                         ),
-                    const SizedBox(height: 18),
-                    FilledButton.icon(
-                      onPressed: () {
-                        Navigator.of(sheetContext).pop();
-
-                        final call = _calls.firstWhere(
-                          (item) => identical(item.vessel, vessel),
-                        );
-
-                        _showMarineTrafficPreview(call);
-                      },
-                      icon: const Icon(Icons.location_searching_rounded),
-                      label: const Text('Где судно (MarineTraffic)'),
-                    ),
-                  ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
             );
@@ -1641,6 +2093,7 @@ class _VesselCallsSpaceScreenState extends State<VesselCallsSpaceScreen> {
                         laybyColor: _laybyColor,
                       ),
                       now: _now,
+                      photoUrlResolver: _vesselPhotoUrlCache.resolve,
                       onPhotoTap: () {
                         _openVesselCard(call.vessel);
                       },
@@ -2560,11 +3013,14 @@ class _VesselMonthWeekPainter extends CustomPainter {
   }
 }
 
+enum _VesselPhotoSource { gallery, camera }
+
 class _VesselCallCard extends StatelessWidget {
   const _VesselCallCard({
     required this.call,
     required this.color,
     required this.now,
+    required this.photoUrlResolver,
     required this.onPhotoTap,
     required this.onMarineTrafficTap,
   });
@@ -2573,6 +3029,7 @@ class _VesselCallCard extends StatelessWidget {
 
   final Color color;
   final DateTime now;
+  final VesselPhotoUrlResolver photoUrlResolver;
 
   final VoidCallback onPhotoTap;
   final VoidCallback onMarineTrafficTap;
@@ -2603,73 +3060,109 @@ class _VesselCallCard extends StatelessWidget {
         ? 0.0
         : (elapsedMinutes / totalMinutes).clamp(0.0, 1.0);
 
+    final cardBackgroundColor = HSVColor.fromColor(
+      color,
+    ).withSaturation(0.62).withValue(0.22).toColor();
+
     return Container(
       decoration: BoxDecoration(
-        color: _VesselCallsSpaceScreenState._cardBackgroundColor,
+        color: cardBackgroundColor,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
       ),
       padding: const EdgeInsets.all(12),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          InkWell(
-            borderRadius: BorderRadius.circular(14),
-            onTap: onPhotoTap,
-            child: Container(
-              width: 92,
-              height: 92,
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.16),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Icon(
-                Icons.directions_boat_rounded,
-                size: 48,
-                color: color,
-              ),
+          SizedBox(
+            width: 112,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: onPhotoTap,
+                  child: Container(
+                    width: 112,
+                    height: 63,
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: 0.16),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: VesselPhotoImage(
+                      storagePath:
+                          call.vessel.registryEntry?.effectivePhotoThumbPath,
+                      version: call.vessel.registryEntry?.photoVersion,
+                      width: 112,
+                      height: 63,
+                      borderRadius: BorderRadius.circular(12),
+                      urlResolver: photoUrlResolver,
+                      fallbackBuilder: (context) {
+                        return Icon(
+                          Icons.directions_boat_rounded,
+                          size: 36,
+                          color: color,
+                        );
+                      },
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: 112,
+                  child: FilledButton.tonalIcon(
+                    onPressed: onMarineTrafficTap,
+                    icon: const Icon(
+                      Icons.location_searching_rounded,
+                      size: 16,
+                    ),
+                    label: const Text(
+                      'Где судно',
+                      maxLines: 1,
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    style: FilledButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 7,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 14),
           Expanded(
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 Text(
                   call.vessel.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
                   style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 17,
+                    fontSize: 18,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
                 const SizedBox(height: 2),
-                Row(
-                  children: [
-                    Container(
-                      width: 18,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: color,
-                        borderRadius: BorderRadius.circular(999),
-                      ),
+                Center(
+                  child: Text(
+                    call.vessel.workTypeLabel,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: _VesselCallsSpaceScreenState._secondaryTextColor,
+                      fontSize: 13,
                     ),
-                    const SizedBox(width: 7),
-                    Expanded(
-                      child: Text(
-                        call.vessel.workTypeLabel,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color:
-                              _VesselCallsSpaceScreenState._secondaryTextColor,
-                          fontSize: 13,
-                        ),
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
                 if (call.operationKind == _VesselOperationKind.layby) ...[
                   const SizedBox(height: 4),
@@ -2683,15 +3176,33 @@ class _VesselCallCard extends StatelessWidget {
                   ),
                 ],
                 const SizedBox(height: 8),
-                Text(
-                  '${_formatDateTime(call.berthFrom)}'
-                  '  →  '
-                  '${_formatDateTime(call.berthTo)}',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.w600,
-                  ),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      _formatDateTime(call.berthFrom),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    const Icon(
+                      Icons.arrow_forward_rounded,
+                      color: Colors.white,
+                      size: 16,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      _formatDateTime(call.berthTo),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 5),
                 Text(
@@ -2745,15 +3256,6 @@ class _VesselCallCard extends StatelessWidget {
                       fontWeight: FontWeight.w700,
                     ),
                   ),
-                const SizedBox(height: 10),
-                FilledButton.tonalIcon(
-                  onPressed: onMarineTrafficTap,
-                  icon: const Icon(Icons.location_searching_rounded, size: 18),
-                  label: const Text('Где судно'),
-                  style: FilledButton.styleFrom(
-                    visualDensity: VisualDensity.compact,
-                  ),
-                ),
               ],
             ),
           ),
@@ -2765,13 +3267,12 @@ class _VesselCallCard extends StatelessWidget {
   static String _formatDateTime(DateTime date) {
     final portDate = date.toUtc().add(const Duration(hours: 3));
 
-    final hour = portDate.hour.toString().padLeft(2, '0');
-    final minute = portDate.minute.toString().padLeft(2, '0');
     final day = portDate.day.toString().padLeft(2, '0');
     final month = portDate.month.toString().padLeft(2, '0');
+    final hour = portDate.hour.toString().padLeft(2, '0');
+    final minute = portDate.minute.toString().padLeft(2, '0');
 
-    return '$hour:$minute '
-        '$day.$month';
+    return '$day.$month / $hour:$minute';
   }
 
   static String _formatHours(double hours) {
