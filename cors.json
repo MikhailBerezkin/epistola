@@ -1,0 +1,16 @@
+[
+  {
+    "origin": [
+      "http://localhost:58209",
+      "https://epistola-434b7.web.app",
+      "https://epistola-434b7.firebaseapp.com"
+    ],
+    "method": [
+      "GET"
+    ],
+    "responseHeader": [
+      "Content-Type"
+    ],
+    "maxAgeSeconds": 3600
+  }
+]
