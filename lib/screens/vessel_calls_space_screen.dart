@@ -16,9 +16,8 @@ import '../services/spaces/spaces_dependencies.dart';
 import '../services/spaces/spaces_access_service.dart';
 import '../services/spaces/vessel_calls/vessel_photo_url_cache.dart';
 import '../widgets/spaces/vessel_calls/vessel_photo_image.dart';
-import '../services/spaces/vessel_calls/vessel_photo_preparation_service.dart';
-import '../services/spaces/vessel_calls/vessel_photo_processor.dart';
-import '../services/spaces/vessel_calls/vessel_photo_replacement_service.dart';
+import '../platform/epistola_platform_capabilities.dart';
+import '../services/spaces/vessel_calls/vessel_photo_editor_bridge.dart';
 import 'dart:ui' as ui;
 
 class VesselCallsSpaceScreen extends StatefulWidget {
@@ -1251,7 +1250,9 @@ class _VesselCallsSpaceScreenState extends State<VesselCallsSpaceScreen> {
 
     var currentPhotoVersion = vessel.registryEntry?.photoVersion;
 
-    final canManageVesselRegistry = _spacesAccessRole.canManageVesselRegistry;
+    final canManageVesselRegistry =
+        EpistolaPlatformCapabilities.supportsVesselCallsEditing &&
+        _spacesAccessRole.canManageVesselRegistry;
 
     showModalBottomSheet<void>(
       context: context,
@@ -1371,9 +1372,8 @@ class _VesselCallsSpaceScreenState extends State<VesselCallsSpaceScreen> {
                                     fit: StackFit.expand,
                                     children: [
                                       if (preparedPhoto != null)
-                                        Image.file(
-                                          preparedPhoto!.fullFile,
-                                          fit: BoxFit.cover,
+                                        buildPreparedVesselPhotoPreview(
+                                          preparedPhoto!,
                                         )
                                       else
                                         VesselPhotoImage(

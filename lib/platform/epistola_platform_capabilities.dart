@@ -21,4 +21,10 @@ abstract final class EpistolaPlatformCapabilities {
 
   /// Пользователь может менять свою доступность и в Web.
   static bool get supportsSubstitutionAvailabilityChanges => true;
+
+  /// Судозаходы доступны в Web только для просмотра.
+  ///
+  /// Редактирование реестра и фотографий судов остаётся
+  /// возможностью полноценного Android-клиента.
+  static bool get supportsVesselCallsEditing => !kIsWeb;
 }
